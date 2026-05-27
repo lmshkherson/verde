@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VERDE — Партнерство для дистриб'юторів та мереж</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Montserrat:ital,wght@0,400;0,600;0,700;0,800;0,900;1,800&family=Manrope:wght@400;500;600;700&display=swap');
+
+  :root{
+    --yellow:#FFE600;
+    --yellow-soft:#FFF27A;
+    --green:#1DB954;
+    --green-neon:#2AE85F;
+    --green-deep:#0E7A33;
+    --green-dark:#0B3D1E;
+    --ink:#0B1F12;
+    --cream:#FFFDF0;
+    --white:#ffffff;
+    --shadow:0 18px 50px -20px rgba(11,61,30,.45);
+  }
+
+  *{margin:0;padding:0;box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    font-family:'Manrope',system-ui,sans-serif;
+    color:var(--ink);
+    background:var(--cream);
+    overflow-x:hidden;
+    line-height:1.5;
+  }
+  .display{font-family:'Montserrat',sans-serif;font-weight:900;line-height:.95;letter-spacing:-.02em}
+  .wrap{width:min(1180px,92vw);margin-inline:auto}
+  section{position:relative}
+
+  /* ---------- accents ---------- */
+  .bolt{display:inline-block;color:var(--yellow);filter:drop-shadow(0 1px 0 var(--green-deep));transform:translateY(2px)}
+  .tag{
+    display:inline-flex;align-items:center;gap:.5rem;
+    font-family:'Montserrat',sans-serif;font-weight:800;
+    font-size:.72rem;letter-spacing:.18em;text-transform:uppercase;
+    padding:.5rem 1rem;border-radius:100px;
+  }
+
+  /* ---------- NAV ---------- */
+  header{position:sticky;top:0;z-index:50;background:rgba(255,253,240,.82);backdrop-filter:blur(12px);border-bottom:1px solid rgba(11,61,30,.08)}
+  nav{display:flex;align-items:center;justify-content:space-between;height:68px}
+  .logo{font-family:'Montserrat',sans-serif;font-weight:900;font-size:1.5rem;letter-spacing:.04em;color:var(--green-deep);display:flex;align-items:center;gap:.15rem}
+  .logo b{background:var(--green-neon);color:#062b13;padding:.1rem .5rem;border-radius:8px}
+  .nav-links{display:flex;gap:2rem;list-style:none}
+  .nav-links a{text-decoration:none;color:var(--ink);font-weight:600;font-size:.92rem;opacity:.75;transition:.2s}
+  .nav-links a:hover{opacity:1;color:var(--green-deep)}
+  .nav-cta{background:var(--ink);color:var(--yellow);text-decoration:none;font-weight:700;font-size:.9rem;padding:.6rem 1.3rem;border-radius:100px;transition:.25s}
+  .nav-cta:hover{background:var(--green-deep);transform:translateY(-1px)}
+  @media(max-width:820px){.nav-links{display:none}}
+
+  /* ---------- HERO ---------- */
+  .hero{background:var(--yellow);padding:clamp(3rem,7vw,6rem) 0 clamp(4rem,8vw,7rem);overflow:hidden}
+  .hero-grid{display:grid;grid-template-columns:1.1fr .9fr;gap:3rem;align-items:center}
+  .hero h1{font-size:clamp(2.6rem,6.5vw,5.2rem);color:var(--green-deep)}
+  .hero h1 span{color:var(--ink)}
+  .hero .lede{margin-top:1.5rem;font-size:clamp(1.05rem,1.6vw,1.3rem);max-width:30ch;color:#1c3a26;font-weight:500}
+  .hero-tag{background:var(--ink);color:var(--yellow)}
+  .hero-cta{display:flex;gap:1rem;margin-top:2.4rem;flex-wrap:wrap}
+  .btn{font-family:'Montserrat',sans-serif;font-weight:800;text-decoration:none;border-radius:100px;padding:1rem 1.8rem;font-size:1rem;transition:.25s;display:inline-flex;align-items:center;gap:.5rem}
+  .btn-primary{background:var(--green-deep);color:#fff;box-shadow:0 10px 30px -10px rgba(14,122,51,.7)}
+  .btn-primary:hover{transform:translateY(-2px);background:var(--ink)}
+  .btn-ghost{background:transparent;color:var(--green-deep);border:2px solid var(--green-deep)}
+  .btn-ghost:hover{background:var(--green-deep);color:#fff}
+
+  .hero-card{
+    background:var(--green);border-radius:28px;padding:2.2rem;color:#fff;position:relative;
+    box-shadow:0 30px 60px -25px rgba(11,61,30,.6);transform:rotate(2deg)
+  }
+  .hero-card::before{content:"";position:absolute;inset:0;border-radius:28px;background:linear-gradient(160deg,rgba(255,255,255,.18),transparent 55%);pointer-events:none}
+  .hero-bar{font-family:'Montserrat',sans-serif;font-weight:900;font-size:1.4rem;line-height:1;display:flex;align-items:center;gap:.3rem}
+  .hero-card .sub{opacity:.85;font-size:.85rem;margin-top:.2rem}
+  .hero-stats{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-top:1.6rem}
+  .hero-stat{background:rgba(255,255,255,.14);border-radius:16px;padding:1rem;backdrop-filter:blur(4px)}
+  .hero-stat .n{font-family:'Montserrat',sans-serif;font-weight:900;font-size:2rem;color:var(--yellow)}
+  .hero-stat .l{font-size:.78rem;opacity:.9;margin-top:.2rem}
+  @media(max-width:820px){.hero-grid{grid-template-columns:1fr}.hero-card{transform:none;margin-top:1rem}}
+
+  /* ---------- marquee strip ---------- */
+  .strip{background:var(--ink);color:var(--yellow);padding:.9rem 0;overflow:hidden;white-space:nowrap}
+  .strip-track{display:inline-flex;gap:3rem;font-family:'Montserrat',sans-serif;font-weight:800;font-size:1rem;letter-spacing:.05em;text-transform:uppercase;animation:scroll 22s linear infinite}
+  .strip-track span{display:inline-flex;align-items:center;gap:.6rem}
+  @keyframes scroll{to{transform:translateX(-50%)}}
+
+  /* ---------- generic section heads ---------- */
+  .sec{padding:clamp(3.5rem,7vw,6rem) 0}
+  .sec-head{max-width:46ch;margin-bottom:3rem}
+  .sec-head .tag{background:var(--yellow);color:var(--green-dark);margin-bottom:1rem}
+  .sec-head h2{font-size:clamp(2rem,4.2vw,3.2rem);color:var(--green-deep)}
+  .sec-head p{margin-top:1rem;font-size:1.1rem;color:#3a4d40}
+
+  /* ---------- WHY grid ---------- */
+  .why{background:linear-gradient(180deg,#fff,var(--cream))}
+  .cards4{display:grid;grid-template-columns:repeat(4,1fr);gap:1.4rem}
+  .card{background:#fff;border:1px solid rgba(11,61,30,.08);border-radius:22px;padding:1.8rem;transition:.3s;position:relative;overflow:hidden}
+  .card:hover{transform:translateY(-6px);box-shadow:var(--shadow);border-color:transparent}
+  .card .ico{width:48px;height:48px;border-radius:14px;background:var(--yellow);display:grid;place-items:center;font-size:1.5rem;margin-bottom:1.1rem}
+  .card h3{font-family:'Montserrat',sans-serif;font-weight:800;font-size:1.15rem;color:var(--green-deep);margin-bottom:.5rem}
+  .card p{font-size:.95rem;color:#48584d}
+  @media(max-width:900px){.cards4{grid-template-columns:1fr 1fr}}
+  @media(max-width:560px){.cards4{grid-template-columns:1fr}}
+
+  /* ---------- MARGIN / economics ---------- */
+  .econ{background:var(--green-dark);color:#fff}
+  .econ .sec-head h2{color:#fff}
+  .econ .sec-head .tag{background:var(--green-neon);color:var(--green-dark)}
+  .econ .sec-head p{color:rgba(255,255,255,.8)}
+  .margin-ring{display:flex;align-items:center;gap:2.5rem;flex-wrap:wrap;justify-content:center;margin-bottom:3rem}
+  .ring{position:relative;width:180px;height:180px;flex-shrink:0}
+  .ring svg{transform:rotate(-90deg)}
+  .ring .ring-label{position:absolute;inset:0;display:grid;place-items:center;flex-direction:column;text-align:center}
+  .ring .ring-label .pct{font-family:'Montserrat',sans-serif;font-weight:900;font-size:2.6rem;color:var(--yellow);line-height:1}
+  .ring .ring-label .txt{font-size:.78rem;opacity:.85;max-width:12ch;margin-top:.3rem}
+  .ring-copy{max-width:34ch}
+  .ring-copy h3{font-family:'Montserrat',sans-serif;font-weight:800;font-size:1.4rem;margin-bottom:.6rem}
+  .ring-copy p{color:rgba(255,255,255,.8)}
+
+  .price-cards{display:grid;grid-template-columns:1fr 1fr;gap:1.6rem}
+  .pcard{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:22px;padding:2rem;backdrop-filter:blur(4px)}
+  .pcard .pname{display:flex;align-items:center;justify-content:space-between;margin-bottom:1.3rem}
+  .pcard .pname b{font-family:'Montserrat',sans-serif;font-weight:900;font-size:1.5rem}
+  .pcard .badge{background:var(--yellow);color:var(--green-dark);font-family:'Montserrat',sans-serif;font-weight:800;font-size:.85rem;padding:.35rem .8rem;border-radius:100px}
+  .prow{display:flex;justify-content:space-between;padding:.7rem 0;border-bottom:1px dashed rgba(255,255,255,.15);font-size:.98rem}
+  .prow:last-child{border-bottom:none}
+  .prow span{opacity:.78}
+  .prow b{font-weight:700}
+  .prow.hl b{color:var(--green-neon);font-size:1.1rem}
+  @media(max-width:760px){.price-cards{grid-template-columns:1fr}}
+
+  /* ---------- PRODUCTS ---------- */
+  .prod-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:1rem}
+  .prod{background:#fff;border-radius:20px;border:1px solid rgba(11,61,30,.08);overflow:hidden;transition:.3s;text-align:center}
+  .prod:hover{transform:translateY(-6px);box-shadow:var(--shadow)}
+  .prod .top{background:var(--green);padding:1.6rem 1rem;color:#fff;position:relative}
+  .prod .top.dark{background:var(--green-dark)}
+  .prod .flavor{font-family:'Montserrat',sans-serif;font-weight:900;font-size:1.05rem;text-transform:uppercase;letter-spacing:.03em}
+  .prod .emoji{font-size:2.4rem;margin-bottom:.4rem}
+  .prod .body{padding:1.2rem 1rem 1.5rem}
+  .prod .vit{display:inline-block;background:var(--yellow);color:var(--green-dark);font-weight:700;font-size:.78rem;padding:.25rem .7rem;border-radius:100px;margin-bottom:.7rem}
+  .prod .price{font-family:'Montserrat',sans-serif;font-weight:900;font-size:1.3rem;color:var(--green-deep)}
+  .prod .price small{font-weight:600;font-size:.7rem;color:#7a8a80;display:block}
+  @media(max-width:1000px){.prod-grid{grid-template-columns:repeat(3,1fr)}}
+  @media(max-width:640px){.prod-grid{grid-template-columns:1fr 1fr}}
+  .prod-note{margin-top:1.6rem;text-align:center;color:#48584d;font-weight:600}
+
+  /* ---------- AUDIENCE ---------- */
+  .aud{background:var(--yellow)}
+  .aud .sec-head h2{color:var(--green-deep)}
+  .aud .sec-head .tag{background:var(--ink);color:var(--yellow)}
+  .aud-grid{display:grid;grid-template-columns:1.1fr 1fr;gap:3rem;align-items:start}
+  .aud-list{display:flex;flex-direction:column;gap:1px;background:rgba(11,61,30,.12);border-radius:18px;overflow:hidden}
+  .aud-row{background:var(--cream);display:grid;grid-template-columns:140px 1fr;gap:1rem;padding:1.1rem 1.4rem}
+  .aud-row b{font-family:'Montserrat',sans-serif;font-weight:800;color:var(--green-deep);font-size:.95rem}
+  .aud-row span{font-size:.95rem;color:#3a4d40}
+  .aud-side{background:var(--green-dark);color:#fff;border-radius:22px;padding:2.2rem}
+  .aud-side h3{font-family:'Montserrat',sans-serif;font-weight:900;font-size:1.6rem;margin-bottom:1.2rem;color:var(--yellow)}
+  .aud-side .chip{display:inline-block;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.18);padding:.5rem 1rem;border-radius:100px;margin:.25rem .25rem 0 0;font-size:.9rem}
+  @media(max-width:860px){.aud-grid{grid-template-columns:1fr}}
+
+  /* ---------- CHANNELS ---------- */
+  .chan-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:1.4rem}
+  .chan{border-radius:22px;padding:2rem 1.5rem;color:#fff;position:relative;overflow:hidden;min-height:200px;display:flex;flex-direction:column;justify-content:flex-end}
+  .chan:nth-child(1){background:linear-gradient(160deg,#1DB954,#0E7A33)}
+  .chan:nth-child(2){background:linear-gradient(160deg,#0E7A33,#0B3D1E)}
+  .chan:nth-child(3){background:linear-gradient(160deg,#2AE85F,#1DB954)}
+  .chan:nth-child(4){background:linear-gradient(160deg,#0B3D1E,#062b13)}
+  .chan .ci{font-size:2.2rem;margin-bottom:auto}
+  .chan h3{font-family:'Montserrat',sans-serif;font-weight:800;font-size:1.25rem;margin:.8rem 0 .4rem}
+  .chan p{font-size:.9rem;opacity:.88}
+  @media(max-width:900px){.chan-grid{grid-template-columns:1fr 1fr}}
+  @media(max-width:520px){.chan-grid{grid-template-columns:1fr}}
+
+  /* ---------- SUPPORT / brand support ---------- */
+  .supp{background:linear-gradient(180deg,var(--cream),#fff)}
+  .supp-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1.4rem}
+  .supp-card{background:#fff;border-radius:22px;padding:2rem;border:1px solid rgba(11,61,30,.08);transition:.3s}
+  .supp-card:hover{transform:translateY(-5px);box-shadow:var(--shadow)}
+  .supp-card .ico{font-size:2rem;margin-bottom:1rem}
+  .supp-card h3{font-family:'Montserrat',sans-serif;font-weight:800;color:var(--green-deep);font-size:1.2rem;margin-bottom:.6rem}
+  .supp-card ul{list-style:none;display:flex;flex-direction:column;gap:.5rem}
+  .supp-card li{font-size:.95rem;color:#48584d;padding-left:1.4rem;position:relative}
+  .supp-card li::before{content:"⚡";position:absolute;left:0;color:var(--green)}
+  @media(max-width:820px){.supp-grid{grid-template-columns:1fr}}
+
+  /* ---------- TERMS ---------- */
+  .terms{background:var(--green-dark);color:#fff}
+  .terms .sec-head h2{color:#fff}
+  .terms .sec-head .tag{background:var(--yellow);color:var(--green-dark)}
+  .terms-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:1.2rem}
+  .term{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:18px;padding:1.6rem}
+  .term .num{font-family:'Montserrat',sans-serif;font-weight:900;font-size:2.4rem;color:var(--green-neon);line-height:1}
+  .term h3{font-family:'Montserrat',sans-serif;font-weight:700;font-size:1.05rem;margin:.6rem 0 .3rem}
+  .term p{font-size:.88rem;opacity:.8}
+  @media(max-width:900px){.terms-grid{grid-template-columns:1fr 1fr}}
+  @media(max-width:480px){.terms-grid{grid-template-columns:1fr}}
+
+  /* ---------- RETAIL logos ---------- */
+  .retail{background:#fff;text-align:center}
+  .retail h2{font-family:'Montserrat',sans-serif;font-weight:900;font-size:clamp(1.6rem,3vw,2.4rem);color:var(--green-deep);margin-bottom:.6rem}
+  .retail p{color:#48584d;margin-bottom:2.5rem}
+  .logos{display:flex;flex-wrap:wrap;gap:1rem;justify-content:center}
+  .logo-pill{background:var(--cream);border:1px solid rgba(11,61,30,.1);border-radius:14px;padding:1rem 1.6rem;font-family:'Montserrat',sans-serif;font-weight:800;font-size:1.05rem;color:#3a4d40;transition:.25s}
+  .logo-pill:hover{background:var(--yellow);color:var(--green-dark);transform:translateY(-3px)}
+
+  /* ---------- CTA / contacts ---------- */
+  .final{background:var(--green-neon);color:var(--green-dark);padding:clamp(3.5rem,7vw,6rem) 0}
+  .final-grid{display:grid;grid-template-columns:1.2fr .8fr;gap:3rem;align-items:center}
+  .final h2{font-size:clamp(2.2rem,5vw,3.8rem);color:#062b13}
+  .final p{margin-top:1rem;font-size:1.15rem;max-width:34ch;color:#0B3D1E;font-weight:500}
+  .contact-box{background:#062b13;color:#fff;border-radius:24px;padding:2.4rem}
+  .contact-box .row{margin-bottom:1.4rem}
+  .contact-box .lbl{font-family:'Montserrat',sans-serif;font-weight:800;font-size:.72rem;letter-spacing:.16em;text-transform:uppercase;color:var(--yellow);margin-bottom:.3rem}
+  .contact-box .val{font-size:1.3rem;font-weight:700}
+  .contact-box a{color:#fff;text-decoration:none}
+  .contact-box a:hover{color:var(--green-neon)}
+  .contact-cta{display:inline-block;margin-top:.5rem;background:var(--yellow);color:var(--green-dark);font-family:'Montserrat',sans-serif;font-weight:800;text-decoration:none;padding:.9rem 1.6rem;border-radius:100px;width:100%;text-align:center;transition:.25s}
+  .contact-cta:hover{background:#fff}
+  @media(max-width:820px){.final-grid{grid-template-columns:1fr}}
+
+  footer{background:#062b13;color:rgba(255,255,255,.6);padding:2rem 0;text-align:center;font-size:.85rem}
+  footer b{color:var(--green-neon)}
+
+  /* reveal animation */
+  .reveal{opacity:0;transform:translateY(24px);transition:.7s cubic-bezier(.2,.7,.2,1)}
+  .reveal.in{opacity:1;transform:none}
+</style>
+</head>
+<body>
+
+<header>
+  <nav class="wrap">
+    <div class="logo">VERDE<span class="bolt">⚡</span></div>
+    <ul class="nav-links">
+      <li><a href="#why">Чому VERDE</a></li>
+      <li><a href="#econ">Маржа</a></li>
+      <li><a href="#products">Продукти</a></li>
+      <li><a href="#terms">Умови</a></li>
+    </ul>
+    <a href="#contact" class="nav-cta">Стати партнером</a>
+  </nav>
+</header>
+
+<!-- HERO -->
+<section class="hero">
+  <div class="wrap hero-grid">
+    <div>
+      <span class="tag hero-tag">Forbes NEXT250 ⚡ корисний вибір щодня</span>
+      <h1 class="display">Батончики <span>без цукру</span>, що продають себе самі</h1>
+      <p class="lede">VERDE — бренд корисних батончиків «Зарядись» з вітамінами. Готовий асортимент, маркетинг і логістика для запуску з першого дня.</p>
+      <div class="hero-cta">
+        <a href="#contact" class="btn btn-primary">Почати співпрацю ⚡</a>
+        <a href="#econ" class="btn btn-ghost">Подивитись маржу</a>
+      </div>
+    </div>
+    <div class="hero-card">
+      <div class="hero-bar">ЗАРЯД<span class="bolt">⚡</span>СЬ</div>
+      <div class="sub">5 смаків · 30 г · без доданого цукру</div>
+      <div class="hero-stats">
+        <div class="hero-stat"><div class="n">+94%</div><div class="l">націнка по SKU «Зарядись»</div></div>
+        <div class="hero-stat"><div class="n">+116%</div><div class="l">націнка по SKU «Collagen»</div></div>
+        <div class="hero-stat"><div class="n">42%</div><div class="l">середня націнка дистриб'ютора</div></div>
+        <div class="hero-stat"><div class="n">9 міс</div><div class="l">термін придатності</div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- STRIP -->
+<div class="strip">
+  <div class="strip-track">
+    <span>БЕЗ ЦУКРУ ⚡</span><span>100% ДОБОВОЇ НОРМИ ВІТАМІНІВ ⚡</span><span>ОМЕГА-3 ⚡</span><span>ГУАРАНА ⚡</span><span>МАГНІЙ ⚡</span><span>ВІТАМІН D3 ⚡</span><span>ВІТАМІН B12 ⚡</span>
+    <span>БЕЗ ЦУКРУ ⚡</span><span>100% ДОБОВОЇ НОРМИ ВІТАМІНІВ ⚡</span><span>ОМЕГА-3 ⚡</span><span>ГУАРАНА ⚡</span><span>МАГНІЙ ⚡</span><span>ВІТАМІН D3 ⚡</span><span>ВІТАМІН B12 ⚡</span>
+  </div>
+</div>
+
+<!-- WHY -->
+<section class="sec why" id="why">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <span class="tag">Чому варто</span>
+      <h2 class="display">4 причини взяти VERDE на полицю</h2>
+      <p>Сегмент здорових снеків зростає, а VERDE дає готову систему для швидкого старту й стабільних продажів.</p>
+    </div>
+    <div class="cards4">
+      <div class="card reveal"><div class="ico">💚</div><h3>Якість і попит</h3><p>Смачний і корисний бренд зі стабільним попитом у категорії healthy-снеків.</p></div>
+      <div class="card reveal"><div class="ico">🚀</div><h3>Швидкий старт</h3><p>Готовий асортимент, маркетинг і логістика для запуску з першого дня.</p></div>
+      <div class="card reveal"><div class="ico">🤝</div><h3>Підтримка партнера</h3><p>Супровід від переговорів до полиці та промо-активностей.</p></div>
+      <div class="card reveal"><div class="ico">📈</div><h3>Потенціал росту</h3><p>Імпульсні зони, каса, кава, «магазин біля дому», АЗС — багато точок продажу.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ECONOMICS -->
+<section class="sec econ" id="econ">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <span class="tag">Вигідні умови</span>
+      <h2 class="display">Економіка, що працює на вас</h2>
+      <p>Приклад розрахунку топових позицій. Висока націнка на кожній SKU й передбачуваний прибуток.</p>
+    </div>
+
+    <div class="margin-ring reveal">
+      <div class="ring">
+        <svg width="180" height="180" viewBox="0 0 180 180">
+          <circle cx="90" cy="90" r="78" fill="none" stroke="rgba(255,255,255,.15)" stroke-width="16"/>
+          <circle cx="90" cy="90" r="78" fill="none" stroke="#2AE85F" stroke-width="16" stroke-linecap="round"
+                  stroke-dasharray="490" stroke-dashoffset="284"/>
+        </svg>
+        <div class="ring-label"><div><div class="pct">42%</div><div class="txt">середня націнка</div></div></div>
+      </div>
+      <div class="ring-copy">
+        <h3>Середня націнка для дистриб'ютора</h3>
+        <p>Прозоре ціноутворення на всю лінійку. Нижче — розрахунок по двох ключових SKU від вхідної ціни до полиці.</p>
+      </div>
+    </div>
+
+    <div class="price-cards">
+      <div class="pcard reveal">
+        <div class="pname"><b>ЗАРЯДИСЬ</b><span class="badge">+94% націнка</span></div>
+        <div class="prow"><span>Вхідна ціна дистриб'ютора</span><b>25,80 грн</b></div>
+        <div class="prow"><span>Рекомендована ціна на мережу</span><b>35,70 грн</b></div>
+        <div class="prow hl"><span>РРЦ на полиці</span><b>49,99 грн</b></div>
+      </div>
+      <div class="pcard reveal">
+        <div class="pname"><b>COLLAGEN</b><span class="badge">+116% націнка</span></div>
+        <div class="prow"><span>Вхідна ціна дистриб'ютора</span><b>36,60 грн</b></div>
+        <div class="prow"><span>Рекомендована ціна на мережу</span><b>56,40 грн</b></div>
+        <div class="prow hl"><span>РРЦ на полиці</span><b>78,99 грн</b></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- PRODUCTS -->
+<section class="sec" id="products">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <span class="tag" style="background:var(--yellow);color:var(--green-dark)">Лінійка «Зарядись»</span>
+      <h2 class="display">5 смаків — один заряд</h2>
+      <p>Батончик для активного життя без цукру, з вітамінами та харчовими добавками. Вага 30 г · шоубокс 16 шт.</p>
+    </div>
+    <div class="prod-grid">
+      <div class="prod reveal">
+        <div class="top"><div class="emoji">💚</div><div class="flavor">Фісташка</div></div>
+        <div class="body"><span class="vit">Омега-3 + віт. C</span><div class="price">32,40 грн<small>шоубокс — 518,40 грн</small></div></div>
+      </div>
+      <div class="prod reveal">
+        <div class="top"><div class="emoji">🥜</div><div class="flavor">Арахіс</div></div>
+        <div class="body"><span class="vit">Гуарана 30мг · віт. C</span><div class="price">32,40 грн<small>шоубокс — 518,40 грн</small></div></div>
+      </div>
+      <div class="prod reveal">
+        <div class="top"><div class="emoji">🌰</div><div class="flavor">Мигдаль</div></div>
+        <div class="body"><span class="vit">Вітамін D3 + C</span><div class="price">32,40 грн<small>шоубокс — 518,40 грн</small></div></div>
+      </div>
+      <div class="prod reveal">
+        <div class="top"><div class="emoji">🥥</div><div class="flavor">Кокос</div></div>
+        <div class="body"><span class="vit">Магній + віт. C</span><div class="price">32,40 грн<small>25 г · шоубокс 518,40 грн</small></div></div>
+      </div>
+      <div class="prod reveal">
+        <div class="top dark"><div class="emoji">🌰</div><div class="flavor">Фундук</div></div>
+        <div class="body"><span class="vit">Вітамін B12 + C</span><div class="price">32,40 грн<small>шоубокс — 518,40 грн</small></div></div>
+      </div>
+    </div>
+    <p class="prod-note">Кожен батончик = <b>100% добової норми</b> ключового вітаміну · без доданого цукру · термін придатності 9 місяців</p>
+  </div>
+</section>
+
+<!-- AUDIENCE -->
+<section class="sec aud">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <span class="tag">Цільова аудиторія</span>
+      <h2 class="display">Хто купує VERDE</h2>
+      <p>Зрозумілий покупець — простіший продаж і вища оборотність на точці.</p>
+    </div>
+    <div class="aud-grid">
+      <div class="aud-list reveal">
+        <div class="aud-row"><b>Хто</b><span>16–35 років: студенти, військові, офіс-менеджери, б'юті-майстри, медперсонал</span></div>
+        <div class="aud-row"><b>Стиль життя</b><span>Активні, завжди «на ногах», змішаний графік, мало часу на їжу</span></div>
+        <div class="aud-row"><b>Мотивація</b><span>Швидкий корисний перекус без цукру; енергія з вітамінів і гуарани; догляд за фігурою</span></div>
+        <div class="aud-row"><b>Де купує</b><span>Імпульсно біля каси, з кавою, у «магазині біля дому», на АЗС</span></div>
+        <div class="aud-row"><b>Ритуали</b><span>«На ходу», бере одразу 2–3 батончики різних смаків</span></div>
+      </div>
+      <div class="aud-side reveal">
+        <h3>Тренд-смаки 💚</h3>
+        <p style="opacity:.85;margin-bottom:1rem">Те, що зараз тягне продажі імпульсної категорії:</p>
+        <div>
+          <span class="chip">🥥 Кокос</span>
+          <span class="chip">🌰 Фундук</span>
+          <span class="chip">🥜 Арахіс</span>
+          <span class="chip">🌰 Мигдаль</span>
+          <span class="chip">💚 Фісташка — тренд</span>
+        </div>
+        <p style="opacity:.85;margin-top:1.4rem">Важливо: яскраве пакування з простим меседжем, натуральний смак, ціна на полиці ~43–50 грн.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- CHANNELS -->
+<section class="sec">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <span class="tag" style="background:var(--green);color:#fff">Канали продажу</span>
+      <h2 class="display">Гнучкість розміщення = більше точок</h2>
+      <p>Продукт VERDE успішно продається в різних каналах одночасно.</p>
+    </div>
+    <div class="chan-grid">
+      <div class="chan reveal"><div class="ci">🛒</div><h3>Супермаркети</h3><p>Сільпо, Novus, Varus, Таврія В та інші великоформатні ритейлери.</p></div>
+      <div class="chan reveal"><div class="ci">💊</div><h3>Аптеки</h3><p>Розділи здорового харчування та добавок, прикасова зона.</p></div>
+      <div class="chan reveal"><div class="ci">🏪</div><h3>Роздріб і HoReCa</h3><p>«Магазин біля дому», кав'ярні, АЗС — спеціалізовані точки.</p></div>
+      <div class="chan reveal"><div class="ci">📍</div><h3>Регіональні мережі</h3><p>Різноманітні формати, кіоски, локальні мережі по всій Україні.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- SUPPORT -->
+<section class="sec supp">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <span class="tag" style="background:var(--yellow);color:var(--green-dark)">Підтримка бренду</span>
+      <h2 class="display">Ми не просто постачаємо — ми допомагаємо продавати</h2>
+      <p>Маркетинг, POS-матеріали й навчання вашої торгової команди входять у партнерство.</p>
+    </div>
+    <div class="supp-grid">
+      <div class="supp-card reveal">
+        <div class="ico">📣</div><h3>Маркетинг</h3>
+        <ul><li>Instagram: lifestyle + продукт, інфлюенсери</li><li>Таргет на ЦА 16–35: охоплення та впізнаваність</li><li>TikTok-активності та промо 1+1=3</li></ul>
+      </div>
+      <div class="supp-card reveal">
+        <div class="ico">🛍️</div><h3>POS-матеріали</h3>
+        <ul><li>Фірмові стійки та шоубокси для батончиків</li><li>Плакати, воблери, цінники</li><li>Допомога в оформленні торгової точки</li></ul>
+      </div>
+      <div class="supp-card reveal">
+        <div class="ico">🎓</div><h3>Навчання команди</h3>
+        <ul><li>Презентація продукту та переваг</li><li>Скрипти продажів і обробка заперечень</li><li>Тренінги з дегустацій та мерчандайзингу</li></ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- TERMS -->
+<section class="sec terms" id="terms">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <span class="tag">Умови співпраці</span>
+      <h2 class="display">Прозоро й вигідно</h2>
+    </div>
+    <div class="terms-grid">
+      <div class="term reveal"><div class="num">21</div><h3>Відтермінування</h3><p>21 календарний день оплати.</p></div>
+      <div class="term reveal"><div class="num">2100</div><h3>Мін. замовлення</h3><p>Від 2100 грн на 1 магазин, постачання на точку.</p></div>
+      <div class="term reveal"><div class="num">10%</div><h3>Бонуси</h3><p>Загальна кількість бонусів — 10%.</p></div>
+      <div class="term reveal"><div class="num">∞</div><h3>Маркетинг</h3><p>Інвестуємо в POS, промо та таргетовану рекламу.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- RETAIL -->
+<section class="sec retail">
+  <div class="wrap">
+    <h2 class="reveal">Нас уже купують</h2>
+    <p class="reveal">VERDE присутній у провідних мережах України</p>
+    <div class="logos reveal">
+      <div class="logo-pill">Сільпо</div>
+      <div class="logo-pill">NOVUS</div>
+      <div class="logo-pill">VARUS</div>
+      <div class="logo-pill">Таврія В</div>
+      <div class="logo-pill">Антошка</div>
+      <div class="logo-pill">Харків Супермаркет</div>
+      <div class="logo-pill">WINETIME</div>
+      <div class="logo-pill">ДЕЛІКАТ</div>
+    </div>
+  </div>
+</section>
+
+<!-- FINAL CTA -->
+<section class="final" id="contact">
+  <div class="wrap final-grid">
+    <div class="reveal">
+      <h2 class="display">Почнемо співпрацю вже сьогодні ⚡</h2>
+      <p>Разом ми створюємо стабільні продажі. VERDE готовий стати надійним партнером вашої мережі вже сьогодні.</p>
+    </div>
+    <div class="contact-box reveal">
+      <div class="row"><div class="lbl">Email</div><div class="val"><a href="mailto:alisa@v-verde.ua">alisa@v-verde.ua</a></div></div>
+      <div class="row"><div class="lbl">Телефон</div><div class="val"><a href="tel:+380992746013">099-274-60-13</a></div></div>
+      <div class="row"><div class="lbl">Сайт</div><div class="val"><a href="https://v-verde.ua" target="_blank">v-verde.ua</a></div></div>
+      <a href="mailto:alisa@v-verde.ua" class="contact-cta">Надіслати запит на партнерство</a>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">VERDE ⚡ корисний вибір щодня · батончики «Зарядись» без цукру · <b>v-verde.ua</b></div>
+</footer>
+
+<script>
+  const io = new IntersectionObserver((entries)=>{
+    entries.forEach((e,i)=>{ if(e.isIntersecting){ setTimeout(()=>e.target.classList.add('in'), (i%4)*80); io.unobserve(e.target);} });
+  },{threshold:.12});
+  document.querySelectorAll('.reveal').forEach(el=>io.observe(el));
+</script>
+
+</body>
+</html>
