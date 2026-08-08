@@ -76,6 +76,8 @@ export const MOVE_TYPES: Record<string, string> = {
 };
 
 export const EXPENSE_CATEGORIES: Record<string, string> = {
+  production_salary: 'Зарплата цеху',
+  production_energy: 'Електроенергія цеху',
   rent: 'Оренда',
   salary: 'Зарплата й податки на неї',
   utilities: 'Комунальні та енергія',
@@ -85,6 +87,9 @@ export const EXPENSE_CATEGORIES: Record<string, string> = {
   services: 'Послуги підрядників',
   other: 'Інше',
 };
+
+/** Витрати цеху показуємо окремою групою: вони прямо стосуються випуску. */
+export const PRODUCTION_EXPENSE_CATEGORIES = ['production_salary', 'production_energy'];
 
 export const PAY_METHODS: Record<string, string> = {
   bank: 'Банк',

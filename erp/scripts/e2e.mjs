@@ -156,15 +156,25 @@ try {
   await production.reload();
 
   await production.fill('input[name="produced_qty"]', '980');
-  await production.fill('input[name="overhead_cost"]', '4200');
   await production.waitForTimeout(300);
+
+  // За політикою «витрати періоду» поля накладних у закритті варки бути не повинно.
+  check(
+    'накладні не запитуються при закритті варки',
+    (await production.locator('input[name="overhead_cost"]').count()) === 0,
+  );
+
   await production.click('button:has-text("Закрити варку")');
   await production.waitForTimeout(1600);
   await production.reload();
   check('варку закрито', (await production.locator('text=Завершено').count()) > 0);
 
   const factoryCost = await stat(production, 'Собівартість одиниці');
-  check('собівартість випуску порахована', factoryCost > 0, `${factoryCost} грн/шт`);
+  check(
+    'собівартість партії — лише сировина, без цеху',
+    factoryCost > 0 && factoryCost < 10,
+    `${factoryCost} грн/шт`,
+  );
 
   // ─── 3. Продаж мережі з ПДВ ────────────────────────────────────────────────
   console.log('\nТОВ «Верде Фудс» — продаж мережі');
@@ -350,7 +360,10 @@ try {
     `${resultAfter} грн`,
   );
 
-  const vatBlock = await owner.locator('text=Довідково').locator('..').innerText();
+  const vatBlock = await owner
+    .locator('text=Довідково — поза фінансовим результатом')
+    .locator('..')
+    .innerText();
   check(
     'ПДВ, дебіторка й кредиторка показані поза фінрезультатом',
     vatBlock.includes('Дебіторка') && vatBlock.includes('Кредиторка'),
@@ -364,7 +377,61 @@ try {
     `${receivable} грн`,
   );
 
-  // ─── 10. Права доступу ─────────────────────────────────────────────────────
+  // ─── 10. Витрати цеху — окремою статтею, а не в собівартості ───────────────
+  console.log('\nВиробничі витрати періоду');
+  const beforeShop = await stat(owner, 'Фінансовий результат');
+  const grossBefore = await stat(owner, 'Валовий прибуток');
+
+  await owner.selectOption('select[name="category"]', 'production_salary');
+  await owner.fill('input[name="amount_net"]', '18000');
+  await owner.fill('input[name="vat_amount"]', '0');
+  await owner.fill('input[name="description"]', 'Зарплата цеху за місяць');
+  await owner.click('button:has-text("Записати витрату")');
+  await owner.waitForTimeout(1300);
+
+  await owner.selectOption('select[name="category"]', 'production_energy');
+  await owner.fill('input[name="amount_net"]', '6000');
+  await owner.fill('input[name="vat_amount"]', '1200');
+  await owner.fill('input[name="description"]', 'Електроенергія цеху');
+  await owner.click('button:has-text("Записати витрату")');
+  await owner.waitForTimeout(1300);
+  await owner.reload();
+
+  const grossAfter = await stat(owner, 'Валовий прибуток');
+  const afterShop = await stat(owner, 'Фінансовий результат');
+
+  check(
+    'витрати цеху не чіпають валовий прибуток',
+    near(grossAfter, grossBefore, 1),
+    `${grossAfter} грн`,
+  );
+  check(
+    'витрати цеху зменшили результат на 24 000 без ПДВ',
+    near(afterShop, beforeShop - 24000, 1),
+    `${afterShop} грн`,
+  );
+
+  const plText = await owner
+    .locator('text=Виробничі витрати періоду')
+    .first()
+    .locator('../..')
+    .innerText();
+  check(
+    'у звіті вони стоять окремим рядком',
+    plText.includes('24') && plText.includes('не входять у вартість партії'),
+    plText.replace(/\s+/g, ' ').slice(0, 110),
+  );
+
+  // Повна вартість одиниці: сировина + цех, рознесений на випуск.
+  const fullCostRow = await rowCells(owner, 'Повна вартість одиниці');
+  const fullCost = money(fullCostRow[1]);
+  check(
+    'управлінська повна вартість = сировина + цех/випуск',
+    near(fullCost, factoryCost + 24000 / 980, 0.05),
+    `${fullCost} грн/шт проти ${factoryCost} в обліку`,
+  );
+
+  // ─── 11. Права доступу ─────────────────────────────────────────────────────
   console.log('\nПрава доступу');
   const denied = await warehouse.goto(`${BASE}/reports`);
   check('комірника не пускає у звіти', denied.url().includes('denied=1'));

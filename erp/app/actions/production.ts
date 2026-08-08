@@ -175,13 +175,16 @@ export async function completeProduction(_prev: ActionState, formData: FormData)
         product_kind: string;
         shelf_life_days: number | null;
         sku: string;
+        overhead_policy: string;
       }>(
         `select po.id, po.number, po.status, po.product_item_id, po.recipe_id,
                 po.legal_entity_id, po.planned_qty,
-                r.output_qty, i.kind as product_kind, i.shelf_life_days, i.sku
+                r.output_qty, i.kind as product_kind, i.shelf_life_days, i.sku,
+                e.overhead_policy
            from production_orders po
            join recipes r on r.id = po.recipe_id
            join items i on i.id = po.product_item_id
+           join legal_entities e on e.id = po.legal_entity_id
           where po.id = $1
           for update of po`,
         [orderId],
@@ -250,7 +253,12 @@ export async function completeProduction(_prev: ActionState, formData: FormData)
       }
 
       materialCost = round2(materialCost);
-      const unitCost = round4((materialCost + overhead) / producedQty);
+
+      // За політикою «витрати періоду» електроенергія й зарплата цеху не
+      // капіталізуються: собівартість партії — це рівно спожита сировина.
+      const capitalize = order.overhead_policy === 'capitalize';
+      const appliedOverhead = capitalize ? overhead : 0;
+      const unitCost = round4((materialCost + appliedOverhead) / producedQty);
 
       const today = new Date().toISOString().slice(0, 10);
       const batchCode = str(formData, 'batch_code') || `${order.sku}/${order.number}`;
@@ -288,13 +296,17 @@ export async function completeProduction(_prev: ActionState, formData: FormData)
                 output_batch_id = $4, finished_at = now(),
                 started_at = coalesce(started_at, now())
           where id = $1`,
-        [orderId, producedQty, overhead, batchRows[0].id],
+        [orderId, producedQty, appliedOverhead, batchRows[0].id],
       );
 
       await c.query(
         `insert into audit_log (user_id, action, entity, entity_id, details)
          values ($1, 'complete', 'production_order', $2, $3)`,
-        [session.uid, orderId, JSON.stringify({ producedQty, materialCost, overhead, unitCost })],
+        [
+          session.uid,
+          orderId,
+          JSON.stringify({ producedQty, materialCost, overhead: appliedOverhead, unitCost }),
+        ],
       );
     });
   } catch (err) {

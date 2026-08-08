@@ -38,13 +38,15 @@ export default async function ProductionOrderPage({ params }: { params: Promise<
     material_cost: number | null;
     overhead_cost: number;
     unit_cost: number | null;
+    overhead_policy: string;
   }>(
     `select po.id, po.number, po.status, po.planned_qty, po.produced_qty, po.planned_for,
             po.finished_at, po.note, i.name as product, i.sku as product_sku,
             po.recipe_id, r.version, r.output_qty, b.code as batch_code,
-            ac.material_cost, po.overhead_cost, ac.unit_cost
+            ac.material_cost, po.overhead_cost, ac.unit_cost, e.overhead_policy
        from production_orders po
        join items i on i.id = po.product_item_id
+       join legal_entities e on e.id = po.legal_entity_id
        join recipes r on r.id = po.recipe_id
        left join batches b on b.id = po.output_batch_id
        left join v_production_actual_cost ac on ac.production_order_id = po.id
@@ -115,7 +117,9 @@ export default async function ProductionOrderPage({ params }: { params: Promise<
           value={order.unit_cost ? fmtMoney(order.unit_cost) : '—'}
           hint={
             order.material_cost
-              ? `сировина ${fmtMoney(order.material_cost)} + накладні ${fmtMoney(order.overhead_cost)}`
+              ? order.overhead_policy === 'capitalize'
+                ? `сировина ${fmtMoney(order.material_cost)} + накладні ${fmtMoney(order.overhead_cost)}`
+                : 'лише сировина — витрати цеху йдуть у період'
               : undefined
           }
         />
@@ -186,6 +190,7 @@ export default async function ProductionOrderPage({ params }: { params: Promise<
               outputQty={order.output_qty}
               materials={formMaterials}
               defaultBatchCode={`${order.product_sku}/${order.number}`}
+              capitalizeOverhead={order.overhead_policy === 'capitalize'}
             />
           </Card>
         )}

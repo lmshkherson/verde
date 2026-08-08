@@ -40,8 +40,8 @@ export async function createLegalEntity(_prev: ActionState, formData: FormData):
       c.query(
         `insert into legal_entities
            (name, short_name, doc_prefix, edrpou, ipn, tax_system, is_vat_payer, vat_rate,
-            bank_account, bank_name, address)
-         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+            overhead_policy, bank_account, bank_name, address)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
         [
           name,
           shortName,
@@ -51,6 +51,7 @@ export async function createLegalEntity(_prev: ActionState, formData: FormData):
           taxSystem,
           isVatPayer,
           num(formData, 'vat_rate', 20),
+          str(formData, 'overhead_policy') || 'period',
           strOrNull(formData, 'bank_account'),
           strOrNull(formData, 'bank_name'),
           strOrNull(formData, 'address'),

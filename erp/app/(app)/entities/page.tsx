@@ -20,10 +20,11 @@ export default async function EntitiesPage() {
       ipn: string | null;
       tax_system: string;
       is_vat_payer: boolean;
+      overhead_policy: string;
       stock_value: number;
       vat_payable: number;
     }>(`
-      select e.id, e.name, e.short_name, e.doc_prefix, e.edrpou, e.ipn, e.tax_system, e.is_vat_payer,
+      select e.id, e.name, e.short_name, e.doc_prefix, e.edrpou, e.ipn, e.tax_system, e.is_vat_payer, e.overhead_policy,
              coalesce(st.value, 0)   as stock_value,
              coalesce(vat.payable, 0) as vat_payable
         from legal_entities e
@@ -74,6 +75,10 @@ export default async function EntitiesPage() {
                       </Badge>
                       <div className="mt-0.5 text-xs text-emerald-800/50">
                         {e.tax_system === 'single_tax' ? 'єдиний податок' : 'загальна система'}
+                        {' · '}
+                        {e.overhead_policy === 'capitalize'
+                          ? 'накладні у собівартості'
+                          : 'накладні — витрати періоду'}
                       </div>
                     </Cell>
                     <Cell align="right">{fmtMoney(e.stock_value)}</Cell>
@@ -165,6 +170,15 @@ export default async function EntitiesPage() {
             </label>
             <Field label="ІПН платника ПДВ" hint="Обов'язково для платника">
               <input name="ipn" className={inputClass} />
+            </Field>
+            <Field
+              label="Виробничі накладні"
+              hint="Електроенергія й зарплата цеху: у вартість партії чи у витрати місяця"
+            >
+              <select name="overhead_policy" className={inputClass} defaultValue="period">
+                <option value="period">Витрати періоду</option>
+                <option value="capitalize">У собівартість партії</option>
+              </select>
             </Field>
             <Field label="Ставка ПДВ, %">
               <input name="vat_rate" type="number" step="0.1" min="0" defaultValue="20" className={inputClass} />

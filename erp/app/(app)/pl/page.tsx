@@ -3,7 +3,7 @@ import { createExpense } from '@/app/actions/finance';
 import { ActionForm } from '@/components/action-form';
 import { Card, Cell, Empty, Field, inputClass, PageHeader, Row, Stat, Table } from '@/components/ui';
 import { query, queryOne } from '@/lib/db';
-import { EXPENSE_CATEGORIES, fmtDate, fmtMoney } from '@/lib/format';
+import { EXPENSE_CATEGORIES, fmtDate, fmtMoney, fmtQty, PRODUCTION_EXPENSE_CATEGORIES } from '@/lib/format';
 import { requireRole } from '@/lib/session';
 
 export const dynamic = 'force-dynamic';
@@ -61,7 +61,7 @@ export default async function ProfitAndLossPage({
   const current = period ?? `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   const from = `${current}-01`;
 
-  const [pl, opex, expenses, vat, receivable, payable, periods, suppliers] = await Promise.all([
+  const [pl, opex, expenses, vat, receivable, payable, periods, suppliers, output] = await Promise.all([
     queryOne<{
       revenue_net: number;
       cogs: number;
@@ -120,6 +120,16 @@ export default async function ProfitAndLossPage({
       [session.eid],
     ),
     query<{ id: string; name: string }>('select id, name from suppliers where is_active order by name'),
+    // Управлінська оцінка: скільки цех коштує на одиницю випуску цього місяця.
+    queryOne<{ produced_qty: number; material_cost: number }>(
+      `select coalesce(sum(po.produced_qty), 0) as produced_qty,
+              coalesce(sum(ac.material_cost), 0) as material_cost
+         from production_orders po
+         join v_production_actual_cost ac on ac.production_order_id = po.id
+        where po.legal_entity_id = $1 and po.status = 'done'
+          and po.finished_at >= $2::date and po.finished_at < ($2::date + interval '1 month')`,
+      [session.eid, from],
+    ),
   ]);
 
   const p = pl ?? {
@@ -131,6 +141,19 @@ export default async function ProfitAndLossPage({
     net_result: 0,
   };
   const grossPct = p.revenue_net > 0 ? Math.round((p.gross_profit / p.revenue_net) * 1000) / 10 : 0;
+
+  // Витрати цеху не сидять у вартості партії, тож для ціноутворення показуємо їх
+  // рознесеними на випуск — інакше легко недооцінити реальну вартість продукту.
+  const shopOpex = opex
+    .filter((o) => PRODUCTION_EXPENSE_CATEGORIES.includes(o.category))
+    .reduce((sum, o) => sum + o.amount, 0);
+  const otherOpex = opex
+    .filter((o) => !PRODUCTION_EXPENSE_CATEGORIES.includes(o.category))
+    .reduce((sum, o) => sum + o.amount, 0);
+
+  const producedQty = output?.produced_qty ?? 0;
+  const materialPerUnit = producedQty > 0 ? (output?.material_cost ?? 0) / producedQty : 0;
+  const shopPerUnit = producedQty > 0 ? shopOpex / producedQty : 0;
 
   return (
     <>
@@ -179,10 +202,21 @@ export default async function ProfitAndLossPage({
         <div className="space-y-4">
           <Card title="Звіт про фінансовий результат">
             <PlRow label="Дохід від реалізації" value={p.revenue_net} hint="без ПДВ" />
-            <PlRow label="Собівартість реалізації" value={p.cogs} kind="minus" hint="без ПДВ" />
+            <PlRow
+              label="Собівартість реалізації"
+              value={p.cogs}
+              kind="minus"
+              hint="сировина й пакування, без ПДВ"
+            />
             <PlRow label="Валовий прибуток" value={p.gross_profit} kind="subtotal" />
+            <PlRow
+              label="Виробничі витрати періоду"
+              value={shopOpex}
+              kind="minus"
+              hint="зарплата й енергія цеху — не входять у вартість партії"
+            />
             <PlRow label="Списання й втрати" value={p.write_offs} kind="minus" />
-            <PlRow label="Операційні витрати" value={p.opex} kind="minus" hint="без ПДВ" />
+            <PlRow label="Інші операційні витрати" value={otherOpex} kind="minus" hint="без ПДВ" />
             <PlRow label="Фінансовий результат" value={p.net_result} kind="total" />
 
             <div className="mt-5 rounded-xl bg-emerald-50/60 p-3 text-sm text-emerald-900/80">
@@ -211,6 +245,37 @@ export default async function ProfitAndLossPage({
               </p>
             </div>
           </Card>
+
+          {producedQty > 0 && (
+            <Card title="Довідково: повна вартість одиниці">
+              <p className="mb-3 text-sm text-emerald-800/70">
+                В обліку собівартість партії — це лише сировина. Але для ціноутворення варто
+                бачити й цех: ось витрати місяця, рознесені на випуск місяця. Це управлінська
+                оцінка, у проводки вона не потрапляє.
+              </p>
+              <Table head={['Показник', 'На одиницю']}>
+                <Row>
+                  <Cell>Сировина й пакування</Cell>
+                  <Cell align="right">{fmtMoney(materialPerUnit)}</Cell>
+                </Row>
+                <Row>
+                  <Cell>
+                    Цех, рознесений на випуск
+                    <div className="text-xs text-emerald-800/50">
+                      {fmtMoney(shopOpex)} на {fmtQty(producedQty, 'шт')}
+                    </div>
+                  </Cell>
+                  <Cell align="right">{fmtMoney(shopPerUnit)}</Cell>
+                </Row>
+                <Row>
+                  <Cell className="font-bold">Повна вартість одиниці</Cell>
+                  <Cell align="right" className="font-bold">
+                    {fmtMoney(materialPerUnit + shopPerUnit)}
+                  </Cell>
+                </Row>
+              </Table>
+            </Card>
+          )}
 
           {opex.length > 0 && (
             <Card title="Операційні витрати за категоріями">

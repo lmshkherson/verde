@@ -26,12 +26,15 @@ export function CompleteProductionForm({
   outputQty,
   materials,
   defaultBatchCode,
+  capitalizeOverhead,
 }: {
   orderId: string;
   plannedQty: number;
   outputQty: number;
   materials: Material[];
   defaultBatchCode: string;
+  /** Чи входять накладні у вартість партії. За політикою «витрати періоду» — ні. */
+  capitalizeOverhead: boolean;
 }) {
   const [state, formAction, pending] = useActionState(completeProduction, {});
   const [producedQty, setProducedQty] = useState(String(plannedQty));
@@ -53,7 +56,7 @@ export function CompleteProductionForm({
   );
 
   const materialCost = rows.reduce((sum, r) => sum + r.cost, 0);
-  const overheadNum = Number(String(overhead).replace(',', '.')) || 0;
+  const overheadNum = capitalizeOverhead ? Number(String(overhead).replace(',', '.')) || 0 : 0;
   const unitCost = produced > 0 ? (materialCost + overheadNum) / produced : 0;
   const anyShort = rows.some((r) => r.short);
 
@@ -74,17 +77,19 @@ export function CompleteProductionForm({
             className={inputClass}
           />
         </Field>
-        <Field label="Накладні витрати, грн" hint="Праця, енергія, амортизація">
-          <input
-            name="overhead_cost"
-            type="number"
-            step="0.01"
-            min="0"
-            value={overhead}
-            onChange={(e) => setOverhead(e.target.value)}
-            className={inputClass}
-          />
-        </Field>
+        {capitalizeOverhead && (
+          <Field label="Накладні витрати, грн" hint="Праця, енергія, амортизація">
+            <input
+              name="overhead_cost"
+              type="number"
+              step="0.01"
+              min="0"
+              value={overhead}
+              onChange={(e) => setOverhead(e.target.value)}
+              className={inputClass}
+            />
+          </Field>
+        )}
         <Field label="Номер партії">
           <input name="batch_code" defaultValue={defaultBatchCode} className={inputClass} />
         </Field>
@@ -128,14 +133,22 @@ export function CompleteProductionForm({
           <span className="text-emerald-800/70">Сировина</span>
           <span className="font-semibold tabular-nums">{fmtMoney(materialCost)}</span>
         </div>
-        <div className="flex justify-between">
-          <span className="text-emerald-800/70">Накладні</span>
-          <span className="font-semibold tabular-nums">{fmtMoney(overheadNum)}</span>
-        </div>
+        {capitalizeOverhead && (
+          <div className="flex justify-between">
+            <span className="text-emerald-800/70">Накладні</span>
+            <span className="font-semibold tabular-nums">{fmtMoney(overheadNum)}</span>
+          </div>
+        )}
         <div className="mt-2 flex justify-between border-t border-emerald-900/10 pt-2 text-base">
           <span className="font-bold text-emerald-900">Собівартість одиниці</span>
           <span className="font-bold tabular-nums text-emerald-700">{fmtMoney(unitCost)}</span>
         </div>
+        {!capitalizeOverhead && (
+          <p className="mt-2 text-xs text-emerald-800/60">
+            Електроенергія й зарплата цеху сюди не входять — вони визнаються витратами того
+            місяця, коли виникли, і показані у звіті про фінансовий результат окремою статтею.
+          </p>
+        )}
       </div>
 
       {anyShort && (
