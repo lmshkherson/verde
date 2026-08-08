@@ -46,9 +46,10 @@ export default async function StockMovesPage({
        left join batches b on b.id = m.batch_id
        left join app_users u on u.id = m.user_id
       where ($1::text is null or m.move_type = $1)
+        and m.legal_entity_id = $2
       order by m.moved_at desc, m.id desc
       limit 200`,
-    [type ?? null],
+    [type ?? null, session.eid],
   );
 
   return (

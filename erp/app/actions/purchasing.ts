@@ -4,7 +4,8 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { transaction } from '@/lib/db';
 import { type ActionState, num, str, strOrNull, toMessage } from '@/lib/action-state';
-import { defaultWarehouseId, insertMoves, nextDocNumber, round3 } from '@/lib/stock';
+import { defaultWarehouseId, insertMoves, nextDocNumber, round2, round3 } from '@/lib/stock';
+import { calcPurchaseVat } from '@/lib/vat';
 import { requireRole } from '@/lib/session';
 
 export async function createSupplier(_prev: ActionState, formData: FormData): Promise<ActionState> {
@@ -15,14 +16,15 @@ export async function createSupplier(_prev: ActionState, formData: FormData): Pr
   try {
     await transaction((c) =>
       c.query(
-        `insert into suppliers (name, edrpou, contact, phone, payment_terms_days, note)
-         values ($1, $2, $3, $4, $5, $6)`,
+        `insert into suppliers (name, edrpou, contact, phone, payment_terms_days, is_vat_payer, note)
+         values ($1, $2, $3, $4, $5, $6, $7)`,
         [
           name,
           strOrNull(formData, 'edrpou'),
           strOrNull(formData, 'contact'),
           strOrNull(formData, 'phone'),
           num(formData, 'payment_terms_days'),
+          formData.get('is_vat_payer') === 'on',
           strOrNull(formData, 'note'),
         ],
       ),
@@ -43,11 +45,20 @@ export async function createPurchaseOrder(_prev: ActionState, formData: FormData
   let poId: string;
   try {
     poId = await transaction(async (c) => {
-      const number = await nextDocNumber(c, 'ЗАК');
+      const number = await nextDocNumber(c, session.eid, 'ЗАК');
       const { rows } = await c.query<{ id: string }>(
-        `insert into purchase_orders (number, supplier_id, expected_on, note, created_by)
-         values ($1, $2, $3, $4, $5) returning id`,
-        [number, supplierId, strOrNull(formData, 'expected_on'), strOrNull(formData, 'note'), session.uid],
+        `insert into purchase_orders
+           (number, legal_entity_id, supplier_id, expected_on, note, prices_include_vat, created_by)
+         values ($1, $2, $3, $4, $5, $6, $7) returning id`,
+        [
+          number,
+          session.eid,
+          supplierId,
+          strOrNull(formData, 'expected_on'),
+          strOrNull(formData, 'note'),
+          formData.get('prices_include_vat') !== 'off',
+          session.uid,
+        ],
       );
       return rows[0].id;
     });
@@ -76,8 +87,10 @@ export async function addPurchaseLine(_prev: ActionState, formData: FormData): P
       );
       if (rows[0]?.status !== 'draft') throw new Error('Позиції можна додавати лише в чернетку');
 
+      // Ставку фіксуємо на рядку: зміна в довіднику не має переписувати вже виписані документи.
       await c.query(
-        'insert into purchase_order_lines (po_id, item_id, qty, unit_price) values ($1, $2, $3, $4)',
+        `insert into purchase_order_lines (po_id, item_id, qty, unit_price, vat_rate)
+         values ($1, $2, $3, $4, (select vat_rate from items where id = $2))`,
         [poId, itemId, qty, price],
       );
     });
@@ -124,8 +137,11 @@ export async function cancelPurchaseOrder(formData: FormData) {
 }
 
 /**
- * Оприбуткування сировини: на кожну позицію заводимо партію з терміном придатності
- * і кладемо рух приходу за ціною із заявки. Саме тут у систему потрапляє собівартість.
+ * Оприбуткування сировини. Тут вирішується головне питання собівартості:
+ * платник ПДВ ставить партію на облік за базою без податку (податок повернеться
+ * податковим кредитом), а єдинник — за повною ціною, бо ПДВ постачальника для
+ * нього просто витрата. Через це одна й та сама поставка дає різну собівартість
+ * різним юрособам.
  */
 export async function receivePurchaseOrder(_prev: ActionState, formData: FormData): Promise<ActionState> {
   const session = await requireRole('warehouse');
@@ -134,8 +150,25 @@ export async function receivePurchaseOrder(_prev: ActionState, formData: FormDat
 
   try {
     await transaction(async (c) => {
-      const { rows: poRows } = await c.query<{ number: string; status: string }>(
-        'select number, status from purchase_orders where id = $1 for update',
+      const { rows: poRows } = await c.query<{
+        number: string;
+        status: string;
+        legal_entity_id: string;
+        prices_include_vat: boolean;
+        buyer_is_vat_payer: boolean;
+        supplier_is_vat_payer: boolean;
+        supplier_name: string;
+        supplier_edrpou: string | null;
+      }>(
+        `select p.number, p.status, p.legal_entity_id, p.prices_include_vat,
+                e.is_vat_payer as buyer_is_vat_payer,
+                s.is_vat_payer as supplier_is_vat_payer,
+                s.name as supplier_name, s.edrpou as supplier_edrpou
+           from purchase_orders p
+           join legal_entities e on e.id = p.legal_entity_id
+           join suppliers s on s.id = p.supplier_id
+          where p.id = $1
+          for update of p`,
         [poId],
       );
       const po = poRows[0];
@@ -148,11 +181,13 @@ export async function receivePurchaseOrder(_prev: ActionState, formData: FormDat
         qty: number;
         received_qty: number;
         unit_price: number;
+        vat_rate: number;
         sku: string;
         name: string;
         shelf_life_days: number | null;
       }>(
-        `select l.id, l.item_id, l.qty, l.received_qty, l.unit_price, i.sku, i.name, i.shelf_life_days
+        `select l.id, l.item_id, l.qty, l.received_qty, l.unit_price, l.vat_rate,
+                i.sku, i.name, i.shelf_life_days
            from purchase_order_lines l join items i on i.id = l.item_id
           where l.po_id = $1
           order by i.name`,
@@ -161,6 +196,8 @@ export async function receivePurchaseOrder(_prev: ActionState, formData: FormDat
 
       const warehouseId = await defaultWarehouseId(c, 'raw');
       let received = 0;
+      let creditBase = 0;
+      let creditVat = 0;
 
       for (const line of lines) {
         const qty = round3(num(formData, `qty_${line.id}`));
@@ -168,6 +205,13 @@ export async function receivePurchaseOrder(_prev: ActionState, formData: FormDat
         if (line.received_qty + qty > line.qty + 0.0005) {
           throw new Error(`«${line.name}»: прийнято більше, ніж замовлено`);
         }
+
+        const vat = calcPurchaseVat(line.unit_price, {
+          buyerIsVatPayer: po.buyer_is_vat_payer,
+          supplierIsVatPayer: po.supplier_is_vat_payer,
+          itemVatRate: line.vat_rate,
+          pricesIncludeVat: po.prices_include_vat,
+        });
 
         const batchCode = str(formData, `batch_${line.id}`) || `${po.number}/${line.sku}`;
         const expiresInput = strOrNull(formData, `expires_${line.id}`);
@@ -190,10 +234,11 @@ export async function receivePurchaseOrder(_prev: ActionState, formData: FormDat
         await insertMoves(c, [
           {
             itemId: line.item_id,
+            legalEntityId: po.legal_entity_id,
             batchId: batchRows[0].id,
             warehouseId,
             qty,
-            unitCost: line.unit_price,
+            unitCost: vat.unitCost,
             moveType: 'purchase_receipt',
             docType: 'purchase_order',
             docId: poId,
@@ -201,6 +246,9 @@ export async function receivePurchaseOrder(_prev: ActionState, formData: FormDat
             note: `Прихід за ${po.number}`,
           },
         ]);
+
+        creditBase += vat.net * qty;
+        creditVat += vat.credit * qty;
 
         await c.query('update purchase_order_lines set received_qty = received_qty + $2 where id = $1', [
           line.id,
@@ -210,6 +258,27 @@ export async function receivePurchaseOrder(_prev: ActionState, formData: FormDat
       }
 
       if (received === 0) throw new Error('Не вказано жодної кількості до приходу');
+
+      // Податковий кредит виникає лише у платника і лише від платника.
+      if (creditVat > 0.005) {
+        await c.query(
+          `insert into vat_entries
+             (legal_entity_id, kind, doc_type, doc_id, doc_number, occurred_on,
+              base_amount, vat_amount, vat_rate, counterparty_name, counterparty_edrpou)
+           values ($1, 'credit', 'purchase_order', $2, $3, $4, $5, $6, $7, $8, $9)`,
+          [
+            po.legal_entity_id,
+            poId,
+            po.number,
+            receivedOn,
+            round2(creditBase),
+            round2(creditVat),
+            lines[0]?.vat_rate ?? 20,
+            po.supplier_name,
+            po.supplier_edrpou,
+          ],
+        );
+      }
 
       const { rows: leftRows } = await c.query<{ left: number }>(
         'select coalesce(sum(qty - received_qty), 0) as left from purchase_order_lines where po_id = $1',
@@ -221,7 +290,7 @@ export async function receivePurchaseOrder(_prev: ActionState, formData: FormDat
       await c.query(
         `insert into audit_log (user_id, action, entity, entity_id, details)
          values ($1, 'receive', 'purchase_order', $2, $3)`,
-        [session.uid, poId, JSON.stringify({ received_on: receivedOn, lines: received })],
+        [session.uid, poId, JSON.stringify({ received_on: receivedOn, lines: received, creditVat })],
       );
     });
   } catch (err) {

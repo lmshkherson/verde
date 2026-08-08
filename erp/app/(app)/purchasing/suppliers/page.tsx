@@ -89,6 +89,15 @@ export default async function SuppliersPage() {
             <Field label="Телефон">
               <input name="phone" className={inputClass} />
             </Field>
+            <label className="flex items-center gap-2 py-1">
+              <input
+                name="is_vat_payer"
+                type="checkbox"
+                defaultChecked
+                className="size-5 accent-emerald-700"
+              />
+              <span className="text-sm font-semibold text-emerald-900">Платник ПДВ</span>
+            </label>
             <Field label="Відтермінування оплати, дн.">
               <input name="payment_terms_days" type="number" min="0" defaultValue="0" className={inputClass} />
             </Field>

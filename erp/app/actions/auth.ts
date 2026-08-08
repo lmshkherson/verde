@@ -3,7 +3,7 @@
 import { redirect } from 'next/navigation';
 import { queryOne } from '@/lib/db';
 import { verifyPassword } from '@/lib/password.mjs';
-import { createSession, destroySession, type Role } from '@/lib/session';
+import { createSession, destroySession, type EntityRef, type Role } from '@/lib/session';
 
 export interface AuthState {
   error?: string;
@@ -21,9 +21,12 @@ export async function login(_prev: AuthState, formData: FormData): Promise<AuthS
     role: Role;
     password_hash: string;
     is_active: boolean;
-  }>('select id, full_name, role, password_hash, is_active from app_users where lower(email) = lower($1)', [
-    email,
-  ]);
+    default_entity_id: string | null;
+  }>(
+    `select id, full_name, role, password_hash, is_active, default_entity_id
+       from app_users where lower(email) = lower($1)`,
+    [email],
+  );
 
   // Одна й та сама відповідь на невідому пошту й хибний пароль — щоб не можна було
   // перебором з'ясувати, які акаунти існують.
@@ -31,7 +34,18 @@ export async function login(_prev: AuthState, formData: FormData): Promise<AuthS
     return { error: 'Невірна пошта або пароль' };
   }
 
-  await createSession(user);
+  // Стартуємо в юрособі за замовчуванням; перемкнути можна в шапці.
+  const entity = await queryOne<EntityRef>(
+    `select id, short_name, is_vat_payer
+       from legal_entities
+      where is_active and (id = $1 or $1 is null)
+      order by (id = $1) desc, is_default desc, short_name
+      limit 1`,
+    [user.default_entity_id],
+  );
+  if (!entity) return { error: 'Не налаштовано жодної юридичної особи' };
+
+  await createSession(user, entity);
   redirect('/');
 }
 

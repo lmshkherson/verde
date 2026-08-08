@@ -8,7 +8,18 @@ export interface Session {
   uid: string;
   name: string;
   role: Role;
+  /** Юрособа, під якою користувач працює зараз. Документи створюються від неї. */
+  eid: string;
+  ename: string;
+  /** Чи є поточна юрособа платником ПДВ — від цього залежать ціни й собівартість. */
+  vat: boolean;
   exp: number;
+}
+
+export interface EntityRef {
+  id: string;
+  short_name: string;
+  is_vat_payer: boolean;
 }
 
 const COOKIE = 'verde_session';
@@ -52,11 +63,17 @@ function deserialize(raw: string): Session | null {
   }
 }
 
-export async function createSession(user: { id: string; full_name: string; role: Role }) {
+export async function createSession(
+  user: { id: string; full_name: string; role: Role },
+  entity: EntityRef,
+) {
   const session: Session = {
     uid: user.id,
     name: user.full_name,
     role: user.role,
+    eid: entity.id,
+    ename: entity.short_name,
+    vat: entity.is_vat_payer,
     exp: Math.floor(Date.now() / 1000) + MAX_AGE_SEC,
   };
   const store = await cookies();
@@ -67,6 +84,25 @@ export async function createSession(user: { id: string; full_name: string; role:
     path: '/',
     maxAge: MAX_AGE_SEC,
   });
+}
+
+/** Перемикає поточну юрособу, зберігаючи решту сесії й термін її дії. */
+export async function setSessionEntity(entity: EntityRef) {
+  const current = await getSession();
+  if (!current) redirect('/login');
+
+  const store = await cookies();
+  store.set(
+    COOKIE,
+    serialize({ ...current, eid: entity.id, ename: entity.short_name, vat: entity.is_vat_payer }),
+    {
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: process.env.NODE_ENV === 'production',
+      path: '/',
+      maxAge: MAX_AGE_SEC,
+    },
+  );
 }
 
 export async function destroySession() {

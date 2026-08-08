@@ -30,12 +30,18 @@ export default async function PurchaseOrderPage({ params }: { params: Promise<{ 
     payment_terms_days: number;
     total_amount: number;
     received_amount: number;
+    prices_include_vat: boolean;
+    buyer_is_vat_payer: boolean;
+    supplier_is_vat_payer: boolean;
   }>(
     `select p.id, p.number, p.status, p.ordered_on, p.expected_on, p.note,
             s.name as supplier, s.payment_terms_days,
-            t.total_amount, t.received_amount
+            t.total_amount, t.received_amount,
+            p.prices_include_vat, s.is_vat_payer as supplier_is_vat_payer,
+            e.is_vat_payer as buyer_is_vat_payer
        from purchase_orders p
        join suppliers s on s.id = p.supplier_id
+       join legal_entities e on e.id = p.legal_entity_id
        left join v_po_totals t on t.po_id = p.id
       where p.id = $1`,
     [id],
@@ -69,6 +75,16 @@ export default async function PurchaseOrderPage({ params }: { params: Promise<{ 
   const isDraft = po.status === 'draft';
   const canReceive = po.status === 'ordered' || (po.status === 'draft' && lines.length > 0);
   const pending = lines.filter((l) => l.qty - l.received_qty > 0.0005);
+
+  // Найчастіше джерело здивування: чому на складі ціна не така, як у заявці.
+  const reclaimsVat = po.buyer_is_vat_payer && po.supplier_is_vat_payer;
+  const vatNote = reclaimsVat
+    ? po.prices_include_vat
+      ? 'Ціни в заявці з ПДВ. На склад партія стане за базою без ПДВ — податок піде в податковий кредит, а не в собівартість.'
+      : 'Ціни в заявці без ПДВ і саме вони стануть собівартістю партії; ПДВ зверху піде в податковий кредит.'
+    : po.buyer_is_vat_payer
+      ? 'Постачальник не платник ПДВ, тож кредиту немає — у собівартість піде вся ціна.'
+      : 'Юрособа не платник ПДВ, тож податок постачальника не відшкодовується і повністю входить у собівартість.';
 
   return (
     <>
@@ -218,8 +234,7 @@ export default async function PurchaseOrderPage({ params }: { params: Promise<{ 
                 ))}
               </div>
               <p className="text-xs text-emerald-800/60">
-                Ціна із заявки стає собівартістю партії — саме звідси вона потрапляє у розрахунок
-                вартості продукції.
+                {vatNote}
               </p>
             </ActionForm>
           </Card>

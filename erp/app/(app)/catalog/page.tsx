@@ -13,7 +13,7 @@ export default async function CatalogPage({
 }: {
   searchParams: Promise<{ kind?: string }>;
 }) {
-  await requireRole('production', 'sales', 'warehouse');
+  const session = await requireRole('production', 'sales', 'warehouse');
   const { kind } = await searchParams;
 
   const items = await query<{
@@ -33,10 +33,10 @@ export default async function CatalogPage({
     `select i.id, i.sku, i.name, i.kind, i.unit, i.min_stock, i.shelf_life_days, i.pcs_per_box,
             i.price_distributor, i.price_network, i.price_rrp, coalesce(s.qty, 0) as qty
        from items i
-       left join v_item_stock s on s.item_id = i.id
+       left join v_item_stock s on s.item_id = i.id and s.legal_entity_id = $2
       where i.is_active and ($1::text is null or i.kind = $1)
       order by i.kind, i.name`,
-    [kind ?? null],
+    [kind ?? null, session.eid],
   );
 
   return (

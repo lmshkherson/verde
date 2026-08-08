@@ -26,14 +26,16 @@ const WAREHOUSES = [
 ];
 
 // [sku, назва, тип, од., термін днів, мін. залишок, вага г, шт/бокс, ціни...]
+// Увага: ціни зберігаються БЕЗ ПДВ. Роздрібні з лендінгу (25,80 / 35,70 / 49,99)
+// поділені на 1,2 — податок додається в документі за ставкою юрособи.
 const ITEMS = [
   // Готова продукція — лінійка «Зарядись», 25 г, шоубокс 16 шт, термін 9 місяців.
-  ['VRD-Z-PIST', 'Батончик «Зарядись» Фісташка 25 г', 'finished', 'pcs', 270, 800, 25, 16, 25.8, 35.7, 49.99],
-  ['VRD-Z-ARAH', 'Батончик «Зарядись» Арахіс 25 г', 'finished', 'pcs', 270, 800, 25, 16, 25.8, 35.7, 49.99],
-  ['VRD-Z-MIGD', 'Батончик «Зарядись» Мигдаль 25 г', 'finished', 'pcs', 270, 800, 25, 16, 25.8, 35.7, 49.99],
-  ['VRD-Z-KOKO', 'Батончик «Зарядись» Кокос 25 г', 'finished', 'pcs', 270, 800, 25, 16, 25.8, 35.7, 49.99],
-  ['VRD-Z-FUND', 'Батончик «Зарядись» Фундук 25 г', 'finished', 'pcs', 270, 800, 25, 16, 25.8, 35.7, 49.99],
-  ['VRD-COLLAGEN', 'Батончик Collagen 40 г', 'finished', 'pcs', 270, 500, 40, 12, 36.6, 56.4, 78.99],
+  ['VRD-Z-PIST', 'Батончик «Зарядись» Фісташка 25 г', 'finished', 'pcs', 270, 800, 25, 16, 21.5, 29.75, 41.66],
+  ['VRD-Z-ARAH', 'Батончик «Зарядись» Арахіс 25 г', 'finished', 'pcs', 270, 800, 25, 16, 21.5, 29.75, 41.66],
+  ['VRD-Z-MIGD', 'Батончик «Зарядись» Мигдаль 25 г', 'finished', 'pcs', 270, 800, 25, 16, 21.5, 29.75, 41.66],
+  ['VRD-Z-KOKO', 'Батончик «Зарядись» Кокос 25 г', 'finished', 'pcs', 270, 800, 25, 16, 21.5, 29.75, 41.66],
+  ['VRD-Z-FUND', 'Батончик «Зарядись» Фундук 25 г', 'finished', 'pcs', 270, 800, 25, 16, 21.5, 29.75, 41.66],
+  ['VRD-COLLAGEN', 'Батончик Collagen 40 г', 'finished', 'pcs', 270, 500, 40, 12, 30.5, 47.0, 65.83],
 
   // Сировина
   ['RAW-FINIK', 'Фініки Деглет Нур паста', 'raw', 'kg', 365, 60, null, null, null, null, null],
@@ -122,11 +124,38 @@ const RECIPES = [
   },
 ];
 
+// Дві юрособи з різним податковим статусом — саме та конфігурація, у якій
+// одна партія має різну собівартість залежно від власника.
+const ENTITIES = [
+  {
+    name: 'ТОВ «Верде Фудс»',
+    short: 'Верде Фудс',
+    edrpou: '44821037',
+    ipn: '448210326574',
+    prefix: 'ВФ',
+    tax: 'general',
+    vat: true,
+    isDefault: true,
+  },
+  {
+    name: 'ФОП Ковальчук О.М.',
+    short: 'Верде Роздріб',
+    edrpou: '3184507621',
+    ipn: null,
+    prefix: 'ВР',
+    tax: 'single_tax',
+    vat: false,
+    isDefault: false,
+  },
+];
+
+// Останнє поле — чи є постачальник платником ПДВ. Горіхи беремо у ФОП без ПДВ,
+// тож із його ціни податкового кредиту не буде навіть у ТОВ.
 const SUPPLIERS = [
-  ['ТОВ «Сухофрукт Трейд»', '38271940', 'Андрій Кравець', '+380671112233', 14],
-  ['ФОП Гриценко О.П. (горіхи)', '3012345678', 'Оксана Гриценко', '+380502223344', 7],
-  ['ТОВ «Нутрі Інгредієнтс»', '41902847', 'Сергій Лисенко', '+380443334455', 30],
-  ['ТОВ «ПакЛайн Україна»', '39284710', 'Марина Дудник', '+380445556677', 21],
+  ['ТОВ «Сухофрукт Трейд»', '38271940', 'Андрій Кравець', '+380671112233', 14, true],
+  ['ФОП Гриценко О.П. (горіхи)', '3012345678', 'Оксана Гриценко', '+380502223344', 7, false],
+  ['ТОВ «Нутрі Інгредієнтс»', '41902847', 'Сергій Лисенко', '+380443334455', 30, true],
+  ['ТОВ «ПакЛайн Україна»', '39284710', 'Марина Дудник', '+380445556677', 21, true],
 ];
 
 const CUSTOMERS = [
@@ -135,6 +164,8 @@ const CUSTOMERS = [
   ['ТОВ «Здоров’я Дистрибʼюшн»', 'distributor', '40218374', 'Дмитро Сич', '+380671234567', 'distributor', 14, 200000],
   ['Аптека «Бажаємо здоровʼя»', 'pharmacy', '39471028', 'Леся Ткач', '+380509876543', 'distributor', 7, 50000],
   ['Мережа кав’ярень «Ранок»', 'horeca', '42917583', 'Богдан Мороз', '+380931112244', 'rrp', 0, 20000],
+  // Власна роздрібна юрособа — продажі їй є реалізацією між своїми.
+  ['ФОП Ковальчук О.М. (наша роздрібна)', 'distributor', '3184507621', 'Олена Ковальчук', '+380671234000', 'distributor', 0, 0],
 ];
 
 const client = new pg.Client({
@@ -146,6 +177,28 @@ await client.connect();
 try {
   await client.query('begin');
 
+  // Юрособа, створена міграцією з settings, стає основною виробничою.
+  await client.query(
+    `update legal_entities
+        set name = $1, short_name = $2, doc_prefix = $5,
+            edrpou = $3, ipn = $4, tax_system = 'general', is_vat_payer = true
+      where short_name = 'VERDE'`,
+    [ENTITIES[0].name, ENTITIES[0].short, ENTITIES[0].edrpou, ENTITIES[0].ipn, ENTITIES[0].prefix],
+  );
+
+  for (const e of ENTITIES) {
+    await client.query(
+      `insert into legal_entities
+         (name, short_name, doc_prefix, edrpou, ipn, tax_system, is_vat_payer, is_default)
+       values ($1, $2, $3, $4, $5, $6, $7, $8)
+       on conflict (lower(short_name)) do update
+         set name = excluded.name, doc_prefix = excluded.doc_prefix,
+             edrpou = excluded.edrpou, ipn = excluded.ipn,
+             tax_system = excluded.tax_system, is_vat_payer = excluded.is_vat_payer`,
+      [e.name, e.short, e.prefix, e.edrpou, e.ipn, e.tax, e.vat, e.isDefault],
+    );
+  }
+
   for (const [email, name, role] of USERS) {
     await client.query(
       `insert into app_users (email, full_name, role, password_hash)
@@ -154,6 +207,11 @@ try {
       [email, name, role, await hashPassword(DEMO_PASSWORD)],
     );
   }
+
+  await client.query(
+    `update app_users set default_entity_id = (select id from legal_entities where is_default)
+      where default_entity_id is null`,
+  );
 
   for (const [code, name, kind] of WAREHOUSES) {
     await client.query(
@@ -204,14 +262,16 @@ try {
     }
   }
 
-  for (const [name, edrpou, contact, phone, terms] of SUPPLIERS) {
+  for (const [name, edrpou, contact, phone, terms, isVat] of SUPPLIERS) {
     const { rows } = await client.query('select id from suppliers where name = $1', [name]);
     if (rows.length === 0) {
       await client.query(
-        `insert into suppliers (name, edrpou, contact, phone, payment_terms_days)
-         values ($1, $2, $3, $4, $5)`,
-        [name, edrpou, contact, phone, terms],
+        `insert into suppliers (name, edrpou, contact, phone, payment_terms_days, is_vat_payer)
+         values ($1, $2, $3, $4, $5, $6)`,
+        [name, edrpou, contact, phone, terms, isVat],
       );
+    } else {
+      await client.query('update suppliers set is_vat_payer = $2 where id = $1', [rows[0].id, isVat]);
     }
   }
 
@@ -226,9 +286,17 @@ try {
     }
   }
 
+  // Клієнт «наша роздрібна» вказує на юрособу — це вмикає реалізацію між своїми.
+  await client.query(
+    `update customers
+        set legal_entity_id = (select id from legal_entities where short_name = $2)
+      where name = $1`,
+    ['ФОП Ковальчук О.М. (наша роздрібна)', ENTITIES[1].short],
+  );
+
   await client.query('commit');
   console.log(
-    `Довідники заповнено: ${USERS.length} користувачів, ${ITEMS.length} позицій, ` +
+    `Довідники заповнено: ${ENTITIES.length} юрособи, ${USERS.length} користувачів, ${ITEMS.length} позицій, ` +
       `${RECIPES.length} рецептур, ${SUPPLIERS.length} постачальників, ${CUSTOMERS.length} клієнтів.`,
   );
   console.log(`Пароль для всіх демо-акаунтів: ${DEMO_PASSWORD}`);

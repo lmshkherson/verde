@@ -16,7 +16,7 @@ const statusTone: Record<string, 'gray' | 'amber' | 'green' | 'red' | 'blue'> = 
 };
 
 export default async function SalesPage() {
-  await requireRole('sales');
+  const session = await requireRole('sales');
 
   const [orders, customers] = await Promise.all([
     query<{
@@ -34,11 +34,12 @@ export default async function SalesPage() {
       select id, number, customer_name, status, ordered_on, ship_by,
              total_amount, margin, margin_pct, balance_due
         from v_sales_orders_full
+       where legal_entity_id = $1
        order by
          case status when 'confirmed' then 0 when 'draft' then 1 else 2 end,
          ordered_on desc
        limit 100
-    `),
+    `, [session.eid]),
     query<{ id: string; name: string }>(
       'select id, name from customers where is_active order by name',
     ),
@@ -67,7 +68,7 @@ export default async function SalesPage() {
           {orders.length === 0 ? (
             <Empty>Замовлень ще немає</Empty>
           ) : (
-            <Table head={['Номер', 'Клієнт', 'Сума', 'Маржа', 'Борг', 'Статус']}>
+            <Table head={['Номер', 'Клієнт', 'Сума з ПДВ', 'Маржа', 'Борг', 'Статус']}>
               {orders.map((o) => (
                 <Row key={o.id}>
                   <Cell>

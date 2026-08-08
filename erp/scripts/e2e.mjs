@@ -1,8 +1,13 @@
 #!/usr/bin/env node
 /**
- * Наскрізна перевірка через справжній інтерфейс: закупівля сировини → варка →
- * випуск ГП → замовлення мережі → відвантаження → маржа у звітах.
- * Кожна роль працює під своїм логіном, як у житті.
+ * Наскрізна перевірка через справжній інтерфейс, дві юрособи з різним податковим
+ * статусом:
+ *
+ *   ТОВ «Верде Фудс» (платник ПДВ) — закуповує сировину, виробляє, продає мережі
+ *   ФОП «Верде Роздріб» (єдиний податок) — купує в ТОВ і продає в роздріб
+ *
+ * Головне, що доводить сценарій: вхідний ПДВ по-різному лягає в собівартість,
+ * тож одна фізична партія коштує різне залежно від власника.
  *
  * Запуск: BASE_URL=http://127.0.0.1:3100 node scripts/e2e.mjs
  */
@@ -14,12 +19,15 @@ const PASSWORD = process.env.SEED_PASSWORD ?? 'verde2026';
 
 let failures = 0;
 const check = (name, condition, detail = '') => {
-  const mark = condition ? '  ✓' : '  ✗';
-  console.log(`${mark} ${name}${detail ? ` — ${detail}` : ''}`);
+  console.log(`${condition ? '  ✓' : '  ✗'} ${name}${detail ? ` — ${detail}` : ''}`);
   if (!condition) failures += 1;
 };
 
-/** Обирає пункт списку за частиною тексту — підписи в опціях містять ще й одиниці й залишки. */
+const money = (text) =>
+  Number(String(text).replace(/[^\d,.-]/g, '').replace(/\s/g, '').replace(',', '.'));
+
+const near = (a, b, eps = 0.05) => Math.abs(a - b) < eps;
+
 async function selectByText(page, selector, substring) {
   const value = await page
     .locator(`${selector} option`, { hasText: substring })
@@ -29,40 +37,69 @@ async function selectByText(page, selector, substring) {
   await page.selectOption(selector, value);
 }
 
-const money = (text) => Number(String(text).replace(/[^\d,.-]/g, '').replace(/\s/g, '').replace(',', '.'));
+/** Значення з плитки-показника: підпис, під ним число. */
+async function stat(page, label) {
+  return money(await page.locator(`text=${label}`).first().locator('..').locator('div').nth(1).innerText());
+}
 
-// Chromium уже стоїть у середовищі — беремо його, а не тягнемо свій.
+/** Собівартість позиції на складі поточної юрособи. */
+async function stockCost(page, kind, itemName) {
+  await page.goto(`${BASE}/stock?kind=${kind}`);
+  const row = page.locator('tr', { hasText: itemName }).first();
+  const cells = await row.locator('td').allInnerTexts();
+  return { cost: money(cells[4]), qty: money(cells[1]), raw: cells.join(' | ') };
+}
+
 const preinstalled = globSync('/opt/pw-browsers/chromium-*/chrome-linux/chrome')[0];
 const browser = await chromium.launch(preinstalled ? { executablePath: preinstalled } : {});
 
 async function session(email) {
-  const context = await browser.newContext({ locale: 'uk-UA' });
+  const context = await browser.newContext({ locale: 'uk-UA', viewport: { width: 1400, height: 900 } });
   const page = await context.newPage();
   await page.goto(`${BASE}/login`);
   await page.fill('input[name="email"]', email);
   await page.fill('input[name="password"]', PASSWORD);
   await page.click('button[type="submit"]');
   await page.waitForURL(`${BASE}/`);
-  return { context, page };
+  return page;
+}
+
+async function switchEntity(page, name) {
+  await selectByText(page, 'aside select[name="entity_id"]', name);
+  await page.waitForTimeout(900);
+}
+
+async function createPurchase(page, supplier, lines, pricesIncludeVat = true) {
+  await page.goto(`${BASE}/purchasing`);
+  await selectByText(page, 'select[name="supplier_id"]', supplier);
+  if (!pricesIncludeVat) await page.uncheck('input[name="prices_include_vat"]');
+  await page.click('form:has(select[name="supplier_id"]) button[type="submit"]');
+  await page.waitForURL(/\/purchasing\/[0-9a-f-]{36}/);
+
+  for (const [name, qty, price] of lines) {
+    await selectByText(page, 'select[name="item_id"]', name);
+    await page.fill('input[name="qty"]', String(qty));
+    await page.fill('input[name="unit_price"]', String(price));
+    await page.click('form:has(select[name="item_id"]) button[type="submit"]');
+    await page.waitForTimeout(320);
+  }
+
+  await page.click('form:has(input[name="po_id"]) button:has-text("Замовлено")');
+  await page.waitForTimeout(400);
+  await page.reload();
+  await page.click('button:has-text("Оприбуткувати на склад")');
+  await page.waitForTimeout(1400);
+  await page.reload();
+  return page.url();
 }
 
 try {
-  // ─── 1. Комірник: заявка постачальнику й прихід сировини ───────────────────
-  console.log('\nКомірник — закупівля сировини');
+  // ─── 1. ТОВ на ПДВ: закупівля у платника і в неплатника ────────────────────
+  console.log('\nТОВ «Верде Фудс» — закупівля сировини');
   const warehouse = await session('petro@v-verde.ua');
-  const wp = warehouse.page;
 
-  await wp.goto(`${BASE}/purchasing`);
-  await selectByText(wp, 'select[name="supplier_id"]', 'Сухофрукт Трейд');
-  await wp.click('form:has(select[name="supplier_id"]) button[type="submit"]');
-  await wp.waitForURL(/\/purchasing\/[0-9a-f-]{36}/);
-  const poUrl = wp.url();
-  check('заявку створено', /\/purchasing\/[0-9a-f-]{36}/.test(poUrl), poUrl.split('/').pop());
-
-  // Сировина під варку 1000 фісташкових батончиків + пакування.
-  const purchases = [
+  await createPurchase(warehouse, 'Сухофрукт Трейд', [
     ['Фініки Деглет Нур паста', 200, 182.5],
-    ['Ядро фісташки', 60, 615],
     ['Ізолят горохового білка', 50, 340],
     ['Олія кокосова', 40, 220],
     ['Сироп цикорію', 60, 165],
@@ -71,151 +108,190 @@ try {
     ['Плівка флоу-пак', 25000, 0.85],
     ['Етикетка самоклейна', 25000, 0.35],
     ['Шоубокс картонний', 1500, 6.2],
-  ];
+  ]);
+  check('прихід від платника ПДВ проведено', (await warehouse.locator('text=Отримано').count()) > 0);
 
-  for (const [name, qty, price] of purchases) {
-    await selectByText(wp, 'select[name="item_id"]', name);
-    await wp.fill('input[name="qty"]', String(qty));
-    await wp.fill('input[name="unit_price"]', String(price));
-    await wp.click('form:has(select[name="item_id"]) button[type="submit"]');
-    await wp.waitForTimeout(350);
-  }
+  // Горіхи беремо у ФОП без ПДВ — кредиту з цієї ціни бути не може.
+  await createPurchase(warehouse, 'Гриценко', [['Ядро фісташки', 60, 615]]);
+  check('прихід від неплатника ПДВ проведено', (await warehouse.locator('text=Отримано').count()) > 0);
 
-  const poTotal = money(await wp.locator('text=Сума заявки').locator('..').locator('div').nth(1).innerText());
-  const expectedTotal = purchases.reduce((s, [, q, p]) => s + q * p, 0);
-  check('сума заявки порахована', Math.abs(poTotal - expectedTotal) < 1, `${poTotal} грн`);
+  const owner = await session('olena@v-verde.ua');
 
-  await wp.click('form:has(input[name="po_id"]) button:has-text("Замовлено")');
-  await wp.waitForTimeout(400);
-  await wp.reload();
-  await wp.click('button:has-text("Оприбуткувати на склад")');
-  await wp.waitForTimeout(1200);
-  await wp.reload();
-  check('заявка оприбуткована', (await wp.locator('text=Отримано').count()) > 0);
-
-  await wp.goto(`${BASE}/stock?kind=raw`);
-  const dateRow = wp.locator('tr:has-text("Фініки")');
-  check('сировина лягла на склад', (await dateRow.count()) > 0, await dateRow.first().innerText().catch(() => ''));
-
-  // ─── 2. Технолог: варка й випуск готової продукції ─────────────────────────
-  console.log('\nТехнолог — виробництво');
-  const production = await session('iryna@v-verde.ua');
-  const pp = production.page;
-
-  await pp.goto(`${BASE}/production`);
-  await selectByText(pp, 'select[name="recipe_id"]', 'Фісташка');
-  await pp.fill('input[name="planned_qty"]', '1000');
-  await pp.click('form:has(select[name="recipe_id"]) button[type="submit"]');
-  await pp.waitForURL(/\/production\/[0-9a-f-]{36}/);
-  check('варку заплановано', /\/production\/[0-9a-f-]{36}/.test(pp.url()));
-
-  const shortages = await pp.locator('text=бракує').count();
-  check('сировини вистачає за планом', shortages === 0, shortages ? `${shortages} позицій бракує` : '');
-
-  await pp.click('button:has-text("Почати")');
-  await pp.waitForTimeout(500);
-  await pp.reload();
-
-  // Реальність цеху: випустили 980 замість 1000 — норми мають перерахуватися самі.
-  await pp.fill('input[name="produced_qty"]', '980');
-  await pp.fill('input[name="overhead_cost"]', '4200');
-  await pp.waitForTimeout(300);
-
-  const unitCostPreview = money(
-    await pp.locator('text=Собівартість одиниці').locator('..').locator('span').last().innerText(),
+  const finiky = await stockCost(owner, 'raw', 'Фініки');
+  check(
+    'ПДВ не потрапив у собівартість: фініки 182,50 з ПДВ → 152,08 на складі',
+    near(finiky.cost, 182.5 / 1.2, 0.02),
+    `${finiky.cost} грн/кг`,
   );
-  check('собівартість рахується наживо', unitCostPreview > 0, `${unitCostPreview} грн/шт`);
 
-  await pp.click('button:has-text("Закрити варку")');
-  await pp.waitForTimeout(1500);
-  await pp.reload();
-  check('варку закрито', (await pp.locator('text=Завершено').count()) > 0);
+  const pistachio = await stockCost(owner, 'raw', 'фісташки');
+  check(
+    'від неплатника ПДВ у собівартість пішла вся ціна',
+    near(pistachio.cost, 615, 0.02),
+    `${pistachio.cost} грн/кг`,
+  );
 
-  const factCost = money(
-    await pp.locator('text=Собівартість одиниці').first().locator('..').locator('div').nth(1).innerText(),
+  // ─── 2. Виробництво в ТОВ ──────────────────────────────────────────────────
+  console.log('\nТОВ «Верде Фудс» — виробництво');
+  const production = await session('iryna@v-verde.ua');
+
+  await production.goto(`${BASE}/production`);
+  await selectByText(production, 'select[name="recipe_id"]', 'Фісташка');
+  await production.fill('input[name="planned_qty"]', '1000');
+  await production.click('form:has(select[name="recipe_id"]) button[type="submit"]');
+  await production.waitForURL(/\/production\/[0-9a-f-]{36}/);
+
+  check('сировини вистачає', (await production.locator('text=бракує').count()) === 0);
+
+  await production.click('button:has-text("Почати")');
+  await production.waitForTimeout(500);
+  await production.reload();
+
+  await production.fill('input[name="produced_qty"]', '980');
+  await production.fill('input[name="overhead_cost"]', '4200');
+  await production.waitForTimeout(300);
+  await production.click('button:has-text("Закрити варку")');
+  await production.waitForTimeout(1600);
+  await production.reload();
+  check('варку закрито', (await production.locator('text=Завершено').count()) > 0);
+
+  const factoryCost = await stat(production, 'Собівартість одиниці');
+  check('собівартість випуску порахована', factoryCost > 0, `${factoryCost} грн/шт`);
+
+  // ─── 3. Продаж мережі з ПДВ ────────────────────────────────────────────────
+  console.log('\nТОВ «Верде Фудс» — продаж мережі');
+  const sales = await session('taras@v-verde.ua');
+
+  await sales.goto(`${BASE}/sales`);
+  await selectByText(sales, 'select[name="customer_id"]', 'АТБ-Маркет');
+  await sales.click('form:has(select[name="customer_id"]) button[type="submit"]');
+  await sales.waitForURL(/\/sales\/[0-9a-f-]{36}/);
+
+  await selectByText(sales, 'select[name="item_id"]', 'Фісташка');
+  await sales.fill('input[name="qty"]', '640');
+  await sales.click('form:has(select[name="item_id"]) button[type="submit"]');
+  await sales.waitForTimeout(700);
+  await sales.reload();
+
+  const grossTotal = await stat(sales, 'Сума з ПДВ');
+  check(
+    'ціна без ПДВ 29,75 × 640 + 20% = 22 848 грн',
+    near(grossTotal, 640 * 29.75 * 1.2, 1),
+    `${grossTotal} грн`,
+  );
+
+  await sales.click('button:has-text("Підтвердити")');
+  await sales.waitForTimeout(600);
+  await sales.reload();
+  await sales.fill('input[name="ttn_number"]', '59000123456789');
+  await sales.click('button:has-text("Провести відвантаження")');
+  await sales.waitForTimeout(1600);
+  await sales.reload();
+  check('замовлення відвантажено', (await sales.locator('text=Відвантажено').count()) > 0);
+
+  const marginText = await sales.locator('text=Маржа').first().locator('..').innerText();
+  check(
+    'маржа рахується від бази без ПДВ',
+    marginText.includes('без ПДВ'),
+    marginText.replace(/\s+/g, ' ').trim(),
+  );
+
+  // ─── 4. Реалізація власній юрособі ─────────────────────────────────────────
+  console.log('\nРеалізація між своїми: ТОВ → ФОП');
+  await sales.goto(`${BASE}/sales`);
+  await selectByText(sales, 'select[name="customer_id"]', 'наша роздрібна');
+  await sales.click('form:has(select[name="customer_id"]) button[type="submit"]');
+  await sales.waitForURL(/\/sales\/[0-9a-f-]{36}/);
+
+  await selectByText(sales, 'select[name="item_id"]', 'Фісташка');
+  await sales.fill('input[name="qty"]', '300');
+  await sales.click('form:has(select[name="item_id"]) button[type="submit"]');
+  await sales.waitForTimeout(700);
+  await sales.reload();
+  await sales.click('button:has-text("Підтвердити")');
+  await sales.waitForTimeout(600);
+  await sales.reload();
+  await sales.click('button:has-text("Провести відвантаження")');
+  await sales.waitForTimeout(1600);
+  await sales.reload();
+  check('внутрішня реалізація проведена', (await sales.locator('text=Відвантажено').count()) > 0);
+
+  // ─── 5. Та сама партія — різна собівартість ────────────────────────────────
+  console.log('\nСобівартість однієї партії у двох юросіб');
+  const tovStock = await stockCost(owner, 'finished', 'Фісташка');
+  check(
+    'у ТОВ лишилось 40 шт за виробничою собівартістю',
+    near(tovStock.qty, 40, 0.5) && near(tovStock.cost, factoryCost, 0.05),
+    `${tovStock.qty} шт по ${tovStock.cost} грн`,
+  );
+
+  await switchEntity(owner, 'Верде Роздріб');
+  const fopStock = await stockCost(owner, 'finished', 'Фісташка');
+  check(
+    'у ФОП з’явилось 300 шт тієї самої партії',
+    near(fopStock.qty, 300, 0.5),
+    `${fopStock.qty} шт по ${fopStock.cost} грн`,
   );
   check(
-    'фактична собівартість збіглася з попереднім розрахунком',
-    Math.abs(factCost - unitCostPreview) < 0.05,
-    `${factCost} грн/шт`,
+    'ФОП не відшкодовує ПДВ, тож його собівартість = 21,50 × 1,2 = 25,80',
+    near(fopStock.cost, 21.5 * 1.2, 0.05),
+    `${fopStock.cost} грн/шт`,
+  );
+  check(
+    'собівартість однієї партії різна у двох юросіб',
+    !near(fopStock.cost, tovStock.cost, 0.5),
+    `ТОВ ${tovStock.cost} проти ФОП ${fopStock.cost} грн`,
   );
 
-  await pp.goto(`${BASE}/stock?kind=finished`);
-  const finishedRow = await pp.locator('tr:has-text("Фісташка")').first().innerText();
-  check('готова продукція на складі', finishedRow.includes('980'), finishedRow.replace(/\s+/g, ' ').trim());
+  // ─── 6. ФОП продає в роздріб без ПДВ ───────────────────────────────────────
+  console.log('\nФОП «Верде Роздріб» — продаж без ПДВ');
+  await switchEntity(sales, 'Верде Роздріб');
+  await sales.goto(`${BASE}/sales`);
+  await selectByText(sales, 'select[name="customer_id"]', 'Ранок');
+  await sales.click('form:has(select[name="customer_id"]) button[type="submit"]');
+  await sales.waitForURL(/\/sales\/[0-9a-f-]{36}/);
 
-  // ─── 3. Менеджер: замовлення мережі, відвантаження, оплата ─────────────────
-  console.log('\nМенеджер — продаж мережі');
-  const sales = await session('taras@v-verde.ua');
-  const sp = sales.page;
+  await selectByText(sales, 'select[name="item_id"]', 'Фісташка');
+  await sales.fill('input[name="qty"]', '100');
+  await sales.click('form:has(select[name="item_id"]) button[type="submit"]');
+  await sales.waitForTimeout(700);
+  await sales.reload();
 
-  await sp.goto(`${BASE}/sales`);
-  await selectByText(sp, 'select[name="customer_id"]', 'АТБ-Маркет');
-  await sp.click('form:has(select[name="customer_id"]) button[type="submit"]');
-  await sp.waitForURL(/\/sales\/[0-9a-f-]{36}/);
-
-  await selectByText(sp, 'select[name="item_id"]', 'Фісташка');
-  await sp.fill('input[name="qty"]', '640');
-  await sp.click('form:has(select[name="item_id"]) button[type="submit"]');
-  await sp.waitForTimeout(600);
-  await sp.reload();
-
-  const orderTotal = money(
-    await sp.locator('text=Сума замовлення').locator('..').locator('div').nth(1).innerText(),
+  const fopTotal = await stat(sales, 'Сума з ПДВ');
+  check(
+    'єдинник не нараховує ПДВ: 41,66 × 100 без податку зверху',
+    near(fopTotal, 100 * 41.66, 1),
+    `${fopTotal} грн`,
   );
-  // АТБ працює за ціною на мережу: 35,70 × 640 = 22 848 грн
-  check('ціна підтягнулася з прайсу мережі', Math.abs(orderTotal - 640 * 35.7) < 1, `${orderTotal} грн`);
 
-  await sp.click('button:has-text("Підтвердити")');
-  await sp.waitForTimeout(600);
-  await sp.reload();
+  // ─── 7. Реєстр ПДВ у власника ──────────────────────────────────────────────
+  console.log('\nВласник — реєстр ПДВ');
+  await switchEntity(owner, 'Верде Фудс');
+  await owner.goto(`${BASE}/reports`);
 
-  await sp.goto(`${BASE}/stock?kind=finished`);
-  const reservedRow = await sp.locator('tr:has-text("Фісташка")').first().innerText();
-  check('товар пішов у резерв', reservedRow.includes('640'), reservedRow.replace(/\s+/g, ' ').trim());
+  const vatRow = await owner.locator('table:below(:text("ПДВ за періодами")) tr').nth(1).innerText();
+  const [liability, credit, payable] = vatRow
+    .split('\t')
+    .slice(1)
+    .map(money);
 
-  await sp.goBack();
-  await sp.reload();
-  await sp.fill('input[name="ttn_number"]', '59000123456789');
-  await sp.fill('input[name="carrier"]', 'Нова пошта');
-  await sp.click('button:has-text("Провести відвантаження")');
-  await sp.waitForTimeout(1500);
-  await sp.reload();
-  check('замовлення відвантажено', (await sp.locator('text=Відвантажено').count()) > 0);
+  check('податкове зобов’язання з продажу мережі', near(liability, 640 * 29.75 * 0.2 + 300 * 21.5 * 0.2, 1), `${liability} грн`);
+  check('податковий кредит із закупівель', credit > 0, `${credit} грн`);
+  check('ПДВ до сплати = зобов’язання − кредит', near(payable, liability - credit, 1), `${payable} грн`);
 
-  const marginText = await sp.locator('text=Маржа').first().locator('..').innerText();
-  const marginValue = money(marginText.split('\n')[1] ?? '0');
-  check('маржа порахована за фактичними партіями', marginValue > 0, marginText.replace(/\s+/g, ' ').trim());
+  await owner.goto(`${BASE}/entities`);
+  check(
+    'обидві юрособи видно у власника',
+    (await owner.locator('text=Верде Роздріб').count()) > 0 &&
+      (await owner.locator('text=Верде Фудс').count()) > 0,
+  );
 
-  await sp.click('button:has-text("Записати оплату")');
-  await sp.waitForTimeout(900);
-  await sp.reload();
-  check('оплату зараховано', (await sp.locator('text=закрито').count()) > 0);
-
-  // ─── 4. Власник: звіти сходяться ───────────────────────────────────────────
-  console.log('\nВласник — звіти');
-  const owner = await session('olena@v-verde.ua');
-  const op = owner.page;
-
-  await op.goto(`${BASE}/reports`);
-  const revenue = money(await op.locator('text=Виручка').locator('..').locator('div').nth(1).innerText());
-  const cogs = money(await op.locator('text=Собівартість продажів').locator('..').locator('div').nth(1).innerText());
-  const grossMargin = money(await op.locator('text=Валова маржа').locator('..').locator('div').nth(1).innerText());
-
-  check('виручка у звіті = сумі замовлення', Math.abs(revenue - orderTotal) < 1, `${revenue} грн`);
-  check('маржа = виручка − собівартість', Math.abs(grossMargin - (revenue - cogs)) < 1, `${grossMargin} грн`);
-  check('собівартість продажів не нульова', cogs > 0, `${cogs} грн`);
-
-  const skuRow = await op.locator('tr:has-text("Фісташка")').first().innerText();
-  check('маржа за SKU показана', skuRow.includes('640'), skuRow.replace(/\s+/g, ' ').trim());
-
-  // Комірник не має бачити грошей — перевіряємо розмежування прав.
+  // ─── 8. Права доступу ──────────────────────────────────────────────────────
   console.log('\nПрава доступу');
-  const wpDenied = await warehouse.page.goto(`${BASE}/reports`);
-  check('комірника не пускає у звіти', wpDenied.url().includes('denied=1'), wpDenied.url().replace(BASE, ''));
-
-  const salesDenied = await sales.page.goto(`${BASE}/production`);
-  check('менеджера не пускає у виробництво', salesDenied.url().includes('denied=1'));
+  const denied = await warehouse.goto(`${BASE}/reports`);
+  check('комірника не пускає у звіти', denied.url().includes('denied=1'));
+  const denied2 = await sales.goto(`${BASE}/entities`);
+  check('менеджера не пускає до юросіб', denied2.url().includes('denied=1'));
 } catch (err) {
   console.error(`\nПомилка сценарію: ${err.message}`);
   failures += 1;

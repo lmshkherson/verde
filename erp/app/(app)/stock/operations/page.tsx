@@ -8,7 +8,7 @@ import { requireRole } from '@/lib/session';
 export const dynamic = 'force-dynamic';
 
 export default async function StockOperationsPage() {
-  await requireRole('warehouse');
+  const session = await requireRole('warehouse');
 
   const [locations, items, warehouses] = await Promise.all([
     query<{
@@ -27,8 +27,9 @@ export default async function StockOperationsPage() {
         join batches b on b.id = sb.batch_id
         join items i on i.id = sb.item_id
         join warehouses w on w.id = sb.warehouse_id
+       where sb.legal_entity_id = $1
        order by i.name, b.expires_on nulls last
-    `),
+    `, [session.eid]),
     query<{ id: string; sku: string; name: string; unit: string }>(
       'select id, sku, name, unit from items where is_active order by name',
     ),

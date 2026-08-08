@@ -16,7 +16,7 @@ const statusTone: Record<string, 'gray' | 'amber' | 'green' | 'red'> = {
 };
 
 export default async function ProductionPage() {
-  await requireRole('production');
+  const session = await requireRole('production');
 
   const [orders, recipes] = await Promise.all([
     query<{
@@ -34,11 +34,12 @@ export default async function ProductionPage() {
         from production_orders po
         join items i on i.id = po.product_item_id
         left join v_production_actual_cost ac on ac.production_order_id = po.id
+       where po.legal_entity_id = $1
        order by
          case po.status when 'in_progress' then 0 when 'planned' then 1 else 2 end,
          po.planned_for nulls last, po.created_at desc
        limit 100
-    `),
+    `, [session.eid]),
     query<{ id: string; label: string; output_qty: number; unit_material_cost: number | null }>(`
       select r.id,
              i.name || ' — рецептура v' || r.version as label,
@@ -46,10 +47,10 @@ export default async function ProductionPage() {
              rc.unit_material_cost
         from recipes r
         join items i on i.id = r.product_item_id
-        left join v_recipe_cost rc on rc.recipe_id = r.id
+        left join v_recipe_cost rc on rc.recipe_id = r.id and rc.legal_entity_id = $1
        where r.is_active
        order by i.name, r.version desc
-    `),
+    `, [session.eid]),
   ]);
 
   return (

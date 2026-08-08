@@ -21,21 +21,24 @@ export default async function DashboardPage({
         coalesce(sum(value) filter (where kind in ('raw','packaging')), 0) as raw_value,
         coalesce(sum(value) filter (where kind = 'finished'), 0)           as finished_value,
         coalesce(sum(qty)   filter (where kind = 'finished'), 0)           as finished_qty
-      from v_item_stock
-    `),
+      from v_item_stock where legal_entity_id = $1
+    `, [session.eid]),
     queryOne<{ revenue: number; cogs: number }>(`
       select
         (select coalesce(sum(sl.qty * l.unit_price), 0)
            from shipments s
            join shipment_lines sl on sl.shipment_id = s.id
            join sales_order_lines l on l.id = sl.so_line_id
-          where s.shipped_on >= date_trunc('month', current_date)) as revenue,
+           join sales_orders o on o.id = s.so_id
+          where s.shipped_on >= date_trunc('month', current_date)
+            and o.legal_entity_id = $1) as revenue,
         (select coalesce(sum(-m.qty * m.unit_cost), 0)
            from stock_moves m
            join shipments s on s.id = m.doc_id and m.doc_type = 'shipment'
           where m.move_type = 'sale_shipment'
-            and s.shipped_on >= date_trunc('month', current_date))  as cogs
-    `),
+            and s.shipped_on >= date_trunc('month', current_date)
+            and m.legal_entity_id = $1)                             as cogs
+    `, [session.eid]),
     query<{ sku: string; name: string; qty: number; min_stock: number; unit: string }>(
       'select sku, name, qty, min_stock, unit from v_low_stock order by qty / nullif(min_stock, 0) limit 6',
     ),
@@ -43,27 +46,39 @@ export default async function DashboardPage({
       select sku, name, code, expires_on, days_left, qty, unit
         from v_expiring_batches
        where days_left <= (select expiry_alert_days from settings)
+         and legal_entity_id = $1
        order by days_left
        limit 6
-    `),
+    `, [session.eid]),
     query<{ id: string; number: string; product: string; planned_qty: number; status: string; planned_for: string | null }>(`
       select po.id, po.number, i.name as product, po.planned_qty, po.status, po.planned_for
         from production_orders po join items i on i.id = po.product_item_id
-       where po.status in ('planned','in_progress')
+       where po.status in ('planned','in_progress') and po.legal_entity_id = $1
        order by po.planned_for nulls last, po.created_at
        limit 6
-    `),
+    `, [session.eid]),
     query<{ id: string; number: string; customer_name: string; total_amount: number; ship_by: string | null }>(`
       select id, number, customer_name, total_amount, ship_by
         from v_sales_orders_full
-       where status = 'confirmed'
+       where status = 'confirmed' and legal_entity_id = $1
        order by ship_by nulls last
        limit 6
-    `),
+    `, [session.eid]),
     query<{ customer_id: string; name: string; balance_due: number }>(`
-      select customer_id, name, balance_due from v_customer_balance
-       where balance_due > 0.01 order by balance_due desc limit 6
-    `),
+      select c.id as customer_id, c.name,
+             coalesce(sum(t.shipped_amount), 0)
+               - coalesce((select sum(p.amount) from payments p
+                            where p.customer_id = c.id and p.legal_entity_id = $1), 0) as balance_due
+        from customers c
+        join sales_orders o on o.customer_id = c.id
+                           and o.legal_entity_id = $1 and o.status <> 'cancelled'
+        join v_so_totals t on t.so_id = o.id
+       group by c.id, c.name
+      having coalesce(sum(t.shipped_amount), 0)
+               - coalesce((select sum(p.amount) from payments p
+                            where p.customer_id = c.id and p.legal_entity_id = $1), 0) > 0.01
+       order by balance_due desc limit 6
+    `, [session.eid]),
   ]);
 
   const margin = (month?.revenue ?? 0) - (month?.cogs ?? 0);

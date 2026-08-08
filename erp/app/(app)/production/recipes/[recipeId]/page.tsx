@@ -9,7 +9,7 @@ import { requireRole } from '@/lib/session';
 export const dynamic = 'force-dynamic';
 
 export default async function RecipePage({ params }: { params: Promise<{ recipeId: string }> }) {
-  await requireRole('production');
+  const session = await requireRole('production');
   const { recipeId } = await params;
 
   const recipe = await queryOne<{
@@ -27,9 +27,9 @@ export default async function RecipePage({ params }: { params: Promise<{ recipeI
             rc.batch_material_cost, rc.unit_material_cost
        from recipes r
        join items i on i.id = r.product_item_id
-       left join v_recipe_cost rc on rc.recipe_id = r.id
+       left join v_recipe_cost rc on rc.recipe_id = r.id and rc.legal_entity_id = $2
       where r.id = $1`,
-    [recipeId],
+    [recipeId, session.eid],
   );
   if (!recipe) notFound();
 
@@ -48,10 +48,10 @@ export default async function RecipePage({ params }: { params: Promise<{ recipeI
               coalesce(s.avg_cost, 0) as avg_cost
          from recipe_lines rl
          join items i on i.id = rl.item_id
-         left join v_item_stock s on s.item_id = rl.item_id
+         left join v_item_stock s on s.item_id = rl.item_id and s.legal_entity_id = $2
         where rl.recipe_id = $1
         order by i.name`,
-      [recipeId],
+      [recipeId, session.eid],
     ),
     query<{ id: string; sku: string; name: string; unit: string }>(
       "select id, sku, name, unit from items where kind in ('raw','packaging','semi') and is_active order by name",

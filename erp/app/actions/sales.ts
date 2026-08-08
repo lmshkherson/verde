@@ -4,7 +4,8 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { transaction } from '@/lib/db';
 import { type ActionState, num, str, strOrNull, toMessage } from '@/lib/action-state';
-import { allocateFefo, defaultWarehouseId, insertMoves, nextDocNumber, round3 } from '@/lib/stock';
+import { allocateFefo, defaultWarehouseId, insertMoves, nextDocNumber, round2, round3 } from '@/lib/stock';
+import { calcPurchaseVat, saleVatRate } from '@/lib/vat';
 import { requireRole } from '@/lib/session';
 
 export async function createCustomer(_prev: ActionState, formData: FormData): Promise<ActionState> {
@@ -46,11 +47,27 @@ export async function createSalesOrder(_prev: ActionState, formData: FormData): 
   let soId: string;
   try {
     soId = await transaction(async (c) => {
-      const number = await nextDocNumber(c, 'ЗАМ');
+      // Продавати самому собі не можна — це не документ, а помилка вибору.
+      const { rows: check } = await c.query<{ legal_entity_id: string | null }>(
+        'select legal_entity_id from customers where id = $1',
+        [customerId],
+      );
+      if (check[0]?.legal_entity_id === session.eid) {
+        throw new Error('Не можна оформити продаж самому собі — перемкніть юрособу або оберіть іншого клієнта');
+      }
+
+      const number = await nextDocNumber(c, session.eid, 'ЗАМ');
       const { rows } = await c.query<{ id: string }>(
-        `insert into sales_orders (number, customer_id, ship_by, note, created_by)
-         values ($1, $2, $3, $4, $5) returning id`,
-        [number, customerId, strOrNull(formData, 'ship_by'), strOrNull(formData, 'note'), session.uid],
+        `insert into sales_orders (number, legal_entity_id, customer_id, ship_by, note, created_by)
+         values ($1, $2, $3, $4, $5, $6) returning id`,
+        [
+          number,
+          session.eid,
+          customerId,
+          strOrNull(formData, 'ship_by'),
+          strOrNull(formData, 'note'),
+          session.uid,
+        ],
       );
       return rows[0].id;
     });
@@ -72,9 +89,15 @@ export async function addSalesLine(_prev: ActionState, formData: FormData): Prom
 
   try {
     await transaction(async (c) => {
-      const { rows: orderRows } = await c.query<{ status: string; price_level: string }>(
-        `select o.status, c.price_level
-           from sales_orders o join customers c on c.id = o.customer_id
+      const { rows: orderRows } = await c.query<{
+        status: string;
+        price_level: string;
+        seller_is_vat_payer: boolean;
+      }>(
+        `select o.status, c.price_level, e.is_vat_payer as seller_is_vat_payer
+           from sales_orders o
+           join customers c on c.id = o.customer_id
+           join legal_entities e on e.id = o.legal_entity_id
           where o.id = $1`,
         [soId],
       );
@@ -82,26 +105,33 @@ export async function addSalesLine(_prev: ActionState, formData: FormData): Prom
       if (!order) throw new Error('Замовлення не знайдено');
       if (order.status !== 'draft') throw new Error('Позиції можна додавати лише в чернетку');
 
-      // Ціну беремо з прайсу за рівнем клієнта, але менеджер може перекрити її вручну.
+      const { rows: itemRows } = await c.query<{
+        price_distributor: number | null;
+        price_network: number | null;
+        price_rrp: number | null;
+        vat_rate: number;
+      }>('select price_distributor, price_network, price_rrp, vat_rate from items where id = $1', [itemId]);
+      const item = itemRows[0];
+      if (!item) throw new Error('Товар не знайдено');
+
+      // Ціни в прайсі зберігаються без ПДВ; менеджер може перекрити їх вручну.
       let price = num(formData, 'unit_price', 0);
       if (price <= 0) {
-        const column =
-          order.price_level === 'rrp'
-            ? 'price_rrp'
+        price =
+          (order.price_level === 'rrp'
+            ? item.price_rrp
             : order.price_level === 'network'
-              ? 'price_network'
-              : 'price_distributor';
-        const { rows: itemRows } = await c.query<{ price: number | null }>(
-          `select ${column} as price from items where id = $1`,
-          [itemId],
-        );
-        price = itemRows[0]?.price ?? 0;
+              ? item.price_network
+              : item.price_distributor) ?? 0;
         if (price <= 0) throw new Error('Для цього товару не заданий прайс — вкажіть ціну вручну');
       }
 
+      // Неплатник ПДВ не нараховує податок узагалі, тож у рядку буде нуль.
+      const rate = saleVatRate(order.seller_is_vat_payer, item.vat_rate);
+
       await c.query(
-        'insert into sales_order_lines (so_id, item_id, qty, unit_price) values ($1, $2, $3, $4)',
-        [soId, itemId, qty, price],
+        'insert into sales_order_lines (so_id, item_id, qty, unit_price, vat_rate) values ($1, $2, $3, $4, $5)',
+        [soId, itemId, qty, price, rate],
       );
     });
   } catch (err) {
@@ -153,8 +183,10 @@ export async function cancelSalesOrder(formData: FormData) {
 }
 
 /**
- * Відвантаження: підбирає партії за FEFO, списує їх зі складу готової продукції
- * і фіксує собівартість саме тих партій, що поїхали клієнту. Звідси береться маржа.
+ * Відвантаження. Підбирає партії продавця за FEFO і фіксує собівартість саме тих
+ * партій, що поїхали. Якщо покупець — власна юрособа, той самий документ
+ * оприбутковує товар у неї: партія фізично та сама, змінюється лише власник,
+ * а собівартість у покупця рахується від його податкового статусу.
  */
 export async function shipSalesOrder(_prev: ActionState, formData: FormData): Promise<ActionState> {
   const session = await requireRole('sales', 'warehouse');
@@ -163,8 +195,28 @@ export async function shipSalesOrder(_prev: ActionState, formData: FormData): Pr
 
   try {
     await transaction(async (c) => {
-      const { rows: orderRows } = await c.query<{ number: string; status: string }>(
-        'select number, status from sales_orders where id = $1 for update',
+      const { rows: orderRows } = await c.query<{
+        number: string;
+        status: string;
+        legal_entity_id: string;
+        seller_is_vat_payer: boolean;
+        seller_name: string;
+        customer_name: string;
+        customer_edrpou: string | null;
+        buyer_entity_id: string | null;
+        buyer_is_vat_payer: boolean | null;
+      }>(
+        `select o.number, o.status, o.legal_entity_id,
+                se.is_vat_payer as seller_is_vat_payer, se.short_name as seller_name,
+                c.name as customer_name, c.edrpou as customer_edrpou,
+                c.legal_entity_id as buyer_entity_id,
+                be.is_vat_payer as buyer_is_vat_payer
+           from sales_orders o
+           join legal_entities se on se.id = o.legal_entity_id
+           join customers c on c.id = o.customer_id
+           left join legal_entities be on be.id = c.legal_entity_id
+          where o.id = $1
+          for update of o`,
         [soId],
       );
       const order = orderRows[0];
@@ -177,16 +229,18 @@ export async function shipSalesOrder(_prev: ActionState, formData: FormData): Pr
         item_id: string;
         qty: number;
         shipped_qty: number;
+        unit_price: number;
+        vat_rate: number;
         name: string;
       }>(
-        `select l.id, l.item_id, l.qty, l.shipped_qty, i.name
+        `select l.id, l.item_id, l.qty, l.shipped_qty, l.unit_price, l.vat_rate, i.name
            from sales_order_lines l join items i on i.id = l.item_id
           where l.so_id = $1 order by i.name`,
         [soId],
       );
 
       const warehouseId = await defaultWarehouseId(c, 'finished');
-      const number = await nextDocNumber(c, 'ВІД');
+      const number = await nextDocNumber(c, order.legal_entity_id, 'ВІД');
 
       const { rows: shipmentRows } = await c.query<{ id: string }>(
         `insert into shipments (number, so_id, shipped_on, ttn_number, carrier, created_by)
@@ -203,6 +257,11 @@ export async function shipSalesOrder(_prev: ActionState, formData: FormData): Pr
       const shipmentId = shipmentRows[0].id;
 
       let shippedLines = 0;
+      let saleNet = 0;
+      let saleVat = 0;
+      let buyerCreditBase = 0;
+      let buyerCreditVat = 0;
+
       for (const line of lines) {
         const remaining = round3(line.qty - line.shipped_qty);
         const qty = round3(num(formData, `qty_${line.id}`, remaining));
@@ -211,11 +270,27 @@ export async function shipSalesOrder(_prev: ActionState, formData: FormData): Pr
           throw new Error(`«${line.name}»: відвантажується більше, ніж у замовленні`);
         }
 
-        const allocations = await allocateFefo(c, line.item_id, warehouseId, qty);
+        const allocations = await allocateFefo(
+          c,
+          line.item_id,
+          warehouseId,
+          order.legal_entity_id,
+          qty,
+        );
+
+        // Собівартість, за якою партія стає на облік у покупця-власної юрособи.
+        const buyerSide = calcPurchaseVat(line.unit_price, {
+          buyerIsVatPayer: order.buyer_is_vat_payer ?? false,
+          supplierIsVatPayer: order.seller_is_vat_payer,
+          itemVatRate: line.vat_rate,
+          pricesIncludeVat: false,
+        });
+
         for (const a of allocations) {
           await insertMoves(c, [
             {
               itemId: line.item_id,
+              legalEntityId: order.legal_entity_id,
               batchId: a.batchId,
               warehouseId,
               qty: -a.qty,
@@ -227,7 +302,31 @@ export async function shipSalesOrder(_prev: ActionState, formData: FormData): Pr
               note: `Відвантаження ${number}`,
             },
           ]);
+
+          if (order.buyer_entity_id) {
+            // Партія лишається та сама — змінюється лише власник і собівартість.
+            await insertMoves(c, [
+              {
+                itemId: line.item_id,
+                legalEntityId: order.buyer_entity_id,
+                batchId: a.batchId,
+                warehouseId,
+                qty: a.qty,
+                unitCost: buyerSide.unitCost,
+                moveType: 'purchase_receipt',
+                docType: 'shipment',
+                docId: shipmentId,
+                userId: session.uid,
+                note: `Придбано в ${order.seller_name} за ${number}`,
+              },
+            ]);
+          }
         }
+
+        saleNet += line.unit_price * qty;
+        saleVat += (line.unit_price * qty * line.vat_rate) / 100;
+        buyerCreditBase += buyerSide.net * qty;
+        buyerCreditVat += buyerSide.credit * qty;
 
         await c.query(
           'insert into shipment_lines (shipment_id, so_line_id, item_id, qty) values ($1, $2, $3, $4)',
@@ -242,6 +341,48 @@ export async function shipSalesOrder(_prev: ActionState, formData: FormData): Pr
 
       if (shippedLines === 0) throw new Error('Не вказано жодної кількості до відвантаження');
 
+      // Податкове зобов'язання продавця за датою відвантаження.
+      if (saleVat > 0.005) {
+        await c.query(
+          `insert into vat_entries
+             (legal_entity_id, kind, doc_type, doc_id, doc_number, occurred_on,
+              base_amount, vat_amount, vat_rate, counterparty_name, counterparty_edrpou)
+           values ($1, 'liability', 'shipment', $2, $3, $4, $5, $6, $7, $8, $9)`,
+          [
+            order.legal_entity_id,
+            shipmentId,
+            number,
+            shippedOn,
+            round2(saleNet),
+            round2(saleVat),
+            lines[0]?.vat_rate ?? 20,
+            order.customer_name,
+            order.customer_edrpou,
+          ],
+        );
+      }
+
+      // Дзеркальний податковий кредит у власної юрособи-покупця.
+      if (order.buyer_entity_id && buyerCreditVat > 0.005) {
+        await c.query(
+          `insert into vat_entries
+             (legal_entity_id, kind, doc_type, doc_id, doc_number, occurred_on,
+              base_amount, vat_amount, vat_rate, counterparty_name, note)
+           values ($1, 'credit', 'shipment', $2, $3, $4, $5, $6, $7, $8, $9)`,
+          [
+            order.buyer_entity_id,
+            shipmentId,
+            number,
+            shippedOn,
+            round2(buyerCreditBase),
+            round2(buyerCreditVat),
+            lines[0]?.vat_rate ?? 20,
+            order.seller_name,
+            'Придбання у власної юрособи',
+          ],
+        );
+      }
+
       const { rows: leftRows } = await c.query<{ left: number }>(
         'select coalesce(sum(qty - shipped_qty), 0) as left from sales_order_lines where so_id = $1',
         [soId],
@@ -253,7 +394,11 @@ export async function shipSalesOrder(_prev: ActionState, formData: FormData): Pr
       await c.query(
         `insert into audit_log (user_id, action, entity, entity_id, details)
          values ($1, 'ship', 'sales_order', $2, $3)`,
-        [session.uid, soId, JSON.stringify({ shipment: number, lines: shippedLines })],
+        [
+          session.uid,
+          soId,
+          JSON.stringify({ shipment: number, lines: shippedLines, internal: !!order.buyer_entity_id }),
+        ],
       );
     });
   } catch (err) {
@@ -276,10 +421,11 @@ export async function recordPayment(_prev: ActionState, formData: FormData): Pro
   try {
     await transaction((c) =>
       c.query(
-        `insert into payments (customer_id, so_id, paid_on, amount, method, note, created_by)
-         values ($1, $2, $3, $4, $5, $6, $7)`,
+        `insert into payments (customer_id, legal_entity_id, so_id, paid_on, amount, method, note, created_by)
+         values ($1, $2, $3, $4, $5, $6, $7, $8)`,
         [
           customerId,
+          session.eid,
           soId,
           str(formData, 'paid_on') || new Date().toISOString().slice(0, 10),
           amount,

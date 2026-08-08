@@ -24,9 +24,10 @@ export default async function ItemCardPage({ params }: { params: Promise<{ itemI
   }>(
     `select i.id, i.sku, i.name, i.kind, i.unit, i.min_stock,
             coalesce(s.qty, 0) as qty, coalesce(s.avg_cost, 0) as avg_cost, coalesce(s.value, 0) as value
-       from items i left join v_item_stock s on s.item_id = i.id
+       from items i
+       left join v_item_stock s on s.item_id = i.id and s.legal_entity_id = $2
       where i.id = $1`,
-    [itemId],
+    [itemId, session.eid],
   );
   if (!item) notFound();
 
@@ -43,9 +44,9 @@ export default async function ItemCardPage({ params }: { params: Promise<{ itemI
          from v_stock_batches sb
          join batches b on b.id = sb.batch_id
          join warehouses w on w.id = sb.warehouse_id
-        where sb.item_id = $1
+        where sb.item_id = $1 and sb.legal_entity_id = $2
         order by b.expires_on nulls last, b.created_at`,
-      [itemId],
+      [itemId, session.eid],
     ),
     query<{
       id: number;
@@ -62,10 +63,10 @@ export default async function ItemCardPage({ params }: { params: Promise<{ itemI
          from stock_moves m
          left join batches b on b.id = m.batch_id
          left join app_users u on u.id = m.user_id
-        where m.item_id = $1
+        where m.item_id = $1 and m.legal_entity_id = $2
         order by m.moved_at desc, m.id desc
         limit 50`,
-      [itemId],
+      [itemId, session.eid],
     ),
   ]);
 

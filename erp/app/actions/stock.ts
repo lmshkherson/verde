@@ -30,11 +30,11 @@ export async function countBatch(_prev: ActionState, formData: FormData): Promis
       if (!batchRows[0]) throw new Error('Партію не знайдено');
       const itemId = batchRows[0].item_id;
 
-      await lockItem(c, itemId);
+      await lockItem(c, itemId, session.eid);
       const { rows } = await c.query<{ qty: number; value: number }>(
         `select qty, value from v_stock_batches
-          where item_id = $1 and warehouse_id = $2 and batch_id = $3`,
-        [itemId, warehouseId, batchId],
+          where item_id = $1 and warehouse_id = $2 and batch_id = $3 and legal_entity_id = $4`,
+        [itemId, warehouseId, batchId, session.eid],
       );
       const current = rows[0]?.qty ?? 0;
       const unitCost = rows[0] && rows[0].qty > 0 ? rows[0].value / rows[0].qty : 0;
@@ -44,6 +44,7 @@ export async function countBatch(_prev: ActionState, formData: FormData): Promis
       await insertMoves(c, [
         {
           itemId,
+          legalEntityId: session.eid,
           batchId,
           warehouseId,
           qty: delta,
@@ -82,11 +83,12 @@ export async function writeOffStock(_prev: ActionState, formData: FormData): Pro
 
   try {
     await transaction(async (c) => {
-      const allocations = await allocateFefo(c, itemId, warehouseId, qty);
+      const allocations = await allocateFefo(c, itemId, warehouseId, session.eid, qty);
       for (const a of allocations) {
         await insertMoves(c, [
           {
             itemId,
+            legalEntityId: session.eid,
             batchId: a.batchId,
             warehouseId,
             qty: -a.qty,
@@ -120,12 +122,13 @@ export async function transferStock(_prev: ActionState, formData: FormData): Pro
 
   try {
     await transaction(async (c) => {
-      const allocations = await allocateFefo(c, itemId, fromId, qty);
+      const allocations = await allocateFefo(c, itemId, fromId, session.eid, qty);
       for (const a of allocations) {
         // Переміщення не змінює собівартість: партія їде разом зі своєю ціною.
         await insertMoves(c, [
           {
             itemId,
+            legalEntityId: session.eid,
             batchId: a.batchId,
             warehouseId: fromId,
             qty: -a.qty,
@@ -136,6 +139,7 @@ export async function transferStock(_prev: ActionState, formData: FormData): Pro
           },
           {
             itemId,
+            legalEntityId: session.eid,
             batchId: a.batchId,
             warehouseId: toId,
             qty: a.qty,

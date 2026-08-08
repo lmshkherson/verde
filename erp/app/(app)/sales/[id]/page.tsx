@@ -16,7 +16,7 @@ const statusTone: Record<string, 'gray' | 'amber' | 'green' | 'red'> = {
 };
 
 export default async function SalesOrderPage({ params }: { params: Promise<{ id: string }> }) {
-  await requireRole('sales');
+  const session = await requireRole('sales');
   const { id } = await params;
 
   const order = await queryOne<{
@@ -29,7 +29,10 @@ export default async function SalesOrderPage({ params }: { params: Promise<{ id:
     customer_name: string;
     price_level: string;
     payment_terms_days: number;
+    net_amount: number;
+    vat_amount: number;
     total_amount: number;
+    shipped_net: number;
     shipped_amount: number;
     cogs: number;
     margin: number;
@@ -55,24 +58,26 @@ export default async function SalesOrderPage({ params }: { params: Promise<{ id:
       unit: string;
       qty: number;
       unit_price: number;
+      vat_rate: number;
       shipped_qty: number;
       stock_available: number;
     }>(
-      `select l.id, l.item_id, i.name, i.sku, i.unit, l.qty, l.unit_price, l.shipped_qty,
+      `select l.id, l.item_id, i.name, i.sku, i.unit, l.qty, l.unit_price, l.vat_rate, l.shipped_qty,
               coalesce(a.available_qty, 0) as stock_available
          from sales_order_lines l
          join items i on i.id = l.item_id
-         left join v_item_available a on a.item_id = l.item_id
+         left join v_item_available a on a.item_id = l.item_id and a.legal_entity_id = $2
         where l.so_id = $1
         order by i.name`,
-      [id],
+      [id, session.eid],
     ),
     query<{ id: string; sku: string; name: string; available_qty: number; unit: string }>(
       `select a.item_id as id, a.sku, a.name, a.available_qty, a.unit
          from v_item_available a
          join items i on i.id = a.item_id
-        where a.kind = 'finished' and i.is_active
+        where a.kind = 'finished' and i.is_active and a.legal_entity_id = $1
         order by a.name`,
+      [session.eid],
     ),
     query<{ id: string; number: string; shipped_on: string; ttn_number: string | null; carrier: string | null }>(
       'select id, number, shipped_on, ttn_number, carrier from shipments where so_id = $1 order by shipped_on',
@@ -97,7 +102,15 @@ export default async function SalesOrderPage({ params }: { params: Promise<{ id:
       />
 
       <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Stat label="Сума замовлення" value={fmtMoney(order.total_amount)} hint={`відвантажити до ${fmtDate(order.ship_by)}`} />
+        <Stat
+          label="Сума з ПДВ"
+          value={fmtMoney(order.total_amount)}
+          hint={
+            order.vat_amount > 0
+              ? `база ${fmtMoney(order.net_amount)} + ПДВ ${fmtMoney(order.vat_amount)}`
+              : 'без ПДВ'
+          }
+        />
         <Stat
           label="Відвантажено"
           value={fmtMoney(order.shipped_amount)}
@@ -105,8 +118,12 @@ export default async function SalesOrderPage({ params }: { params: Promise<{ id:
         />
         <Stat
           label="Маржа"
-          value={order.shipped_amount > 0 ? fmtMoney(order.margin) : '—'}
-          hint={order.shipped_amount > 0 ? `${order.margin_pct}% · собівартість ${fmtMoney(order.cogs)}` : undefined}
+          value={order.shipped_net > 0 ? fmtMoney(order.margin) : '—'}
+          hint={
+            order.shipped_amount > 0
+              ? `${order.margin_pct}% від бази без ПДВ · собівартість ${fmtMoney(order.cogs)}`
+              : undefined
+          }
           tone={order.margin > 0 ? 'good' : 'default'}
         />
         <div className="rounded-2xl border border-emerald-900/10 bg-white p-4 shadow-sm">
@@ -138,7 +155,7 @@ export default async function SalesOrderPage({ params }: { params: Promise<{ id:
           {lines.length === 0 ? (
             <Empty>Додайте товар у замовлення</Empty>
           ) : (
-            <Table head={['Товар', 'Кількість', 'Ціна', 'Сума', 'Відвантажено', 'Доступно', ...(isDraft ? [''] : [])]}>
+            <Table head={['Товар', 'Кількість', 'Ціна без ПДВ', 'Сума без ПДВ', 'ПДВ', 'Відвантажено', 'Доступно', ...(isDraft ? [''] : [])]}>
               {lines.map((l) => (
                 <Row key={l.id}>
                   <Cell>
@@ -149,6 +166,16 @@ export default async function SalesOrderPage({ params }: { params: Promise<{ id:
                   <Cell align="right">{fmtMoney(l.unit_price)}</Cell>
                   <Cell align="right" className="font-semibold">
                     {fmtMoney(l.qty * l.unit_price)}
+                  </Cell>
+                  <Cell align="right">
+                    {l.vat_rate > 0 ? (
+                      <>
+                        {fmtMoney((l.qty * l.unit_price * l.vat_rate) / 100)}
+                        <div className="text-xs text-emerald-800/50">{l.vat_rate}%</div>
+                      </>
+                    ) : (
+                      '—'
+                    )}
                   </Cell>
                   <Cell align="right">{fmtQty(l.shipped_qty)}</Cell>
                   <Cell align="right">
@@ -192,7 +219,7 @@ export default async function SalesOrderPage({ params }: { params: Promise<{ id:
               <Field label="Кількість, шт">
                 <input name="qty" type="number" step="1" min="1" required className={inputClass} />
               </Field>
-              <Field label="Ціна за одиницю" hint="Порожньо — візьметься з прайсу клієнта">
+              <Field label="Ціна без ПДВ" hint="Порожньо — візьметься з прайсу клієнта">
                 <input name="unit_price" type="number" step="0.01" min="0" className={inputClass} />
               </Field>
             </ActionForm>

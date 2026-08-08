@@ -95,13 +95,14 @@ export async function createProductionOrder(_prev: ActionState, formData: FormDa
       );
       if (!recipeRows[0]) throw new Error('Рецептуру не знайдено');
 
-      const number = await nextDocNumber(c, 'ВИР');
+      const number = await nextDocNumber(c, session.eid, 'ВИР');
       const { rows } = await c.query<{ id: string }>(
         `insert into production_orders
-           (number, product_item_id, recipe_id, planned_qty, planned_for, note, created_by)
-         values ($1, $2, $3, $4, $5, $6, $7) returning id`,
+           (number, legal_entity_id, product_item_id, recipe_id, planned_qty, planned_for, note, created_by)
+         values ($1, $2, $3, $4, $5, $6, $7, $8) returning id`,
         [
           number,
+          session.eid,
           recipeRows[0].product_item_id,
           recipeId,
           plannedQty,
@@ -168,13 +169,15 @@ export async function completeProduction(_prev: ActionState, formData: FormData)
         status: string;
         product_item_id: string;
         recipe_id: string;
+        legal_entity_id: string;
         planned_qty: number;
         output_qty: number;
         product_kind: string;
         shelf_life_days: number | null;
         sku: string;
       }>(
-        `select po.id, po.number, po.status, po.product_item_id, po.recipe_id, po.planned_qty,
+        `select po.id, po.number, po.status, po.product_item_id, po.recipe_id,
+                po.legal_entity_id, po.planned_qty,
                 r.output_qty, i.kind as product_kind, i.shelf_life_days, i.sku
            from production_orders po
            join recipes r on r.id = po.recipe_id
@@ -219,12 +222,19 @@ export async function completeProduction(_prev: ActionState, formData: FormData)
         const qty = round3(num(formData, `consume_${line.item_id}`, suggested));
         if (qty <= 0) continue;
 
-        const allocations = await allocateFefo(c, line.item_id, rawWarehouseId, qty);
+        const allocations = await allocateFefo(
+          c,
+          line.item_id,
+          rawWarehouseId,
+          order.legal_entity_id,
+          qty,
+        );
         for (const a of allocations) {
           materialCost += a.qty * a.unitCost;
           await insertMoves(c, [
             {
               itemId: line.item_id,
+              legalEntityId: order.legal_entity_id,
               batchId: a.batchId,
               warehouseId: rawWarehouseId,
               qty: -a.qty,
@@ -259,6 +269,7 @@ export async function completeProduction(_prev: ActionState, formData: FormData)
       await insertMoves(c, [
         {
           itemId: order.product_item_id,
+          legalEntityId: order.legal_entity_id,
           batchId: batchRows[0].id,
           warehouseId: outputWarehouseId,
           qty: producedQty,

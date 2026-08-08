@@ -35,9 +35,9 @@ export default async function StockPage({
     `select a.item_id, a.sku, a.name, a.unit, a.qty, a.reserved_qty, a.available_qty, a.avg_cost
        from v_item_available a
        join items i on i.id = a.item_id
-      where a.kind = $1 and i.is_active
+      where a.kind = $1 and a.legal_entity_id = $2 and i.is_active
       order by a.name`,
-    [kind],
+    [kind, session.eid],
   );
 
   const totalValue = rows.reduce((sum, r) => sum + r.qty * r.avg_cost, 0);

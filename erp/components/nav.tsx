@@ -3,6 +3,57 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { logout } from '@/app/actions/auth';
+import { switchEntity } from '@/app/actions/entities';
+
+export interface EntityOption {
+  id: string;
+  short_name: string;
+  is_vat_payer: boolean;
+}
+
+/**
+ * Перемикач юрособи. Показуємо статус платника ПДВ поруч із назвою — від нього
+ * залежать і ціни, і собівартість, тож користувач має бачити, де він працює.
+ */
+export function EntitySwitcher({
+  entities,
+  currentId,
+  compact = false,
+}: {
+  entities: EntityOption[];
+  currentId: string;
+  compact?: boolean;
+}) {
+  const current = entities.find((e) => e.id === currentId);
+
+  if (entities.length <= 1) {
+    return (
+      <div className={compact ? 'text-[11px] text-emerald-800/60' : 'px-2 text-xs text-emerald-800/60'}>
+        {current?.short_name}
+        {current?.is_vat_payer ? ' · з ПДВ' : ' · без ПДВ'}
+      </div>
+    );
+  }
+
+  return (
+    <form action={switchEntity} className={compact ? '' : 'px-2'}>
+      <select
+        name="entity_id"
+        defaultValue={currentId}
+        onChange={(e) => e.currentTarget.form?.requestSubmit()}
+        className={`w-full rounded-lg border border-emerald-900/15 bg-white font-semibold text-emerald-900 ${
+          compact ? 'px-2 py-1 text-xs' : 'px-2 py-2 text-sm'
+        }`}
+      >
+        {entities.map((e) => (
+          <option key={e.id} value={e.id}>
+            {e.short_name} {e.is_vat_payer ? '· з ПДВ' : '· без ПДВ'}
+          </option>
+        ))}
+      </select>
+    </form>
+  );
+}
 
 export interface NavItem {
   href: string;
@@ -15,13 +66,28 @@ function isActive(pathname: string, href: string) {
   return href === '/' ? pathname === '/' : pathname.startsWith(href);
 }
 
-export function Sidebar({ items, name, roleLabel }: { items: NavItem[]; name: string; roleLabel: string }) {
+export function Sidebar({
+  items,
+  name,
+  roleLabel,
+  entities,
+  currentEntityId,
+}: {
+  items: NavItem[];
+  name: string;
+  roleLabel: string;
+  entities: EntityOption[];
+  currentEntityId: string;
+}) {
   const pathname = usePathname();
 
   return (
     <aside className="no-print hidden w-60 shrink-0 flex-col border-r border-emerald-900/10 bg-white lg:flex">
       <div className="px-5 py-5 text-xl font-black tracking-wide text-emerald-900">
         VERDE <span className="rounded-md bg-emerald-500 px-1.5 text-white">ERP</span>
+      </div>
+      <div className="px-3 pb-3">
+        <EntitySwitcher entities={entities} currentId={currentEntityId} />
       </div>
       <nav className="flex-1 space-y-1 px-3">
         {items.map((item) => (
@@ -54,13 +120,24 @@ export function Sidebar({ items, name, roleLabel }: { items: NavItem[]; name: st
   );
 }
 
-export function TopBar({ name, roleLabel }: { name: string; roleLabel: string }) {
+export function TopBar({
+  name,
+  roleLabel,
+  entities,
+  currentEntityId,
+}: {
+  name: string;
+  roleLabel: string;
+  entities: EntityOption[];
+  currentEntityId: string;
+}) {
   return (
     <header className="no-print flex items-center justify-between border-b border-emerald-900/10 bg-white px-4 py-3 lg:hidden">
       <div className="text-lg font-black tracking-wide text-emerald-900">
         VERDE <span className="rounded-md bg-emerald-500 px-1.5 text-white">ERP</span>
       </div>
       <div className="flex items-center gap-3">
+        <EntitySwitcher entities={entities} currentId={currentEntityId} compact />
         <div className="text-right">
           <div className="max-w-32 truncate text-xs font-semibold text-emerald-950">{name}</div>
           <div className="text-[11px] text-emerald-800/60">{roleLabel}</div>

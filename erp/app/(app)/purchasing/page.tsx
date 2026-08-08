@@ -16,7 +16,7 @@ const statusTone: Record<string, 'gray' | 'amber' | 'green' | 'red'> = {
 };
 
 export default async function PurchasingPage() {
-  await requireRole('warehouse');
+  const session = await requireRole('warehouse');
 
   const [orders, suppliers, shortages] = await Promise.all([
     query<{
@@ -35,11 +35,12 @@ export default async function PurchasingPage() {
         from purchase_orders p
         join suppliers s on s.id = p.supplier_id
         left join v_po_totals t on t.po_id = p.id
+       where p.legal_entity_id = $1
        order by
          case p.status when 'ordered' then 0 when 'draft' then 1 else 2 end,
          p.ordered_on desc
        limit 100
-    `),
+    `, [session.eid]),
     query<{ id: string; name: string }>('select id, name from suppliers where is_active order by name'),
     query<{ sku: string; name: string; qty: number; min_stock: number; unit: string }>(
       "select sku, name, qty, min_stock, unit from v_low_stock where kind in ('raw','packaging') order by qty / nullif(min_stock, 0)",
@@ -146,6 +147,15 @@ export default async function PurchasingPage() {
               <Field label="Примітка">
                 <input name="note" className={inputClass} />
               </Field>
+              <label className="flex items-center gap-2 py-1">
+                <input
+                  name="prices_include_vat"
+                  type="checkbox"
+                  defaultChecked
+                  className="size-5 accent-emerald-700"
+                />
+                <span className="text-sm font-semibold text-emerald-900">Ціни вказані з ПДВ</span>
+              </label>
             </ActionForm>
           )}
         </Card>

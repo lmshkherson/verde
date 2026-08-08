@@ -17,7 +17,7 @@ const statusTone: Record<string, 'gray' | 'amber' | 'green' | 'red'> = {
 };
 
 export default async function ProductionOrderPage({ params }: { params: Promise<{ id: string }> }) {
-  await requireRole('production');
+  const session = await requireRole('production');
   const { id } = await params;
 
   const order = await queryOne<{
@@ -67,10 +67,10 @@ export default async function ProductionOrderPage({ params }: { params: Promise<
               coalesce(s.qty, 0) as available, coalesce(s.avg_cost, 0) as avg_cost
          from recipe_lines rl
          join items i on i.id = rl.item_id
-         left join v_item_stock s on s.item_id = rl.item_id
+         left join v_item_stock s on s.item_id = rl.item_id and s.legal_entity_id = $2
         where rl.recipe_id = $1
         order by i.name`,
-      [order.recipe_id],
+      [order.recipe_id, session.eid],
     ),
     query<{ name: string; unit: string; qty: number; unit_cost: number; batch_code: string | null }>(
       `select i.name, i.unit, -m.qty as qty, m.unit_cost, b.code as batch_code

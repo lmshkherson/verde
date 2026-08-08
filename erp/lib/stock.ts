@@ -13,6 +13,8 @@ export type MoveType =
 
 export interface MoveInput {
   itemId: string;
+  /** Чия це власність. Склад спільний, тож без юрособи рух безадресний. */
+  legalEntityId: string;
   batchId?: string | null;
   warehouseId: string;
   /** Додатне — прихід, від'ємне — видаток. */
@@ -49,8 +51,15 @@ export class InsufficientStockError extends Error {
  * Блокує номенклатуру до кінця транзакції. Без цього дві одночасні операції
  * можуть списати ту саму партію двічі й загнати залишок у мінус.
  */
-export async function lockItem(client: PoolClient, itemId: string): Promise<void> {
-  await client.query('select pg_advisory_xact_lock(hashtextextended($1, 0))', [itemId]);
+export async function lockItem(
+  client: PoolClient,
+  itemId: string,
+  legalEntityId: string,
+): Promise<void> {
+  await client.query('select pg_advisory_xact_lock(hashtextextended($1 || $2, 0))', [
+    itemId,
+    legalEntityId,
+  ]);
 }
 
 export async function insertMoves(client: PoolClient, moves: MoveInput[]): Promise<void> {
@@ -58,10 +67,12 @@ export async function insertMoves(client: PoolClient, moves: MoveInput[]): Promi
     if (m.qty === 0) continue;
     await client.query(
       `insert into stock_moves
-         (item_id, batch_id, warehouse_id, qty, unit_cost, move_type, doc_type, doc_id, user_id, note)
-       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+         (item_id, legal_entity_id, batch_id, warehouse_id, qty, unit_cost, move_type,
+          doc_type, doc_id, user_id, note)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
       [
         m.itemId,
+        m.legalEntityId,
         m.batchId ?? null,
         m.warehouseId,
         m.qty,
@@ -85,9 +96,10 @@ export async function allocateFefo(
   client: PoolClient,
   itemId: string,
   warehouseId: string,
+  legalEntityId: string,
   qty: number,
 ): Promise<Allocation[]> {
-  await lockItem(client, itemId);
+  await lockItem(client, itemId, legalEntityId);
 
   const { rows } = await client.query<{
     batch_id: string;
@@ -97,9 +109,9 @@ export async function allocateFefo(
     `select sb.batch_id, sb.qty, sb.value
        from v_stock_batches sb
        join batches b on b.id = sb.batch_id
-      where sb.item_id = $1 and sb.warehouse_id = $2 and sb.qty > 0
+      where sb.item_id = $1 and sb.warehouse_id = $2 and sb.legal_entity_id = $3 and sb.qty > 0
       order by b.expires_on asc nulls last, b.created_at asc`,
-    [itemId, warehouseId],
+    [itemId, warehouseId, legalEntityId],
   );
 
   const available = rows.reduce((sum, r) => sum + r.qty, 0);
@@ -132,10 +144,14 @@ export async function allocateFefo(
 }
 
 /** Середньозважена собівартість номенклатури за всім складом. */
-export async function itemAvgCost(client: PoolClient, itemId: string): Promise<number> {
+export async function itemAvgCost(
+  client: PoolClient,
+  itemId: string,
+  legalEntityId: string,
+): Promise<number> {
   const { rows } = await client.query<{ avg_cost: number }>(
-    'select avg_cost from v_item_stock where item_id = $1',
-    [itemId],
+    'select avg_cost from v_item_stock where item_id = $1 and legal_entity_id = $2',
+    [itemId, legalEntityId],
   );
   return rows[0]?.avg_cost ?? 0;
 }
@@ -153,10 +169,14 @@ export async function defaultWarehouseId(
   return rows[0].id;
 }
 
-export async function nextDocNumber(client: PoolClient, prefix: string): Promise<string> {
+export async function nextDocNumber(
+  client: PoolClient,
+  legalEntityId: string,
+  prefix: string,
+): Promise<string> {
   const { rows } = await client.query<{ next_doc_number: string }>(
-    'select next_doc_number($1)',
-    [prefix],
+    'select next_doc_number($1, $2)',
+    [legalEntityId, prefix],
   );
   return rows[0].next_doc_number;
 }
