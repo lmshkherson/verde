@@ -1,0 +1,230 @@
+import { notFound } from 'next/navigation';
+import { addPurchaseLine, cancelPurchaseOrder, markOrdered, receivePurchaseOrder, removePurchaseLine } from '@/app/actions/purchasing';
+import { ActionForm } from '@/components/action-form';
+import { Badge, Button, Card, Cell, Empty, Field, inputClass, LinkButton, PageHeader, Row, Stat, Table } from '@/components/ui';
+import { query, queryOne } from '@/lib/db';
+import { fmtDate, fmtMoney, fmtQty, PO_STATUS, unitLabel } from '@/lib/format';
+import { requireRole } from '@/lib/session';
+
+export const dynamic = 'force-dynamic';
+
+const statusTone: Record<string, 'gray' | 'amber' | 'green' | 'red'> = {
+  draft: 'gray',
+  ordered: 'amber',
+  received: 'green',
+  cancelled: 'red',
+};
+
+export default async function PurchaseOrderPage({ params }: { params: Promise<{ id: string }> }) {
+  await requireRole('warehouse');
+  const { id } = await params;
+
+  const po = await queryOne<{
+    id: string;
+    number: string;
+    status: string;
+    ordered_on: string;
+    expected_on: string | null;
+    note: string | null;
+    supplier: string;
+    payment_terms_days: number;
+    total_amount: number;
+    received_amount: number;
+  }>(
+    `select p.id, p.number, p.status, p.ordered_on, p.expected_on, p.note,
+            s.name as supplier, s.payment_terms_days,
+            t.total_amount, t.received_amount
+       from purchase_orders p
+       join suppliers s on s.id = p.supplier_id
+       left join v_po_totals t on t.po_id = p.id
+      where p.id = $1`,
+    [id],
+  );
+  if (!po) notFound();
+
+  const [lines, items] = await Promise.all([
+    query<{
+      id: string;
+      item_id: string;
+      name: string;
+      sku: string;
+      unit: string;
+      qty: number;
+      unit_price: number;
+      received_qty: number;
+      shelf_life_days: number | null;
+    }>(
+      `select l.id, l.item_id, i.name, i.sku, i.unit, l.qty, l.unit_price, l.received_qty, i.shelf_life_days
+         from purchase_order_lines l
+         join items i on i.id = l.item_id
+        where l.po_id = $1
+        order by i.name`,
+      [id],
+    ),
+    query<{ id: string; sku: string; name: string; unit: string }>(
+      "select id, sku, name, unit from items where kind in ('raw','packaging') and is_active order by name",
+    ),
+  ]);
+
+  const isDraft = po.status === 'draft';
+  const canReceive = po.status === 'ordered' || (po.status === 'draft' && lines.length > 0);
+  const pending = lines.filter((l) => l.qty - l.received_qty > 0.0005);
+
+  return (
+    <>
+      <PageHeader
+        title={`Заявка ${po.number}`}
+        subtitle={`${po.supplier} · від ${fmtDate(po.ordered_on)}`}
+        action={<LinkButton href="/purchasing">← До списку</LinkButton>}
+      />
+
+      <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <Stat label="Сума заявки" value={fmtMoney(po.total_amount)} />
+        <Stat label="Оприбутковано" value={fmtMoney(po.received_amount)} />
+        <Stat
+          label="Очікуємо"
+          value={po.expected_on ? fmtDate(po.expected_on) : '—'}
+          hint={po.payment_terms_days > 0 ? `оплата +${po.payment_terms_days} дн.` : undefined}
+        />
+        <div className="rounded-2xl border border-emerald-900/10 bg-white p-4 shadow-sm">
+          <div className="text-xs font-semibold uppercase tracking-wide text-emerald-800/60">Статус</div>
+          <div className="mt-2">
+            <Badge tone={statusTone[po.status]}>{PO_STATUS[po.status]}</Badge>
+          </div>
+          {(isDraft || po.status === 'ordered') && (
+            <div className="mt-3 flex gap-2">
+              {isDraft && lines.length > 0 && (
+                <form action={markOrdered}>
+                  <input type="hidden" name="po_id" value={po.id} />
+                  <Button className="!min-h-9 !px-3 text-xs">Замовлено</Button>
+                </form>
+              )}
+              <form action={cancelPurchaseOrder}>
+                <input type="hidden" name="po_id" value={po.id} />
+                <Button variant="ghost" className="!min-h-9 !px-3 text-xs">
+                  Скасувати
+                </Button>
+              </form>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="grid gap-4">
+        <Card title="Позиції заявки">
+          {lines.length === 0 ? (
+            <Empty>Додайте позиції</Empty>
+          ) : (
+            <Table head={['Позиція', 'Кількість', 'Ціна', 'Сума', 'Прийнято', ...(isDraft ? [''] : [])]}>
+              {lines.map((l) => (
+                <Row key={l.id}>
+                  <Cell>
+                    <div className="font-semibold">{l.name}</div>
+                    <div className="text-xs text-emerald-800/50">{l.sku}</div>
+                  </Cell>
+                  <Cell align="right">{fmtQty(l.qty, unitLabel(l.unit))}</Cell>
+                  <Cell align="right">{fmtMoney(l.unit_price)}</Cell>
+                  <Cell align="right" className="font-semibold">
+                    {fmtMoney(l.qty * l.unit_price)}
+                  </Cell>
+                  <Cell align="right">{fmtQty(l.received_qty)}</Cell>
+                  {isDraft && (
+                    <Cell align="right">
+                      <form action={removePurchaseLine}>
+                        <input type="hidden" name="line_id" value={l.id} />
+                        <input type="hidden" name="po_id" value={po.id} />
+                        <Button variant="ghost" className="!min-h-9 !px-3 text-xs">
+                          Видалити
+                        </Button>
+                      </form>
+                    </Cell>
+                  )}
+                </Row>
+              ))}
+            </Table>
+          )}
+        </Card>
+
+        {isDraft && (
+          <Card title="Додати позицію">
+            <ActionForm action={addPurchaseLine} submitLabel="Додати" className="sm:max-w-md">
+              <input type="hidden" name="po_id" value={po.id} />
+              <Field label="Сировина або пакування">
+                <select name="item_id" required className={inputClass} defaultValue="">
+                  <option value="" disabled>
+                    Оберіть позицію…
+                  </option>
+                  {items.map((i) => (
+                    <option key={i.id} value={i.id}>
+                      {i.name} ({unitLabel(i.unit)})
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <Field label="Кількість">
+                <input name="qty" type="number" step="0.001" min="0" required className={inputClass} />
+              </Field>
+              <Field label="Ціна за одиницю">
+                <input name="unit_price" type="number" step="0.0001" min="0" required className={inputClass} />
+              </Field>
+            </ActionForm>
+          </Card>
+        )}
+
+        {canReceive && pending.length > 0 && (
+          <Card title="Оприбуткування">
+            <ActionForm action={receivePurchaseOrder} submitLabel="Оприбуткувати на склад">
+              <input type="hidden" name="po_id" value={po.id} />
+              <Field label="Дата приходу">
+                <input
+                  name="received_on"
+                  type="date"
+                  defaultValue={new Date().toISOString().slice(0, 10)}
+                  className={`${inputClass} sm:max-w-xs`}
+                />
+              </Field>
+              <div className="space-y-2">
+                {pending.map((l) => (
+                  <div key={l.id} className="rounded-xl border border-emerald-900/10 bg-emerald-50/40 p-3">
+                    <div className="mb-2 font-semibold text-emerald-950">
+                      {l.name}
+                      <span className="ml-2 text-xs font-normal text-emerald-800/60">
+                        очікується {fmtQty(l.qty - l.received_qty, unitLabel(l.unit))} по{' '}
+                        {fmtMoney(l.unit_price)}
+                      </span>
+                    </div>
+                    <div className="grid gap-2 sm:grid-cols-3">
+                      <Field label="Прийнято">
+                        <input
+                          name={`qty_${l.id}`}
+                          type="number"
+                          step="0.001"
+                          min="0"
+                          defaultValue={l.qty - l.received_qty}
+                          className={inputClass}
+                        />
+                      </Field>
+                      <Field label="Номер партії">
+                        <input name={`batch_${l.id}`} className={inputClass} placeholder="від постачальника" />
+                      </Field>
+                      <Field
+                        label="Придатна до"
+                        hint={l.shelf_life_days ? `за замовчуванням +${l.shelf_life_days} дн.` : undefined}
+                      >
+                        <input name={`expires_${l.id}`} type="date" className={inputClass} />
+                      </Field>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <p className="text-xs text-emerald-800/60">
+                Ціна із заявки стає собівартістю партії — саме звідси вона потрапляє у розрахунок
+                вартості продукції.
+              </p>
+            </ActionForm>
+          </Card>
+        )}
+      </div>
+    </>
+  );
+}
