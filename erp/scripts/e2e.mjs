@@ -23,8 +23,11 @@ const check = (name, condition, detail = '') => {
   if (!condition) failures += 1;
 };
 
-const money = (text) =>
-  Number(String(text).replace(/[^\d,.-]/g, '').replace(/\s/g, '').replace(',', '.'));
+/** Перше число з тексту. Поруч часто стоять дати й інші суми, тож беремо саме перше. */
+const money = (text) => {
+  const match = String(text).match(/-?\d[\d\s\u00a0]*(?:[.,]\d+)?/);
+  return match ? Number(match[0].replace(/[\s\u00a0]/g, '').replace(',', '.')) : NaN;
+};
 
 const near = (a, b, eps = 0.05) => Math.abs(a - b) < eps;
 
@@ -37,9 +40,14 @@ async function selectByText(page, selector, substring) {
   await page.selectOption(selector, value);
 }
 
-/** Значення з плитки-показника: підпис, під ним число. */
+/** Значення з плитки-показника за її підписом. */
 async function stat(page, label) {
-  return money(await page.locator(`text=${label}`).first().locator('..').locator('div').nth(1).innerText());
+  return money(await page.locator(`[data-stat="${label}"] [data-stat-value]`).first().innerText());
+}
+
+/** Комірки рядка таблиці за підрядком у ньому. */
+async function rowCells(page, substring) {
+  return page.locator('tr', { hasText: substring }).first().locator('td').allInnerTexts();
 }
 
 /** Собівартість позиції на складі поточної юрособи. */
@@ -286,7 +294,77 @@ try {
       (await owner.locator('text=Верде Фудс').count()) > 0,
   );
 
-  // ─── 8. Права доступу ──────────────────────────────────────────────────────
+  // ─── 8. Кредиторка: борг постачальнику з ПДВ ───────────────────────────────
+  console.log('\nКредиторка перед постачальниками');
+  await warehouse.goto(`${BASE}/purchasing/suppliers`);
+
+  const suhoCells = await rowCells(warehouse, 'Сухофрукт');
+  const billed = money(suhoCells[3]);
+  const debt = money(suhoCells[5]);
+  check(
+    'борг постачальнику — повна сума з ПДВ, а не собівартість',
+    near(billed, 126500, 1) && near(debt, 126500, 1),
+    `нараховано ${billed}, борг ${debt} грн`,
+  );
+
+  // Платимо половину — борг має зменшитись рівно на суму платежу.
+  await selectByText(warehouse, 'form:has(input[name="amount"]) select[name="supplier_id"]', 'Сухофрукт');
+  await warehouse.fill('input[name="amount"]', '60000');
+  await warehouse.click('button:has-text("Записати оплату")');
+  await warehouse.waitForTimeout(1200);
+  await warehouse.reload();
+
+  const afterPay = await rowCells(warehouse, 'Сухофрукт');
+  check('оплата зменшила кредиторку', near(money(afterPay[5]), 66500, 1), `${money(afterPay[5])} грн`);
+
+  // ─── 9. Фінансовий результат ───────────────────────────────────────────────
+  console.log('\nЗвіт про фінансовий результат');
+  await owner.goto(`${BASE}/pl`);
+
+  const revenue = await stat(owner, 'Дохід без ПДВ');
+  const grossProfit = await stat(owner, 'Валовий прибуток');
+  const result = await stat(owner, 'Фінансовий результат');
+
+  // Мережа 640 × 29,75 + власний ФОП 300 × 21,50
+  check(
+    'у дохід потрапила сума БЕЗ ПДВ',
+    near(revenue, 640 * 29.75 + 300 * 21.5, 1),
+    `${revenue} грн`,
+  );
+  check('до оплати праці валовий = дохід − собівартість', grossProfit > 0, `${grossProfit} грн`);
+  check('без операційних витрат результат = валовому', near(result, grossProfit, 1), `${result} грн`);
+
+  // Вносимо оренду й перевіряємо, що в P&L лягла база, а ПДВ пішов у кредит.
+  await owner.selectOption('select[name="category"]', 'rent');
+  await owner.fill('input[name="amount_net"]', '25000');
+  await owner.fill('input[name="vat_amount"]', '5000');
+  await owner.fill('input[name="description"]', 'Оренда цеху');
+  await owner.click('button:has-text("Записати витрату")');
+  await owner.waitForTimeout(1300);
+  await owner.reload();
+
+  const resultAfter = await stat(owner, 'Фінансовий результат');
+  check(
+    'у витрати пішла база 25 000, а не 30 000 з ПДВ',
+    near(resultAfter, result - 25000, 1),
+    `${resultAfter} грн`,
+  );
+
+  const vatBlock = await owner.locator('text=Довідково').locator('..').innerText();
+  check(
+    'ПДВ, дебіторка й кредиторка показані поза фінрезультатом',
+    vatBlock.includes('Дебіторка') && vatBlock.includes('Кредиторка'),
+    vatBlock.replace(/\s+/g, ' ').slice(0, 140),
+  );
+
+  const receivable = money(vatBlock.split('Дебіторка (з ПДВ)')[1]);
+  check(
+    'дебіторка — з ПДВ (22 848 + 7 740)',
+    near(receivable, 22848 + 7740, 1),
+    `${receivable} грн`,
+  );
+
+  // ─── 10. Права доступу ─────────────────────────────────────────────────────
   console.log('\nПрава доступу');
   const denied = await warehouse.goto(`${BASE}/reports`);
   check('комірника не пускає у звіти', denied.url().includes('denied=1'));

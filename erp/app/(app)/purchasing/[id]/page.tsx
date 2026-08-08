@@ -1,9 +1,10 @@
 import { notFound } from 'next/navigation';
 import { addPurchaseLine, cancelPurchaseOrder, markOrdered, receivePurchaseOrder, removePurchaseLine } from '@/app/actions/purchasing';
+import { recordSupplierPayment } from '@/app/actions/finance';
 import { ActionForm } from '@/components/action-form';
 import { Badge, Button, Card, Cell, Empty, Field, inputClass, LinkButton, PageHeader, Row, Stat, Table } from '@/components/ui';
 import { query, queryOne } from '@/lib/db';
-import { fmtDate, fmtMoney, fmtQty, PO_STATUS, unitLabel } from '@/lib/format';
+import { fmtDate, fmtMoney, fmtQty, PAY_METHODS, PO_STATUS, unitLabel } from '@/lib/format';
 import { requireRole } from '@/lib/session';
 
 export const dynamic = 'force-dynamic';
@@ -28,21 +29,27 @@ export default async function PurchaseOrderPage({ params }: { params: Promise<{ 
     note: string | null;
     supplier: string;
     payment_terms_days: number;
-    total_amount: number;
-    received_amount: number;
+    supplier_id: string;
+    net_amount: number;
+    gross_amount: number;
+    received_net: number;
+    received_gross: number;
+    paid_amount: number;
     prices_include_vat: boolean;
     buyer_is_vat_payer: boolean;
     supplier_is_vat_payer: boolean;
   }>(
     `select p.id, p.number, p.status, p.ordered_on, p.expected_on, p.note,
             s.name as supplier, s.payment_terms_days,
-            t.total_amount, t.received_amount,
+            p.supplier_id,
+            a.net_amount, a.gross_amount, a.received_net, a.received_gross,
+            coalesce((select sum(sp.amount) from supplier_payments sp where sp.po_id = p.id), 0) as paid_amount,
             p.prices_include_vat, s.is_vat_payer as supplier_is_vat_payer,
             e.is_vat_payer as buyer_is_vat_payer
        from purchase_orders p
        join suppliers s on s.id = p.supplier_id
        join legal_entities e on e.id = p.legal_entity_id
-       left join v_po_totals t on t.po_id = p.id
+       left join v_po_amounts a on a.po_id = p.id
       where p.id = $1`,
     [id],
   );
@@ -95,12 +102,21 @@ export default async function PurchaseOrderPage({ params }: { params: Promise<{ 
       />
 
       <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Stat label="Сума заявки" value={fmtMoney(po.total_amount)} />
-        <Stat label="Оприбутковано" value={fmtMoney(po.received_amount)} />
         <Stat
-          label="Очікуємо"
-          value={po.expected_on ? fmtDate(po.expected_on) : '—'}
-          hint={po.payment_terms_days > 0 ? `оплата +${po.payment_terms_days} дн.` : undefined}
+          label="Сума з ПДВ"
+          value={fmtMoney(po.gross_amount)}
+          hint={`база ${fmtMoney(po.net_amount)} + ПДВ ${fmtMoney(po.gross_amount - po.net_amount)}`}
+        />
+        <Stat
+          label="У собівартість"
+          value={fmtMoney(po.buyer_is_vat_payer ? po.received_net : po.received_gross)}
+          hint="оприбутковано без ПДВ"
+        />
+        <Stat
+          label="Борг постачальнику"
+          value={fmtMoney(po.received_gross - po.paid_amount)}
+          tone={po.received_gross - po.paid_amount > 0.01 ? 'warn' : 'good'}
+          hint={po.payment_terms_days > 0 ? `відтермінування ${po.payment_terms_days} дн.` : 'з ПДВ'}
         />
         <div className="rounded-2xl border border-emerald-900/10 bg-white p-4 shadow-sm">
           <div className="text-xs font-semibold uppercase tracking-wide text-emerald-800/60">Статус</div>
@@ -160,6 +176,49 @@ export default async function PurchaseOrderPage({ params }: { params: Promise<{ 
             </Table>
           )}
         </Card>
+
+        {po.received_gross - po.paid_amount > 0.01 && (
+          <Card title="Оплата постачальнику">
+            <p className="mb-3 text-sm text-emerald-800/70">
+              Платимо повну суму з ПДВ — {fmtMoney(po.received_gross)}, з яких{' '}
+              {fmtMoney(po.received_gross - po.received_net)} податок. У витрати й собівартість
+              пішла лише база.
+            </p>
+            <ActionForm action={recordSupplierPayment} submitLabel="Записати оплату" className="sm:max-w-md">
+              <input type="hidden" name="po_id" value={po.id} />
+              <input type="hidden" name="supplier_id" value={po.supplier_id} />
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Field label="Сума з ПДВ">
+                  <input
+                    name="amount"
+                    type="number"
+                    step="0.01"
+                    defaultValue={(po.received_gross - po.paid_amount).toFixed(2)}
+                    required
+                    className={inputClass}
+                  />
+                </Field>
+                <Field label="Дата">
+                  <input
+                    name="paid_on"
+                    type="date"
+                    defaultValue={new Date().toISOString().slice(0, 10)}
+                    className={inputClass}
+                  />
+                </Field>
+              </div>
+              <Field label="Спосіб">
+                <select name="method" className={inputClass} defaultValue="bank">
+                  {Object.entries(PAY_METHODS).map(([key, label]) => (
+                    <option key={key} value={key}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            </ActionForm>
+          </Card>
+        )}
 
         {isDraft && (
           <Card title="Додати позицію">

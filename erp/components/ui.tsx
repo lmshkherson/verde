@@ -63,9 +63,11 @@ export function Stat({
     danger: 'text-red-600',
   };
   return (
-    <div className="rounded-2xl border border-emerald-900/10 bg-white p-4 shadow-sm">
+    <div className="rounded-2xl border border-emerald-900/10 bg-white p-4 shadow-sm" data-stat={label}>
       <div className="text-xs font-semibold uppercase tracking-wide text-emerald-800/60">{label}</div>
-      <div className={`mt-1 text-2xl font-bold tabular-nums ${tones[tone]}`}>{value}</div>
+      <div className={`mt-1 text-2xl font-bold tabular-nums ${tones[tone]}`} data-stat-value>
+        {value}
+      </div>
       {hint && <div className="mt-1 text-xs text-emerald-800/60">{hint}</div>}
     </div>
   );

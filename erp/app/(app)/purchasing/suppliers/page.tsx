@@ -1,14 +1,15 @@
 import { createSupplier } from '@/app/actions/purchasing';
+import { recordSupplierPayment } from '@/app/actions/finance';
 import { ActionForm } from '@/components/action-form';
 import { Card, Cell, Empty, Field, inputClass, LinkButton, PageHeader, Row, Table } from '@/components/ui';
 import { query } from '@/lib/db';
-import { fmtDate, fmtMoney } from '@/lib/format';
+import { fmtDate, fmtMoney, PAY_METHODS } from '@/lib/format';
 import { requireRole } from '@/lib/session';
 
 export const dynamic = 'force-dynamic';
 
 export default async function SuppliersPage() {
-  await requireRole('warehouse');
+  const session = await requireRole('warehouse');
 
   const suppliers = await query<{
     id: string;
@@ -17,21 +18,27 @@ export default async function SuppliersPage() {
     contact: string | null;
     phone: string | null;
     payment_terms_days: number;
+    is_vat_payer: boolean;
     orders: number;
-    total_amount: number;
+    billed_gross: number;
+    paid_amount: number;
+    balance_due: number;
     last_order: string | null;
-  }>(`
-    select s.id, s.name, s.edrpou, s.contact, s.phone, s.payment_terms_days,
-           count(p.id)::int as orders,
-           coalesce(sum(t.received_amount), 0) as total_amount,
-           max(p.ordered_on) as last_order
-      from suppliers s
-      left join purchase_orders p on p.supplier_id = s.id and p.status <> 'cancelled'
-      left join v_po_totals t on t.po_id = p.id
-     where s.is_active
-     group by s.id
-     order by s.name
-  `);
+  }>(
+    `select s.id, s.name, s.edrpou, s.contact, s.phone, s.payment_terms_days, s.is_vat_payer,
+            (select count(*) from purchase_orders p
+              where p.supplier_id = s.id and p.legal_entity_id = $1 and p.status <> 'cancelled')::int as orders,
+            (select max(p.ordered_on) from purchase_orders p
+              where p.supplier_id = s.id and p.legal_entity_id = $1) as last_order,
+            coalesce(b.billed_gross, 0) as billed_gross,
+            coalesce(b.paid_amount, 0)  as paid_amount,
+            coalesce(b.balance_due, 0)  as balance_due
+       from suppliers s
+       left join v_supplier_balance b on b.supplier_id = s.id and b.legal_entity_id = $1
+      where s.is_active
+      order by coalesce(b.balance_due, 0) desc, s.name`,
+    [session.eid],
+  );
 
   return (
     <>
@@ -46,7 +53,7 @@ export default async function SuppliersPage() {
           {suppliers.length === 0 ? (
             <Empty>Постачальників ще немає</Empty>
           ) : (
-            <Table head={['Постачальник', 'Контакт', 'Умови', 'Заявок', 'Закуплено']}>
+            <Table head={['Постачальник', 'Контакт', 'Умови', 'Нараховано з ПДВ', 'Сплачено', 'Борг']}>
               {suppliers.map((s) => (
                 <Row key={s.id}>
                   <Cell>
@@ -58,16 +65,28 @@ export default async function SuppliersPage() {
                     {s.phone && <div className="text-xs text-emerald-800/50">{s.phone}</div>}
                   </Cell>
                   <Cell>
-                    {s.payment_terms_days > 0 ? `відтермінування ${s.payment_terms_days} дн.` : 'передоплата'}
+                    <div>
+                      {s.payment_terms_days > 0
+                        ? `відтермінування ${s.payment_terms_days} дн.`
+                        : 'передоплата'}
+                    </div>
+                    <div className="text-xs text-emerald-800/50">
+                      {s.is_vat_payer ? 'платник ПДВ' : 'без ПДВ'}
+                    </div>
                   </Cell>
                   <Cell align="right">
-                    {s.orders}
-                    {s.last_order && (
-                      <div className="text-xs text-emerald-800/50">ост. {fmtDate(s.last_order)}</div>
-                    )}
+                    {fmtMoney(s.billed_gross)}
+                    <div className="text-xs text-emerald-800/50">
+                      {s.orders} заявок{s.last_order ? ` · ост. ${fmtDate(s.last_order)}` : ''}
+                    </div>
                   </Cell>
-                  <Cell align="right" className="font-semibold">
-                    {fmtMoney(s.total_amount)}
+                  <Cell align="right">{fmtMoney(s.paid_amount)}</Cell>
+                  <Cell align="right">
+                    {s.balance_due > 0.01 ? (
+                      <span className="font-bold text-amber-600">{fmtMoney(s.balance_due)}</span>
+                    ) : (
+                      '—'
+                    )}
                   </Cell>
                 </Row>
               ))}
@@ -75,7 +94,50 @@ export default async function SuppliersPage() {
           )}
         </Card>
 
-        <Card title="Новий постачальник">
+        <div className="space-y-4">
+          <Card title="Оплата постачальнику">
+            <p className="mb-3 text-sm text-emerald-800/70">
+              Сума завжди з ПДВ — зменшує кредиторку. На фінансовий результат оплата не впливає:
+              витрати визнані ще на приході.
+            </p>
+            <ActionForm action={recordSupplierPayment} submitLabel="Записати оплату">
+              <Field label="Постачальник">
+                <select name="supplier_id" required className={inputClass} defaultValue="">
+                  <option value="" disabled>
+                    Оберіть…
+                  </option>
+                  {suppliers.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                      {s.balance_due > 0.01 ? ` — борг ${fmtMoney(s.balance_due)}` : ''}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <Field label="Сума з ПДВ">
+                <input name="amount" type="number" step="0.01" required className={inputClass} />
+              </Field>
+              <Field label="Дата">
+                <input
+                  name="paid_on"
+                  type="date"
+                  defaultValue={new Date().toISOString().slice(0, 10)}
+                  className={inputClass}
+                />
+              </Field>
+              <Field label="Спосіб">
+                <select name="method" className={inputClass} defaultValue="bank">
+                  {Object.entries(PAY_METHODS).map(([key, label]) => (
+                    <option key={key} value={key}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            </ActionForm>
+          </Card>
+
+          <Card title="Новий постачальник">
           <ActionForm action={createSupplier} submitLabel="Додати">
             <Field label="Назва">
               <input name="name" required className={inputClass} />
@@ -105,7 +167,8 @@ export default async function SuppliersPage() {
               <input name="note" className={inputClass} />
             </Field>
           </ActionForm>
-        </Card>
+          </Card>
+        </div>
       </div>
     </>
   );

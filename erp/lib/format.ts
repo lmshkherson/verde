@@ -75,4 +75,21 @@ export const MOVE_TYPES: Record<string, string> = {
   transfer_out: 'Переміщення (видаток)',
 };
 
+export const EXPENSE_CATEGORIES: Record<string, string> = {
+  rent: 'Оренда',
+  salary: 'Зарплата й податки на неї',
+  utilities: 'Комунальні та енергія',
+  logistics: 'Логістика й доставка',
+  marketing: 'Маркетинг і реклама',
+  bank: 'Банківські послуги',
+  services: 'Послуги підрядників',
+  other: 'Інше',
+};
+
+export const PAY_METHODS: Record<string, string> = {
+  bank: 'Банк',
+  cash: 'Готівка',
+  other: 'Інше',
+};
+
 export const unitLabel = (u: string) => UNITS[u] ?? u;
