@@ -871,6 +871,115 @@ try {
     (await owner.locator('input[name="contact"]').inputValue()) === 'Марина Дудник (нова)',
   );
 
+  // ─── 13a. Повернення від клієнта ────────────────────────────────────────────
+  // Мережа повертає 40 шт: 25 придатних і 15 із простроченим терміном.
+  console.log('\nПовернення від клієнта');
+  // Менеджер працював за ФОП у сцені роздрібного продажу — повертаємось у ТОВ,
+  // бо мережа купувала саме в нього.
+  await switchEntity(sales, 'Верде Світ');
+  const stockBefore = await stockCost(sales, 'finished', 'Фісташка');
+
+  await sales.goto(`${BASE}/returns`);
+  await selectByText(sales, 'select[name="shipment_id"]', 'АТБ');
+  await selectByText(sales, 'select[name="reason"]', 'Надлишок');
+  await sales.click('form:has(select[name="shipment_id"]) button[type="submit"]');
+  await sales.waitForURL(/\/returns\/[0-9a-f-]{36}/);
+  check('повернення створено з прив’язкою до відвантаження', (await sales.locator('text=за відвантаженням').count()) > 0);
+
+  await selectByText(sales, 'select[name="shipment_line_id"]', 'Фісташка');
+  await sales.fill('input[name="qty"]', '25');
+  await sales.click('form:has(select[name="shipment_line_id"]) button[type="submit"]');
+  await sales.waitForTimeout(900);
+  await sales.reload();
+
+  // Друга позиція — прострочене: на склад не повертається.
+  await selectByText(sales, 'select[name="shipment_line_id"]', 'Фісташка');
+  await sales.fill('input[name="qty"]', '15');
+  await sales.uncheck('input[name="to_stock"]');
+  await sales.click('form:has(select[name="shipment_line_id"]) button[type="submit"]');
+  await sales.waitForTimeout(900);
+  await sales.reload();
+
+  const retNet = await stat(sales, 'Вирахування з доходу');
+  const retVat = await stat(sales, 'Сторно ПДВ');
+  const retLost = await stat(sales, 'У втрати');
+  check(
+    'вирахування з доходу = 40 × 29,75 без ПДВ',
+    near(retNet, 40 * 29.75, 0.5),
+    `${retNet} грн`,
+  );
+  check('сторно ПДВ — 20% від нього', near(retVat, 40 * 29.75 * 0.2, 0.5), `${retVat} грн`);
+  check('прострочене пішло у втрати, а не на склад', retLost > 0, `${retLost} грн`);
+
+  await sales.click('button:has-text("Прийняти повернення")');
+  await sales.waitForTimeout(1800);
+  await sales.reload();
+  check('повернення проведено', (await sales.locator('text=Прийнято').count()) > 0);
+
+  const stockAfter = await stockCost(sales, 'finished', 'Фісташка');
+  check(
+    'на склад повернулося рівно 25 шт, а не всі 40',
+    near(stockAfter.qty - stockBefore.qty, 25, 0.001),
+    `${stockBefore.qty} → ${stockAfter.qty}`,
+  );
+  check(
+    'собівартість не змінилася: товар повернувся за своєю ціною',
+    near(stockAfter.cost, stockBefore.cost, 0.02),
+    `${stockBefore.cost} → ${stockAfter.cost} грн/шт`,
+  );
+
+  // Повторне повернення понад відвантажене прийматися не має.
+  await sales.goto(`${BASE}/returns`);
+  await selectByText(sales, 'select[name="shipment_id"]', 'АТБ');
+  await sales.click('form:has(select[name="shipment_id"]) button[type="submit"]');
+  await sales.waitForURL(/\/returns\/[0-9a-f-]{36}/);
+  await selectByText(sales, 'select[name="shipment_line_id"]', 'Фісташка');
+  await sales.fill('input[name="qty"]', '900');
+  await sales.click('form:has(select[name="shipment_line_id"]) button[type="submit"]');
+  await sales.waitForTimeout(900);
+  check(
+    'повернути більше, ніж відвантажено, не дають',
+    (await sales.locator('text=більше, ніж відвантажено').count()) > 0,
+  );
+  await sales.click('button:has-text("Скасувати документ")');
+  await sales.waitForTimeout(900);
+
+  // Повернення міняє всі підсумки — перебудовуємо проводки й дивимось, чи
+  // сходиться після нього те саме, що сходилося до.
+  await owner.goto(`${BASE}/accounting`);
+  await owner.click('button:has-text("Перегенерувати період")');
+  await owner.waitForTimeout(2600);
+  await owner.reload();
+
+  const debitAfter = await stat(owner, 'Оберти за дебетом');
+  const creditAfter = await stat(owner, 'Оберти за кредитом');
+  check(
+    'оборотка балансує й після повернення',
+    near(debitAfter, creditAfter, 0.02) && debitAfter > 0,
+    `Дт ${debitAfter} = Кт ${creditAfter}`,
+  );
+
+  await owner.goto(`${BASE}/pl`);
+  const plAfterReturn = (await owner.locator('body').innerText()).replace(/[\s\u00a0]+/g, ' ');
+  check('у P&L з’явилося вирахування з доходу', plAfterReturn.includes('Вирахування з доходу'));
+  const resultAfterReturn = await stat(owner, 'Фінансовий результат');
+
+  await owner.goto(`${BASE}/accounting?book=management`);
+  const bookAfterReturn = await stat(owner, 'Результат на 791');
+  check(
+    'результат на 791 і після повернення дорівнює P&L',
+    near(bookAfterReturn, resultAfterReturn, 1),
+    `${bookAfterReturn} проти ${resultAfterReturn} у звіті`,
+  );
+
+  await owner.goto(`${BASE}/vat`);
+  const vatAfterReturn = (await owner.locator('body').innerText()).replace(/[\s\u00a0]+/g, ' ');
+  check(
+    'складено розрахунок коригування',
+    vatAfterReturn.includes('РК-1'),
+    'до податкової накладної на відвантаження',
+  );
+
   // ─── 14. Права доступу ─────────────────────────────────────────────────────
   console.log('\nПрава доступу');
   const denied = await warehouse.goto(`${BASE}/reports`);

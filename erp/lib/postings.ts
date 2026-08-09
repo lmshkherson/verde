@@ -240,6 +240,37 @@ export async function regeneratePostings(
     ]);
   }
 
+  // ─── Повернення від клієнтів ─────────────────────────────────────────────
+  // Повернення не витрата, а вирахування з доходу: інакше виручка лишалася б
+  // завищеною, а маржа — неправдивою. Собівартість повертається з 901 — або
+  // на склад, або у втрати, якщо товар непридатний.
+  const { rows: returns } = await client.query<{
+    id: string;
+    number: string;
+    returned_on: string;
+    gross: number;
+    vat: number;
+    cost_returned: number;
+    cost_lost: number;
+  }>(
+    `select r.number, a.return_id as id, a.returned_on,
+            a.gross_amount as gross, a.vat_amount as vat,
+            a.cost_returned, a.cost_lost
+       from v_return_amounts a
+       join customer_returns r on r.id = a.return_id
+      where a.legal_entity_id = $1
+        and a.returned_on >= $2::date and a.returned_on < ($2::date + interval '1 month')`,
+    range,
+  );
+  for (const r of returns) {
+    count += await addBatch(client, entityId, 'customer_return', r.id, r.returned_on, `Повернення ${r.number}`, [
+      { debit: '704', credit: '361', amount: r.gross, note: 'Вирахування з доходу з ПДВ' },
+      { debit: '6411', credit: '704', amount: r.vat, note: 'Сторно податкового зобов’язання' },
+      { debit: '26', credit: '901', amount: r.cost_returned, note: 'Товар повернуто на склад' },
+      { debit: '947', credit: '901', amount: r.cost_lost, note: 'Повернуто непридатним' },
+    ]);
+  }
+
   // ─── Оплати від покупців ─────────────────────────────────────────────────
   const { rows: customerPayments } = await client.query<{ id: string; paid_on: string; amount: number; method: string }>(
     `select id, paid_on, amount, method from payments

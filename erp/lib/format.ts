@@ -69,6 +69,7 @@ export const MOVE_TYPES: Record<string, string> = {
   production_consume: 'Списано у виробництво',
   production_output: 'Випуск продукції',
   sale_shipment: 'Відвантаження клієнту',
+  sale_return: 'Повернення від клієнта',
   write_off: 'Списання',
   adjustment: 'Коригування (інвентаризація)',
   transfer_in: 'Переміщення (прихід)',
@@ -90,6 +91,19 @@ export const EXPENSE_CATEGORIES: Record<string, string> = {
 
 /** Витрати цеху показуємо окремою групою: вони прямо стосуються випуску. */
 export const PRODUCTION_EXPENSE_CATEGORIES = ['production_salary', 'production_energy'];
+
+export const RETURN_REASONS: Record<string, string> = {
+  surplus: 'Надлишок / не продалось',
+  quality: 'Брак',
+  expiry: 'Закінчився термін',
+  other: 'Інше',
+};
+
+export const RETURN_STATUS: Record<string, string> = {
+  draft: 'Чернетка',
+  accepted: 'Прийнято',
+  cancelled: 'Скасовано',
+};
 
 export const PAY_METHODS: Record<string, string> = {
   bank: 'Банк',

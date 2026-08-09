@@ -7,6 +7,7 @@ const ALL_ITEMS: (NavItem & { section: Section })[] = [
   { section: 'stock', href: '/stock', label: 'Склад', short: 'Склад', icon: '📦' },
   { section: 'production', href: '/production', label: 'Виробництво', short: 'Цех', icon: '🏭' },
   { section: 'sales', href: '/sales', label: 'Продажі', short: 'Продажі', icon: '🧾' },
+  { section: 'sales', href: '/returns', label: 'Повернення', short: 'Поверн.', icon: '↩️' },
   { section: 'purchasing', href: '/purchasing', label: 'Закупівлі', short: 'Закупки', icon: '🚚' },
   { section: 'catalog', href: '/catalog', label: 'Номенклатура', short: 'SKU', icon: '🏷️' },
   { section: 'reports', href: '/pl', label: 'Фінрезультат', short: 'P&L', icon: '💰' },

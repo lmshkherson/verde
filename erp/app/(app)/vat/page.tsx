@@ -48,17 +48,23 @@ export default async function VatPage({
       vat_amount: number;
       total_amount: number;
       status: string;
+      kind: string;
+      registered_by: string;
       urgency: string;
       days_left: number | null;
       register_deadline: string | null;
       registered_on: string | null;
     }>(
+      // Сортувати за number::bigint не можна: розрахунки коригування мають
+      // власну серію «РК-1», і приведення до числа на них падає.
       `select id, number, issued_on, counterparty_name, counterparty_ipn, base_amount, vat_amount,
-              total_amount, status, urgency, days_left, register_deadline, registered_on
+              total_amount, status, kind, registered_by, urgency, days_left,
+              register_deadline, registered_on
          from v_tax_invoice_status
         where legal_entity_id = $1
           and issued_on >= $2::date and issued_on < ($2::date + interval '1 month')
-        order by issued_on, number::bigint`,
+        order by issued_on, kind,
+                 nullif(regexp_replace(number, '\\D', '', 'g'), '')::bigint nulls last, number`,
       [session.eid, from],
     ),
     query<{ shipment_id: string; number: string; shipped_on: string; customer_name: string; vat_amount: number }>(
@@ -182,7 +188,16 @@ export default async function VatPage({
                   const u = URGENCY[i.urgency] ?? URGENCY.pending;
                   return (
                     <Row key={i.id}>
-                      <Cell className="font-mono font-semibold">{i.number}</Cell>
+                      <Cell className="font-mono font-semibold">
+                        {i.number}
+                        {i.kind === 'adjustment' && (
+                          <div className="mt-0.5 font-sans">
+                            <Badge tone={i.registered_by === 'buyer' ? 'amber' : 'blue'}>
+                              {i.registered_by === 'buyer' ? 'РК — реєструє покупець' : 'РК'}
+                            </Badge>
+                          </div>
+                        )}
+                      </Cell>
                       <Cell>{fmtDate(i.issued_on)}</Cell>
                       <Cell>
                         <div className="font-semibold">{i.counterparty_name}</div>

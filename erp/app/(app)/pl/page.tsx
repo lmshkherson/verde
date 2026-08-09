@@ -63,6 +63,8 @@ export default async function ProfitAndLossPage({
 
   const [pl, opex, expenses, vat, receivable, payable, periods, suppliers, output] = await Promise.all([
     queryOne<{
+      revenue_gross_net: number;
+      returns_net: number;
       revenue_net: number;
       cogs: number;
       gross_profit: number;
@@ -71,7 +73,8 @@ export default async function ProfitAndLossPage({
       opex: number;
       net_result: number;
     }>(
-      `select revenue_net, cogs, gross_profit, write_offs, production_costs, opex, net_result
+      `select revenue_gross_net, returns_net, revenue_net, cogs, gross_profit,
+              write_offs, production_costs, opex, net_result
          from v_pl_monthly
         where legal_entity_id = $1 and period = $2::date`,
       [session.eid, from],
@@ -134,6 +137,8 @@ export default async function ProfitAndLossPage({
   ]);
 
   const p = pl ?? {
+    revenue_gross_net: 0,
+    returns_net: 0,
     revenue_net: 0,
     cogs: 0,
     gross_profit: 0,
@@ -201,7 +206,18 @@ export default async function ProfitAndLossPage({
       <div className="grid gap-4 lg:grid-cols-[1fr_340px]">
         <div className="space-y-4">
           <Card title="Звіт про фінансовий результат">
-            <PlRow label="Дохід від реалізації" value={p.revenue_net} hint="без ПДВ" />
+            <PlRow label="Дохід від реалізації" value={p.revenue_gross_net} hint="без ПДВ" />
+            {p.returns_net > 0 && (
+              <>
+                <PlRow
+                  label="Вирахування з доходу"
+                  value={p.returns_net}
+                  kind="minus"
+                  hint="повернення від клієнтів"
+                />
+                <PlRow label="Чистий дохід" value={p.revenue_net} kind="subtotal" />
+              </>
+            )}
             <PlRow
               label="Собівартість реалізації"
               value={p.cogs}
