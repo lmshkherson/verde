@@ -37,6 +37,16 @@ textarea {
     margin: 12mm;
   }
 
+  /* ТТН не влазить у книжкову орієнтацію: у ній вісім колонок вантажу. */
+  @page ttn {
+    size: A4 landscape;
+    margin: 8mm;
+  }
+
+  .print-landscape {
+    page: ttn;
+  }
+
   body {
     background: #fff;
   }

@@ -328,6 +328,14 @@ export default async function SalesOrderPage({ params }: { params: Promise<{ id:
                       >
                         Видаткова
                       </Link>
+                      <div>
+                        <Link
+                          href={`/shipments/${s.id}/ttn`}
+                          className="text-xs font-semibold text-emerald-700 hover:underline"
+                        >
+                          ТТН
+                        </Link>
+                      </div>
                     </Cell>
                   </Row>
                 ))}

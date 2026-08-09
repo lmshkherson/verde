@@ -113,6 +113,7 @@ export default async function ShipmentPrintPage({
       <div className="no-print mb-4 flex flex-wrap items-center gap-2">
         <PrintButton label="Друк / зберегти PDF" />
         <LinkButton href={`/sales/${doc.order_id}`}>← До замовлення</LinkButton>
+        <LinkButton href={`/shipments/${shipmentId}/ttn`}>ТТН</LinkButton>
         <LinkButton href={`/movements/${shipmentId}`}>Рухи документа</LinkButton>
         {!doc.seller_address && (
           <span className="text-sm text-amber-700">

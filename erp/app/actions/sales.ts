@@ -530,3 +530,54 @@ export async function recordPayment(_prev: ActionState, formData: FormData): Pro
   revalidatePath('/sales/customers');
   return { ok: 'Оплату записано' };
 }
+
+/**
+ * Реквізити перевезення для ТТН. Заповнюються окремо від відвантаження, бо
+ * марку автомобіля й прізвище водія дізнаються на завантаженні, а не тоді, коли
+ * менеджер виписує документ.
+ */
+export async function updateShipmentTransport(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  await requireRole('sales', 'warehouse');
+  const shipmentId = str(formData, 'shipment_id');
+  if (!shipmentId) return { error: 'Не вказано відвантаження' };
+
+  try {
+    await transaction((c) =>
+      c.query(
+        `update shipments set
+           ttn_number = $2, carrier = $3, carrier_edrpou = $4, carrier_storage_place = $5,
+           transport_kind = $6, vehicle_model = $7, vehicle_plate = $8,
+           trailer_model = $9, trailer_plate = $10, driver_name = $11,
+           freight_payer = $12, loading_point = $13, unloading_point = $14,
+           gross_weight_kg = $15, places = $16
+         where id = $1`,
+        [
+          shipmentId,
+          strOrNull(formData, 'ttn_number'),
+          strOrNull(formData, 'carrier'),
+          strOrNull(formData, 'carrier_edrpou'),
+          strOrNull(formData, 'carrier_storage_place'),
+          strOrNull(formData, 'transport_kind'),
+          strOrNull(formData, 'vehicle_model'),
+          strOrNull(formData, 'vehicle_plate'),
+          strOrNull(formData, 'trailer_model'),
+          strOrNull(formData, 'trailer_plate'),
+          strOrNull(formData, 'driver_name'),
+          strOrNull(formData, 'freight_payer'),
+          strOrNull(formData, 'loading_point'),
+          strOrNull(formData, 'unloading_point'),
+          num(formData, 'gross_weight_kg') || null,
+          num(formData, 'places') || null,
+        ],
+      ),
+    );
+  } catch (err) {
+    return { error: toMessage(err) };
+  }
+
+  revalidatePath(`/shipments/${shipmentId}/ttn`);
+  return { ok: 'Реквізити збережено' };
+}

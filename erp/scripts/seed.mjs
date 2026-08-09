@@ -21,10 +21,11 @@ const USERS = [
   ['petro@v-verde.ua', 'Петро Савченко', 'warehouse', 'Комірник'],
 ];
 
+// Адреса потрібна для ТТН: це пункт навантаження.
 const WAREHOUSES = [
-  ['SIR', 'Склад сировини', 'raw'],
-  ['GP', 'Склад готової продукції', 'finished'],
-  ['CEH', 'Цех (незавершене)', 'wip'],
+  ['SIR', 'Склад сировини', 'raw', 'Україна, 04060, м. Київ, вул. Щусєва, буд. 15'],
+  ['GP', 'Склад готової продукції', 'finished', 'Україна, 04060, м. Київ, вул. Щусєва, буд. 15'],
+  ['CEH', 'Цех (незавершене)', 'wip', 'Україна, 04060, м. Київ, вул. Щусєва, буд. 15'],
 ];
 
 // [sku, назва, тип, од., термін днів, мін. залишок, вага г, шт/бокс, ціни..., штрихкод]
@@ -245,11 +246,11 @@ try {
       where default_entity_id is null`,
   );
 
-  for (const [code, name, kind] of WAREHOUSES) {
+  for (const [code, name, kind, address] of WAREHOUSES) {
     await client.query(
-      `insert into warehouses (code, name, kind) values ($1, $2, $3)
-       on conflict (code) do update set name = excluded.name`,
-      [code, name, kind],
+      `insert into warehouses (code, name, kind, address) values ($1, $2, $3, $4)
+       on conflict (code) do update set name = excluded.name, address = excluded.address`,
+      [code, name, kind, address],
     );
   }
 

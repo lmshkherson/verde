@@ -302,6 +302,70 @@ try {
     'приховуються правилом @media print',
   );
 
+  // ─── 3б. Товарно-транспортна накладна ──────────────────────────────────────
+  console.log('\nТоварно-транспортна накладна');
+  // Перевірка штрихкодів лишила сторінку на картці позиції — вертаємось до замовлення.
+  await sales.goto(`${BASE}/sales`);
+  await sales.click('tr:has-text("АТБ") a[href^="/sales/"]');
+  await sales.waitForURL(/\/sales\/[0-9a-f-]{36}/);
+  await sales.click('a:has-text("ТТН")');
+  await sales.waitForURL(/\/shipments\/[0-9a-f-]{36}\/ttn/);
+  check(
+    'бланк попереджає про незаповнені реквізити',
+    (await sales.locator('text=Бланк неповний').count()) > 0,
+  );
+
+  await sales.fill('input[name="carrier"]', 'ТОВ «Нова Пошта»');
+  await sales.fill('input[name="carrier_edrpou"]', '31316718');
+  await sales.fill('input[name="carrier_storage_place"]', 'м. Київ, вул. Зрошувальна, 7');
+  await sales.fill('input[name="transport_kind"]', 'Комерційні');
+  await sales.fill('input[name="vehicle_model"]', 'Renault Master');
+  await sales.fill('input[name="vehicle_plate"]', 'AA1234BB');
+  await sales.fill('input[name="driver_name"]', 'Шевченко Микола Іванович');
+  await sales.click('button:has-text("Зберегти реквізити")');
+  await sales.waitForTimeout(1300);
+  await sales.reload();
+
+  const ttn = (await sales.locator('body').innerText()).replace(/[\s ]+/g, ' ');
+  check('форма позначена як № 1-ТН, додаток 7 до Правил', ttn.includes('Форма № 1-ТН'));
+  check('перевізник із кодом ЄДРПОУ', ttn.includes('Нова Пошта') && ttn.includes('31316718'));
+  // Реквізит, що став обов'язковим із 26.07.2026.
+  // Підписи реквізитів у бланку набрані капітеллю, тож порівнюємо без регістру.
+  const ttnLower = ttn.toLowerCase();
+  check(
+    'заповнено «Місце, де зберігається автомобіль»',
+    ttnLower.includes('місце, де зберігається автомобіль') && ttn.includes('Зрошувальна'),
+  );
+  check('автомобіль і водій у бланку', ttn.includes('AA1234BB') && ttn.includes('Шевченко'));
+  check(
+    'вантажовідправник — наша юрособа з ЄДРПОУ',
+    ttn.includes('ВЕРДЕ СВІТ') && ttn.includes('45014741'),
+  );
+  check('вантажоодержувач — покупець', ttn.includes('АТБ-Маркет') && ttn.includes('30487219'));
+  check(
+    'пункт навантаження підтягнувся з адреси складу',
+    ttn.includes('Щусєва'),
+    'склад готової продукції',
+  );
+  check(
+    'пункт розвантаження — адреса клієнта',
+    ttn.includes('Курчатова'),
+    'юридична адреса АТБ',
+  );
+  check(
+    'супровідним документом стоїть видаткова накладна',
+    ttn.includes('Видаткова накладна № ВС-ВІД'),
+  );
+  // 640 батончиків по 25 г = 16 кг; у шоубоксі 16 шт → 40 місць.
+  check('маса брутто порахована з ваги одиниці', ttn.includes('0,016') || ttn.includes('0.016'), '640 × 25 г = 16 кг');
+  check('кількість місць порахована за вкладенням у шоубокс', ttn.includes('40'), '640 ÷ 16');
+  check('у бланку немає цінових граф', !ttn.includes('Ціна без ПДВ'), 'форма 1-ТН їх не містить');
+  check('позначено три примірники', ttn.includes('трьох примірниках'));
+  check(
+    'після заповнення попередження зникло',
+    (await sales.locator('text=Бланк неповний').count()) === 0,
+  );
+
   // ─── 4. Реалізація власній юрособі ─────────────────────────────────────────
   console.log('\nРеалізація між своїми: ТОВ → ФОП');
   await sales.goto(`${BASE}/sales`);
