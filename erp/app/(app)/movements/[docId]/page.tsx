@@ -35,6 +35,11 @@ async function resolveDocument(docId: string) {
       href: () => null,
     },
     {
+      kind: 'Інвентаризація',
+      sql: `select number as title, counted_on as date from stocktakes where id = $1`,
+      href: (id) => `/stocktake/${id}`,
+    },
+    {
       kind: 'Повернення постачальнику',
       sql: `select number as title, returned_on as date from supplier_returns where id = $1`,
       href: (id) => `/purchasing/returns/${id}`,

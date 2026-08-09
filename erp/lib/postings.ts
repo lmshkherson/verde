@@ -277,6 +277,45 @@ export async function regeneratePostings(
     ]);
   }
 
+  // ─── Інвентаризація: надлишки й нестачі ──────────────────────────────────
+  // Коригування залишку — це не технічна правка, а господарська подія:
+  // нестача є втратою, надлишок — доходом. Раніше рухи типу adjustment у
+  // проводки не потрапляли взагалі, і оборотка про них не знала.
+  const { rows: adjustments } = await client.query<{
+    doc_id: string | null;
+    day: string;
+    kind: string;
+    surplus: number;
+    shortage: number;
+    number: string | null;
+  }>(
+    `select m.doc_id, m.moved_at::date as day, i.kind,
+            coalesce(sum(m.qty * m.unit_cost) filter (where m.qty > 0), 0)  as surplus,
+            coalesce(sum(-m.qty * m.unit_cost) filter (where m.qty < 0), 0) as shortage,
+            max(st.number) as number
+       from stock_moves m
+       join items i on i.id = m.item_id
+       left join stocktakes st on st.id = m.doc_id and m.doc_type = 'stocktake'
+      where m.legal_entity_id = $1 and m.move_type = 'adjustment'
+        and m.moved_at >= $2::date and m.moved_at < ($2::date + interval '1 month')
+      group by m.doc_id, m.moved_at::date, i.kind`,
+    range,
+  );
+  for (const a of adjustments) {
+    count += await addBatch(
+      client,
+      entityId,
+      'stocktake',
+      a.doc_id,
+      a.day,
+      `Інвентаризація ${a.number ?? ''}`.trim(),
+      [
+        { debit: inventoryAccount(a.kind), credit: '719', amount: a.surplus, note: 'Надлишок' },
+        { debit: '947', credit: inventoryAccount(a.kind), amount: a.shortage, note: 'Нестача' },
+      ],
+    );
+  }
+
   // ─── Повернення від клієнтів ─────────────────────────────────────────────
   // Повернення не витрата, а вирахування з доходу: інакше виручка лишалася б
   // завищеною, а маржа — неправдивою. Собівартість повертається з 901 — або

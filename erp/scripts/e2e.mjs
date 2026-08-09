@@ -32,6 +32,7 @@ const money = (text) => {
 };
 
 const near = (a, b, eps = 0.05) => Math.abs(a - b) < eps;
+const round3 = (n) => Math.round(n * 1000) / 1000;
 
 async function selectByText(page, selector, substring) {
   const value = await page
@@ -1315,6 +1316,74 @@ try {
 
   await owner.goto(`${BASE}/recalls`);
   check('відкликання видно в журналі', (await owner.locator('text=ВС-ВІДКЛ').count()) > 0);
+
+  // ─── 13d. Інвентаризація ───────────────────────────────────────────────────
+  console.log('\nІнвентаризація');
+  const finikBeforeInv = await stockCost(owner, 'raw', 'Фініки');
+
+  await warehouse.goto(`${BASE}/stocktake`);
+  await selectByText(warehouse, 'select[name="warehouse_id"]', 'Склад сировини');
+  await warehouse.fill('input[name="chairman"]', 'Ковальчук О.М., директор');
+  await warehouse.fill('input[name="responsible"]', 'Савченко П.І., комірник');
+  await warehouse.click('form:has(select[name="warehouse_id"]) button[type="submit"]');
+  await warehouse.waitForURL(/\/stocktake\/[0-9a-f-]{36}/);
+
+  const invLines = await stat(warehouse, 'Пораховано');
+  check('опис зібрав позиції складу', invLines === 0, 'жодної ще не рахували');
+  const invText = (await warehouse.locator('body').innerText()).replace(/[\s ]+/g, ' ');
+  check('в описі є партії, а не лише позиції', invText.includes('ВС-ЗАК-2026-0001'));
+
+  // Рахуємо фініки з нестачею 5 кг і ще одну позицію без розбіжності.
+  const finikRow = warehouse.locator('tr', { hasText: 'Фініки' }).first();
+  const bookQty = money((await finikRow.locator('td').allInnerTexts())[2]);
+  await finikRow.locator('input[name="counted_qty"]').fill(String(round3(bookQty - 5)));
+  await finikRow.locator('input[name="note"]').fill('Розсипано при фасуванні');
+  await finikRow.locator('button[type="submit"]').click();
+  await warehouse.waitForTimeout(1300);
+  await warehouse.reload();
+
+  check('розбіжність порахована', (await stat(warehouse, 'Розбіжностей')) === 1);
+  const shortage = await stat(warehouse, 'Нестача');
+  check(
+    'нестача оцінена за собівартістю партії',
+    near(shortage, 5 * finikBeforeInv.cost, 0.5),
+    `${shortage} грн за 5 кг`,
+  );
+
+  // Нуль і порожньо — різні речі: перевіряємо, що нуль трактується як факт.
+  const oliaRow = warehouse.locator('tr', { hasText: 'Олія кокосова' }).first();
+  await oliaRow.locator('input[name="counted_qty"]').fill('0');
+  await oliaRow.locator('button[type="submit"]').click();
+  await warehouse.waitForTimeout(1300);
+  await warehouse.reload();
+  check('нуль записався як факт, а не як «не рахували»', (await stat(warehouse, 'Пораховано')) === 2);
+
+  await warehouse.click('button:has-text("Закрити опис")');
+  await warehouse.waitForTimeout(1800);
+  await warehouse.reload();
+  check('опис закрито', (await warehouse.locator('text=Завершено').count()) > 0);
+
+  const finikAfterInv = await stockCost(owner, 'raw', 'Фініки');
+  check(
+    'нестачу списано зі складу',
+    near(finikBeforeInv.qty - finikAfterInv.qty, 5, 0.001),
+    `${finikBeforeInv.qty} → ${finikAfterInv.qty}`,
+  );
+
+  // Проводки по інвентаризації раніше не формувалися взагалі.
+  await owner.goto(`${BASE}/accounting`);
+  await owner.click('button:has-text("Перегенерувати період")');
+  await owner.waitForTimeout(2800);
+  await owner.reload();
+  check(
+    'оборотка балансує після інвентаризації',
+    near(await stat(owner, 'Оберти за дебетом'), await stat(owner, 'Оберти за кредитом'), 0.02),
+  );
+
+  await owner.goto(`${BASE}/accounting/postings`);
+  const invPostings = (await owner.locator('body').innerText()).replace(/[\s ]+/g, ' ');
+  check('нестача пішла у втрати', invPostings.includes('Нестача'));
+  check('і рахунком 947', invPostings.includes('947'));
 
   // ─── 14. Права доступу ─────────────────────────────────────────────────────
   console.log('\nПрава доступу');
