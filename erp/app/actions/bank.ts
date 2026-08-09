@@ -6,17 +6,15 @@ import type { PoolClient } from 'pg';
 import { transaction } from '@/lib/db';
 import { type ActionState, str, strOrNull, toMessage } from '@/lib/action-state';
 import { requireRole } from '@/lib/session';
-import { decodeStatement, parseStatement, StatementFormatError } from '@/lib/bank';
+import { decodeStatement, normalizeIban, parseStatement, StatementFormatError } from '@/lib/bank';
 
 export async function createBankAccount(_prev: ActionState, formData: FormData): Promise<ActionState> {
   const session = await requireRole('warehouse', 'sales');
   const name = str(formData, 'name');
   if (!name) return { error: 'Вкажіть назву рахунку' };
 
-  const iban = strOrNull(formData, 'iban');
-  if (iban && !/^UA\d{27}$/i.test(iban.replace(/\s/g, ''))) {
-    return { error: 'IBAN має вигляд UA та 27 цифр — перевірте, чи скопійовано повністю' };
-  }
+  const iban = normalizeIban(strOrNull(formData, 'iban'));
+  if (iban.error) return { error: iban.error };
 
   try {
     await transaction((c) =>
@@ -26,7 +24,7 @@ export async function createBankAccount(_prev: ActionState, formData: FormData):
         [
           session.eid,
           name,
-          iban?.replace(/\s/g, '').toUpperCase() ?? null,
+          iban.iban,
           strOrNull(formData, 'bank_name'),
           str(formData, 'currency') || 'UAH',
           formData.get('is_default') === 'on',
@@ -328,10 +326,11 @@ export async function autoMatch(_prev: ActionState, formData: FormData): Promise
         id: string;
         amount: number;
         counterparty_edrpou: string | null;
+        counterparty_iban: string | null;
         counterparty_name: string | null;
         doc_number: string | null;
       }>(
-        `select id, amount, counterparty_edrpou, counterparty_name, doc_number
+        `select id, amount, counterparty_edrpou, counterparty_iban, counterparty_name, doc_number
            from bank_transactions
           where legal_entity_id = $1 and status = 'new'
             and ($2::uuid is null or statement_id = $2)
@@ -341,15 +340,22 @@ export async function autoMatch(_prev: ActionState, formData: FormData): Promise
 
       for (const tx of pending) {
         const edrpou = tx.counterparty_edrpou;
-        if (!edrpou) {
+        const iban = normalizeIban(tx.counterparty_iban).iban;
+        // Два однаково надійні ключі: код і рахунок. ЄДРПОУ у виписці буває не
+        // завжди, а IBAN стоїть у кожному рядку — і теж належить одному
+        // контрагентові, тож помилитися ним неможливо.
+        if (!edrpou && !iban) {
           left += 1;
           continue;
         }
 
         if (Number(tx.amount) > 0) {
           const { rows: customers } = await c.query<{ id: string }>(
-            'select id from customers where edrpou = $1 and is_active',
-            [edrpou],
+            `select id from customers
+              where is_active
+                and (($1::text is not null and edrpou = $1)
+                  or ($2::text is not null and iban = $2))`,
+            [edrpou, iban],
           );
           if (customers.length !== 1) {
             left += 1;
@@ -376,8 +382,11 @@ export async function autoMatch(_prev: ActionState, formData: FormData): Promise
           matched += 1;
         } else {
           const { rows: suppliers } = await c.query<{ id: string }>(
-            'select id from suppliers where edrpou = $1 and is_active',
-            [edrpou],
+            `select id from suppliers
+              where is_active
+                and (($1::text is not null and edrpou = $1)
+                  or ($2::text is not null and iban = $2))`,
+            [edrpou, iban],
           );
           if (suppliers.length !== 1) {
             left += 1;

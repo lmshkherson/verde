@@ -271,3 +271,18 @@ export function suggestByName(
   });
   return hit?.id ?? null;
 }
+
+/**
+ * IBAN у канонічному вигляді: без пробілів, у верхньому регістрі.
+ * Український IBAN — UA і 27 цифр; інші країни в системі поки не потрібні,
+ * тож формат перевіряємо саме цей, а не загальний ISO 13616.
+ */
+export function normalizeIban(value: string | null): { iban: string | null; error?: string } {
+  if (!value) return { iban: null };
+  const clean = value.replace(/[\s-]/g, '').toUpperCase();
+  if (clean === '') return { iban: null };
+  if (!/^UA\d{27}$/.test(clean)) {
+    return { iban: null, error: 'IBAN має вигляд UA та 27 цифр — перевірте, чи скопійовано повністю' };
+  }
+  return { iban: clean };
+}

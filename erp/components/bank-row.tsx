@@ -10,6 +10,7 @@ export interface BankTx {
   amount: number;
   counterparty_name: string | null;
   counterparty_edrpou: string | null;
+  counterparty_iban: string | null;
   purpose: string | null;
   doc_number: string | null;
   status: string;
@@ -23,6 +24,7 @@ export interface Party {
   id: string;
   name: string;
   edrpou: string | null;
+  iban: string | null;
 }
 
 /** Рахунки для операцій, у яких контрагента як такого немає. */
@@ -54,10 +56,10 @@ export function BankRow({
   const pool = inflow ? customers : suppliers;
   const prefix = inflow ? 'customer' : 'supplier';
 
-  const byEdrpou = tx.counterparty_edrpou
-    ? pool.find((p) => p.edrpou === tx.counterparty_edrpou)
-    : undefined;
-  const suggestedId = byEdrpou?.id ?? suggestByName(tx.counterparty_name, pool);
+  const byCode =
+    (tx.counterparty_edrpou ? pool.find((p) => p.edrpou === tx.counterparty_edrpou) : undefined) ??
+    (tx.counterparty_iban ? pool.find((p) => p.iban === tx.counterparty_iban) : undefined);
+  const suggestedId = byCode?.id ?? suggestByName(tx.counterparty_name, pool);
   const suggested = suggestedId ? `${prefix}:${suggestedId}` : '';
 
   return (

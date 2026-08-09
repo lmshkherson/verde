@@ -8,6 +8,7 @@ import { allocateFefo, defaultWarehouseId, insertMoves, nextDocNumber, round2, r
 import { calcPurchaseVat, saleVatRate } from '@/lib/vat';
 import { requireRole } from '@/lib/session';
 import { logAutoPoint } from '@/lib/haccp';
+import { normalizeIban } from '@/lib/bank';
 
 export async function createCustomer(_prev: ActionState, formData: FormData): Promise<ActionState> {
   await requireRole('sales');
@@ -53,13 +54,17 @@ export async function updateCustomer(_prev: ActionState, formData: FormData): Pr
   if (!id) return { error: 'Не вказано клієнта' };
   if (!name) return { error: 'Вкажіть назву клієнта' };
 
+  const iban = normalizeIban(strOrNull(formData, 'iban'));
+  if (iban.error) return { error: iban.error };
+
   try {
     await transaction((c) =>
       c.query(
         `update customers set
            name = $2, kind = $3, edrpou = $4, ipn = $5, is_vat_payer = $6,
            contact = $7, phone = $8, price_level = $9,
-           payment_terms_days = $10, credit_limit = $11, note = $12, address = $13
+           payment_terms_days = $10, credit_limit = $11, note = $12, address = $13,
+           delivery_address = $14, iban = $15, bank_name = $16
          where id = $1`,
         [
           id,
@@ -75,6 +80,9 @@ export async function updateCustomer(_prev: ActionState, formData: FormData): Pr
           num(formData, 'credit_limit'),
           strOrNull(formData, 'note'),
           strOrNull(formData, 'address'),
+          strOrNull(formData, 'delivery_address'),
+          iban.iban,
+          strOrNull(formData, 'bank_name'),
         ],
       ),
     );

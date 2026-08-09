@@ -177,24 +177,36 @@ const ENTITIES = [
   },
 ];
 
-// Останнє поле — чи є постачальник платником ПДВ. Горіхи беремо у ФОП без ПДВ,
-// тож із його ціни податкового кредиту не буде навіть у ТОВ.
+// Чи є постачальник платником ПДВ (горіхи беремо у ФОП без ПДВ, тож із його
+// ціни податкового кредиту не буде навіть у ТОВ), юридична адреса, адреса
+// складу — звідки забираємо й куди повертаємо брак — та IBAN.
 const SUPPLIERS = [
-  ['ТОВ «Сухофрукт Трейд»', '38271940', 'Андрій Кравець', '+380671112233', 14, true],
-  ['ФОП Гриценко О.П. (горіхи)', '3012345678', 'Оксана Гриценко', '+380502223344', 7, false],
-  ['ТОВ «Нутрі Інгредієнтс»', '41902847', 'Сергій Лисенко', '+380443334455', 30, true],
-  ['ТОВ «ПакЛайн Україна»', '39284710', 'Марина Дудник', '+380445556677', 21, true],
+  ['ТОВ «Сухофрукт Трейд»', '38271940', 'Андрій Кравець', '+380671112233', 14, true,
+   '03150, м. Київ, вул. Ділова, буд. 5',
+   '08130, Київська обл., с. Петропавлівська Борщагівка, вул. Логістична, буд. 3',
+   'UA903052990000026007018811777', 'АТ КБ «ПриватБанк»'],
+  ['ФОП Гриценко О.П. (горіхи)', '3012345678', 'Оксана Гриценко', '+380502223344', 7, false,
+   '79000, м. Львів, вул. Городоцька, буд. 120', null,
+   'UA173220010000026007300012345', 'АТ «Універсал Банк»'],
+  ['ТОВ «Нутрі Інгредієнтс»', '41902847', 'Сергій Лисенко', '+380443334455', 30, true,
+   '04116, м. Київ, вул. Старокиївська, буд. 10', null,
+   'UA383006140000026007700099887', 'АТ «Райффайзен Банк»'],
+  ['ТОВ «ПакЛайн Україна»', '39284710', 'Марина Дудник', '+380445556677', 21, true,
+   '02160, м. Київ, просп. Соборності, буд. 15', null,
+   'UA623052990000026001234509876', 'АТ КБ «ПриватБанк»'],
 ];
 
-// Останні три поля: ІПН платника ПДВ, чи є покупець платником, юридична адреса.
+// Останні поля: ІПН платника ПДВ, чи є покупець платником, юридична адреса,
+// адреса доставки (у мереж це розподільчий центр, а не юридична) та IBAN —
+// за ним платіж із виписки впізнається навіть без ЄДРПОУ в рядку.
 const CUSTOMERS = [
-  ['ТОВ «АТБ-Маркет»', 'network', '30487219', 'Ігор Панченко', '+380563334455', 'network', 45, 500000, '304872104871', true, '49000, м. Дніпро, вул. Курчатова, буд. 1Б'],
-  ['ТОВ «Фора»', 'network', '31859472', 'Наталія Гунько', '+380442223311', 'network', 30, 300000, '318594726543', true, '02090, м. Київ, вул. Празька, буд. 5'],
-  ['ТОВ «Здоров’я Дистрибʼюшн»', 'distributor', '40218374', 'Дмитро Сич', '+380671234567', 'distributor', 14, 200000, '402183712345', true, '01033, м. Київ, вул. Саксаганського, буд. 41'],
-  ['Аптека «Бажаємо здоровʼя»', 'pharmacy', '39471028', 'Леся Ткач', '+380509876543', 'distributor', 7, 50000, '394710298765', true, '79000, м. Львів, просп. Свободи, буд. 12'],
-  ['Мережа кав’ярень «Ранок»', 'horeca', '42917583', 'Богдан Мороз', '+380931112244', 'rrp', 0, 20000, null, false, '61000, м. Харків, вул. Сумська, буд. 25'],
+  ['ТОВ «АТБ-Маркет»', 'network', '30487219', 'Ігор Панченко', '+380563334455', 'network', 45, 500000, '304872104871', true, '49000, м. Дніпро, вул. Курчатова, буд. 1Б', '52005, Дніпропетровська обл., смт Слобожанське, РЦ «АТБ», вул. Нова, буд. 1', 'UA213052990000026007233566001', 'АТ КБ «ПриватБанк»'],
+  ['ТОВ «Фора»', 'network', '31859472', 'Наталія Гунько', '+380442223311', 'network', 30, 300000, '318594726543', true, '02090, м. Київ, вул. Празька, буд. 5', '08132, Київська обл., м. Вишневе, РЦ «Фора», вул. Промислова, буд. 4', 'UA523006140000026001111222333', 'АТ «Райффайзен Банк»'],
+  ['ТОВ «Здоров’я Дистрибʼюшн»', 'distributor', '40218374', 'Дмитро Сич', '+380671234567', 'distributor', 14, 200000, '402183712345', true, '01033, м. Київ, вул. Саксаганського, буд. 41', null, 'UA733052990000026005044556677', 'АТ КБ «ПриватБанк»'],
+  ['Аптека «Бажаємо здоровʼя»', 'pharmacy', '39471028', 'Леся Ткач', '+380509876543', 'distributor', 7, 50000, '394710298765', true, '79000, м. Львів, просп. Свободи, буд. 12', null, 'UA443220010000026008899001122', 'АТ «Універсал Банк»'],
+  ['Мережа кав’ярень «Ранок»', 'horeca', '42917583', 'Богдан Мороз', '+380931112244', 'rrp', 0, 20000, null, false, '61000, м. Харків, вул. Сумська, буд. 25', null, null, null],
   // Власна роздрібна юрособа — продажі їй є реалізацією між своїми.
-  ['ФОП Ковальчук О.М. (наша роздрібна)', 'distributor', '3184507621', 'Олена Ковальчук', '+380671234000', 'distributor', 0, 0, null, false, '04070, м. Київ, вул. Набережно-Хрещатицька, буд. 3'],
+  ['ФОП Ковальчук О.М. (наша роздрібна)', 'distributor', '3184507621', 'Олена Ковальчук', '+380671234000', 'distributor', 0, 0, null, false, '04070, м. Київ, вул. Набережно-Хрещатицька, буд. 3', null, null, null],
 ];
 
 
@@ -376,33 +388,44 @@ try {
     }
   }
 
-  for (const [name, edrpou, contact, phone, terms, isVat] of SUPPLIERS) {
+  for (const [name, edrpou, contact, phone, terms, isVat, address, warehouse, iban, bank]
+       of SUPPLIERS) {
     const { rows } = await client.query('select id from suppliers where name = $1', [name]);
     if (rows.length === 0) {
       await client.query(
-        `insert into suppliers (name, edrpou, contact, phone, payment_terms_days, is_vat_payer)
-         values ($1, $2, $3, $4, $5, $6)`,
-        [name, edrpou, contact, phone, terms, isVat],
+        `insert into suppliers (name, edrpou, contact, phone, payment_terms_days, is_vat_payer,
+                                address, warehouse_address, iban, bank_name)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+        [name, edrpou, contact, phone, terms, isVat, address, warehouse, iban, bank],
       );
     } else {
-      await client.query('update suppliers set is_vat_payer = $2 where id = $1', [rows[0].id, isVat]);
+      await client.query(
+        `update suppliers set is_vat_payer = $2, address = $3, warehouse_address = $4,
+                              iban = $5, bank_name = $6
+          where id = $1`,
+        [rows[0].id, isVat, address, warehouse, iban, bank],
+      );
     }
   }
 
-  for (const [name, kind, edrpou, contact, phone, level, terms, limit, ipn, isVat, address] of CUSTOMERS) {
+  for (const [name, kind, edrpou, contact, phone, level, terms, limit, ipn, isVat, address,
+              delivery, iban, bank] of CUSTOMERS) {
     const { rows } = await client.query('select id from customers where name = $1', [name]);
     if (rows.length === 0) {
       await client.query(
         `insert into customers
            (name, kind, edrpou, contact, phone, price_level, payment_terms_days, credit_limit,
-            ipn, is_vat_payer, address)
-         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
-        [name, kind, edrpou, contact, phone, level, terms, limit, ipn, isVat, address],
+            ipn, is_vat_payer, address, delivery_address, iban, bank_name)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+        [name, kind, edrpou, contact, phone, level, terms, limit, ipn, isVat, address,
+         delivery, iban, bank],
       );
     } else {
       await client.query(
-        'update customers set ipn = $2, is_vat_payer = $3, address = $4 where id = $1',
-        [rows[0].id, ipn, isVat, address],
+        `update customers set ipn = $2, is_vat_payer = $3, address = $4,
+                              delivery_address = $5, iban = $6, bank_name = $7
+          where id = $1`,
+        [rows[0].id, ipn, isVat, address, delivery, iban, bank],
       );
     }
   }

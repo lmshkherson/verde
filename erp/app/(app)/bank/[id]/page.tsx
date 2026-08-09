@@ -46,7 +46,7 @@ export default async function StatementPage({ params }: { params: Promise<{ id: 
   const [rows, customers, suppliers] = await Promise.all([
     query<BankTx>(
       `select t.id, t.op_date, t.amount, t.counterparty_name, t.counterparty_edrpou,
-              t.purpose, t.doc_number, t.status, t.match_kind, t.other_account, t.note,
+              t.counterparty_iban, t.purpose, t.doc_number, t.status, t.match_kind, t.other_account, t.note,
               coalesce(c.name, sp.name) as matched_name
          from bank_transactions t
          left join customers c on c.id = t.customer_id
@@ -55,8 +55,8 @@ export default async function StatementPage({ params }: { params: Promise<{ id: 
         order by t.op_date, t.id`,
       [id],
     ),
-    query<Party>('select id, name, edrpou from customers where is_active order by name'),
-    query<Party>('select id, name, edrpou from suppliers where is_active order by name'),
+    query<Party>('select id, name, edrpou, iban from customers where is_active order by name'),
+    query<Party>('select id, name, edrpou, iban from suppliers where is_active order by name'),
   ]);
 
   const pending = rows.filter((r) => r.status === 'new');

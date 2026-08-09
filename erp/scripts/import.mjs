@@ -137,20 +137,26 @@ const handlers = {
         num(r['відтермінування']),
         num(r['кредитний_ліміт']),
         strOrNull(r['адреса']),
+        strOrNull(r['адреса_доставки']),
+        strOrNull(r['iban']),
+        strOrNull(r['банк']),
       ];
       if (exists[0]) {
         await client.query(
           `update customers set name=$1, kind=$2, edrpou=$3, ipn=$4, is_vat_payer=$5, contact=$6,
                                 phone=$7, price_level=$8, payment_terms_days=$9, credit_limit=$10,
-                                address=coalesce($11, address)
-            where id = $12`,
+                                address=coalesce($11, address),
+                                delivery_address=coalesce($12, delivery_address),
+                                iban=coalesce($13, iban), bank_name=coalesce($14, bank_name)
+            where id = $15`,
           [...params, exists[0].id],
         );
       } else {
         await client.query(
           `insert into customers (name, kind, edrpou, ipn, is_vat_payer, contact, phone,
-                                  price_level, payment_terms_days, credit_limit, address)
-           values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+                                  price_level, payment_terms_days, credit_limit, address,
+                                  delivery_address, iban, bank_name)
+           values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
           params,
         );
       }
@@ -173,18 +179,26 @@ const handlers = {
         strOrNull(r['контакт']),
         strOrNull(r['телефон']),
         num(r['відтермінування']),
+        strOrNull(r['адреса']),
+        strOrNull(r['адреса_складу']),
+        strOrNull(r['iban']),
+        strOrNull(r['банк']),
       ];
       if (exists[0]) {
         await client.query(
           `update suppliers set name=$1, edrpou=$2, is_vat_payer=$3, contact=$4, phone=$5,
-                                payment_terms_days=$6
-            where id=$7`,
+                                payment_terms_days=$6,
+                                address=coalesce($7, address),
+                                warehouse_address=coalesce($8, warehouse_address),
+                                iban=coalesce($9, iban), bank_name=coalesce($10, bank_name)
+            where id=$11`,
           [...params, exists[0].id],
         );
       } else {
         await client.query(
-          `insert into suppliers (name, edrpou, is_vat_payer, contact, phone, payment_terms_days)
-           values ($1,$2,$3,$4,$5,$6)`,
+          `insert into suppliers (name, edrpou, is_vat_payer, contact, phone, payment_terms_days,
+                                  address, warehouse_address, iban, bank_name)
+           values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
           params,
         );
       }

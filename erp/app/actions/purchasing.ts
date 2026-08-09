@@ -7,6 +7,7 @@ import { type ActionState, num, str, strOrNull, toMessage } from '@/lib/action-s
 import { defaultWarehouseId, insertMoves, nextDocNumber, round2, round3 } from '@/lib/stock';
 import { calcPurchaseVat } from '@/lib/vat';
 import { requireRole } from '@/lib/session';
+import { normalizeIban } from '@/lib/bank';
 
 export async function createSupplier(_prev: ActionState, formData: FormData): Promise<ActionState> {
   await requireRole('warehouse');
@@ -50,12 +51,16 @@ export async function updateSupplier(_prev: ActionState, formData: FormData): Pr
   if (!id) return { error: 'Не вказано постачальника' };
   if (!name) return { error: 'Вкажіть назву постачальника' };
 
+  const iban = normalizeIban(strOrNull(formData, 'iban'));
+  if (iban.error) return { error: iban.error };
+
   try {
     await transaction((c) =>
       c.query(
         `update suppliers set
            name = $2, edrpou = $3, contact = $4, phone = $5,
            payment_terms_days = $6, is_vat_payer = $7, note = $8,
+           address = $12, warehouse_address = $13, iban = $14, bank_name = $15,
            is_approved = $9,
            -- Дату затвердження ставимо один раз, коли постачальник уперше
            -- потрапив у перелік: вона доводить, що оцінка була.
@@ -74,6 +79,10 @@ export async function updateSupplier(_prev: ActionState, formData: FormData): Pr
           formData.get('is_approved') === 'on',
           strOrNull(formData, 'approved_until'),
           strOrNull(formData, 'approval_note'),
+          strOrNull(formData, 'address'),
+          strOrNull(formData, 'warehouse_address'),
+          iban.iban,
+          strOrNull(formData, 'bank_name'),
         ],
       ),
     );

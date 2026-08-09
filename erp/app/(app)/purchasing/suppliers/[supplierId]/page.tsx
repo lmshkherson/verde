@@ -27,6 +27,10 @@ export default async function SupplierEditPage({
     is_vat_payer: boolean;
     note: string | null;
     is_active: boolean;
+    address: string | null;
+    warehouse_address: string | null;
+    iban: string | null;
+    bank_name: string | null;
     is_approved: boolean;
     approved_on: string | Date | null;
     approved_until: string | Date | null;
@@ -121,6 +125,38 @@ export default async function SupplierEditPage({
               <p className="text-sm text-emerald-800/70">
                 Статус впливає лише на нові приходи: у вже оприбуткованих партіях собівартість і
                 податковий кредит порахувалися за статусом на дату документа.
+              </p>
+
+              <Field label="Юридична адреса">
+                <input name="address" defaultValue={supplier.address ?? ''} className={inputClass} />
+              </Field>
+              <Field
+                label="Адреса складу"
+                hint="звідки забираємо й куди повертаємо брак, якщо не юридична"
+              >
+                <input
+                  name="warehouse_address"
+                  defaultValue={supplier.warehouse_address ?? ''}
+                  className={inputClass}
+                />
+              </Field>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Field label="IBAN">
+                  <input
+                    name="iban"
+                    defaultValue={supplier.iban ?? ''}
+                    className={inputClass}
+                    placeholder="UA903052990000026007018811777"
+                  />
+                </Field>
+                <Field label="Банк">
+                  <input name="bank_name" defaultValue={supplier.bank_name ?? ''} className={inputClass} />
+                </Field>
+              </div>
+              <p className="text-sm text-emerald-800/70">
+                За IBAN система впізнає постачальника в банківській виписці, коли ЄДРПОУ в рядку
+                немає — а його там часто немає.
               </p>
 
               <div className="rounded-xl border border-emerald-900/10 p-3">

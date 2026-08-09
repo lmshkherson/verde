@@ -67,7 +67,7 @@ export default async function BankPage() {
     ),
     query<BankTx & { statement_id: string | null }>(
       `select t.id, t.op_date, t.amount, t.counterparty_name, t.counterparty_edrpou,
-              t.purpose, t.doc_number, t.status, t.match_kind, t.other_account, t.note,
+              t.counterparty_iban, t.purpose, t.doc_number, t.status, t.match_kind, t.other_account, t.note,
               t.statement_id, null::text as matched_name
          from bank_transactions t
         where t.legal_entity_id = $1 and t.status = 'new'
@@ -75,8 +75,8 @@ export default async function BankPage() {
         limit 60`,
       [session.eid],
     ),
-    query<Party>('select id, name, edrpou from customers where is_active order by name'),
-    query<Party>('select id, name, edrpou from suppliers where is_active order by name'),
+    query<Party>('select id, name, edrpou, iban from customers where is_active order by name'),
+    query<Party>('select id, name, edrpou, iban from suppliers where is_active order by name'),
   ]);
 
   const totalUnmatched = accounts.reduce((s, a) => s + Number(a.unmatched), 0);

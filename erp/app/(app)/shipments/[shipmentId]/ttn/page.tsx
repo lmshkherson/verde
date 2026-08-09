@@ -54,6 +54,7 @@ export default async function TtnPage({ params }: { params: Promise<{ shipmentId
     buyer_name: string;
     buyer_edrpou: string | null;
     buyer_address: string | null;
+    buyer_legal_address: string | null;
     warehouse_address: string | null;
     net_weight_kg: number | null;
     calc_places: number | null;
@@ -63,7 +64,11 @@ export default async function TtnPage({ params }: { params: Promise<{ shipmentId
   }>(
     `select sh.*, o.id as order_id, o.number as order_number,
             e.name as seller_name, e.edrpou as seller_edrpou, e.address as seller_address,
-            c.name as buyer_name, c.edrpou as buyer_edrpou, c.address as buyer_address,
+            c.name as buyer_name, c.edrpou as buyer_edrpou,
+            -- Возимо туди, куди возимо: у мереж це розподільчий центр, а не
+            -- юридична адреса з реєстру.
+            coalesce(c.delivery_address, c.address) as buyer_address,
+            c.address as buyer_legal_address,
             (select w.address from warehouses w where w.kind = 'finished' limit 1) as warehouse_address,
             cargo.net_weight_kg, cargo.places as calc_places,
             t.need_min_c, t.need_max_c, t.without_mode
@@ -217,7 +222,11 @@ export default async function TtnPage({ params }: { params: Promise<{ shipmentId
           />
           <Line
             label="Вантажоодержувач (найменування, код ЄДРПОУ)"
-            value={[doc.buyer_name, doc.buyer_edrpou && `код ЄДРПОУ ${doc.buyer_edrpou}`]
+            value={[
+              doc.buyer_name,
+              doc.buyer_edrpou && `код ЄДРПОУ ${doc.buyer_edrpou}`,
+              doc.buyer_legal_address,
+            ]
               .filter(Boolean)
               .join(', ')}
             wide

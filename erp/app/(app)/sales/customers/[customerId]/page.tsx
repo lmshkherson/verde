@@ -30,6 +30,9 @@ export default async function CustomerEditPage({
     payment_terms_days: number;
     credit_limit: number;
     address: string | null;
+    delivery_address: string | null;
+    iban: string | null;
+    bank_name: string | null;
     note: string | null;
     is_active: boolean;
     legal_entity_id: string | null;
@@ -195,6 +198,35 @@ export default async function CustomerEditPage({
               <Field label="Юридична адреса" hint="друкується у видатковій накладній">
                 <input name="address" defaultValue={customer.address ?? ''} className={inputClass} />
               </Field>
+
+              <Field
+                label="Адреса доставки"
+                hint="порожньо — возимо на юридичну; у мереж це майже завжди РЦ"
+              >
+                <input
+                  name="delivery_address"
+                  defaultValue={customer.delivery_address ?? ''}
+                  className={inputClass}
+                />
+              </Field>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Field label="IBAN">
+                  <input
+                    name="iban"
+                    defaultValue={customer.iban ?? ''}
+                    className={inputClass}
+                    placeholder="UA903052990000026007018811777"
+                  />
+                </Field>
+                <Field label="Банк">
+                  <input name="bank_name" defaultValue={customer.bank_name ?? ''} className={inputClass} />
+                </Field>
+              </div>
+              <p className="text-sm text-emerald-800/70">
+                IBAN потрібен не для краси: у банківській виписці ЄДРПОУ часто немає, і саме рахунок
+                дозволяє рознести платіж автоматично.
+              </p>
 
               <Field label="Примітка">
                 <input name="note" defaultValue={customer.note ?? ''} className={inputClass} />
