@@ -294,6 +294,20 @@ try {
     ['ФОП Ковальчук О.М. (наша роздрібна)', ENTITIES[1].short],
   );
 
+  // Вхідні залишки: гроші на рахунку й капітал. Без них актив не зійдеться з пасивом.
+  for (const [short, amount] of [[ENTITIES[0].short, 500000], [ENTITIES[1].short, 50000]]) {
+    for (const [code, debit, credit] of [['311', amount, 0], ['40', 0, amount]]) {
+      await client.query(
+        `insert into opening_balances (legal_entity_id, code, as_of, debit, credit)
+         select id, $2, date_trunc('month', current_date)::date, $3, $4
+           from legal_entities where short_name = $1
+         on conflict (legal_entity_id, code, as_of) do update
+           set debit = excluded.debit, credit = excluded.credit`,
+        [short, code, debit, credit],
+      );
+    }
+  }
+
   await client.query('commit');
   console.log(
     `Довідники заповнено: ${ENTITIES.length} юрособи, ${USERS.length} користувачів, ${ITEMS.length} позицій, ` +

@@ -1,0 +1,372 @@
+import type { PoolClient } from 'pg';
+
+/**
+ * Генерація проводок із документів.
+ *
+ * Проводки тут — похідна від первинки, а не окремий ручний ввід. Через це вони
+ * не можуть розійтися з документами, а зміна правила означає просто
+ * перегенерацію періоду, а не пошук і виправлення записів руками.
+ *
+ * Ознака книги на проводці каже, до якого обліку вона належить:
+ *   both        — однакова в обох
+ *   accounting  — тільки бухгалтерська
+ *   management  — тільки управлінська
+ */
+
+export type Book = 'both' | 'accounting' | 'management';
+
+interface Entry {
+  debit: string;
+  credit: string;
+  amount: number;
+  book?: Book;
+  note?: string;
+}
+
+const round2 = (n: number) => Math.round(n * 100) / 100;
+
+/** Рахунок запасів за видом номенклатури. */
+function inventoryAccount(kind: string): string {
+  if (kind === 'packaging') return '204';
+  if (kind === 'finished') return '26';
+  return '201';
+}
+
+/** Рахунок коштів за способом оплати. */
+const cashAccount = (method: string) => (method === 'cash' ? '301' : '311');
+
+/** Рахунок витрат за категорією. Цех виділено окремо — він розходиться між книгами. */
+function expenseAccount(category: string): string {
+  if (category === 'logistics' || category === 'marketing') return '93';
+  return '92';
+}
+
+const PRODUCTION_CATEGORIES = ['production_salary', 'production_energy'];
+
+async function addBatch(
+  client: PoolClient,
+  entityId: string,
+  docType: string,
+  docId: string | null,
+  postedOn: string,
+  description: string,
+  entries: Entry[],
+): Promise<number> {
+  const rows = entries.filter((e) => round2(e.amount) > 0);
+  if (rows.length === 0) return 0;
+
+  const { rows: batch } = await client.query<{ id: string }>(
+    `insert into posting_batches (legal_entity_id, doc_type, doc_id, posted_on, description)
+     values ($1, $2, $3, $4, $5) returning id`,
+    [entityId, docType, docId, postedOn, description],
+  );
+
+  for (const e of rows) {
+    await client.query(
+      `insert into postings
+         (batch_id, legal_entity_id, book, debit_code, credit_code, amount, posted_on, note)
+       values ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      [batch[0].id, entityId, e.book ?? 'both', e.debit, e.credit, round2(e.amount), postedOn, e.note ?? null],
+    );
+  }
+  return rows.length;
+}
+
+/**
+ * Перегенеровує всі проводки юрособи за місяць. Ідемпотентна: спершу зносить
+ * раніше згенеровані пакети періоду, потім будує заново з документів.
+ */
+export async function regeneratePostings(
+  client: PoolClient,
+  entityId: string,
+  period: string,
+  userId: string | null,
+): Promise<number> {
+  await client.query(
+    `delete from posting_batches
+      where legal_entity_id = $1
+        and posted_on >= $2::date and posted_on < ($2::date + interval '1 month')`,
+    [entityId, period],
+  );
+
+  let count = 0;
+  const range = [entityId, period];
+
+  // ─── Прихід запасів від постачальника ────────────────────────────────────
+  const { rows: receipts } = await client.query<{
+    doc_id: string;
+    day: string;
+    kind: string;
+    amount: number;
+    number: string | null;
+  }>(
+    `select m.doc_id, m.moved_at::date as day, i.kind, sum(m.qty * m.unit_cost) as amount,
+            max(p.number) as number
+       from stock_moves m
+       join items i on i.id = m.item_id
+       left join purchase_orders p on p.id = m.doc_id
+      where m.legal_entity_id = $1 and m.move_type = 'purchase_receipt'
+        and m.doc_type = 'purchase_order'
+        and m.moved_at >= $2::date and m.moved_at < ($2::date + interval '1 month')
+      group by m.doc_id, m.moved_at::date, i.kind`,
+    range,
+  );
+  for (const r of receipts) {
+    count += await addBatch(client, entityId, 'purchase_receipt', r.doc_id, r.day, `Прихід ${r.number ?? ''}`.trim(), [
+      { debit: inventoryAccount(r.kind), credit: '631', amount: r.amount, note: 'Оприбуткування без ПДВ' },
+    ]);
+  }
+
+  // Придбання готової продукції у власної юрособи — інша сторона внутрішньої реалізації.
+  const { rows: internalBuys } = await client.query<{ doc_id: string; day: string; amount: number }>(
+    `select m.doc_id, m.moved_at::date as day, sum(m.qty * m.unit_cost) as amount
+       from stock_moves m
+      where m.legal_entity_id = $1 and m.move_type = 'purchase_receipt' and m.doc_type = 'shipment'
+        and m.moved_at >= $2::date and m.moved_at < ($2::date + interval '1 month')
+      group by m.doc_id, m.moved_at::date`,
+    range,
+  );
+  for (const r of internalBuys) {
+    count += await addBatch(client, entityId, 'internal_purchase', r.doc_id, r.day, 'Придбання у власної юрособи', [
+      { debit: '26', credit: '631', amount: r.amount },
+    ]);
+  }
+
+  // ─── Податковий кредит із ПДВ ────────────────────────────────────────────
+  const { rows: credits } = await client.query<{
+    id: string;
+    doc_type: string;
+    occurred_on: string;
+    vat_amount: number;
+    doc_number: string | null;
+  }>(
+    `select id, doc_type, occurred_on, vat_amount, doc_number
+       from vat_entries
+      where legal_entity_id = $1 and kind = 'credit'
+        and occurred_on >= $2::date and occurred_on < ($2::date + interval '1 month')`,
+    range,
+  );
+  for (const v of credits) {
+    count += await addBatch(client, entityId, 'vat_credit', v.id, v.occurred_on, `Податковий кредит ${v.doc_number ?? ''}`.trim(), [
+      { debit: '6441', credit: '631', amount: v.vat_amount },
+    ]);
+  }
+
+  // ─── Оплати постачальникам ───────────────────────────────────────────────
+  const { rows: supplierPayments } = await client.query<{ id: string; paid_on: string; amount: number; method: string }>(
+    `select id, paid_on, amount, method from supplier_payments
+      where legal_entity_id = $1
+        and paid_on >= $2::date and paid_on < ($2::date + interval '1 month')`,
+    range,
+  );
+  for (const p of supplierPayments) {
+    count += await addBatch(client, entityId, 'supplier_payment', p.id, p.paid_on, 'Оплата постачальнику', [
+      { debit: '631', credit: cashAccount(p.method), amount: p.amount },
+    ]);
+  }
+
+  // ─── Списання сировини у виробництво ─────────────────────────────────────
+  const { rows: consumed } = await client.query<{ doc_id: string; day: string; kind: string; amount: number }>(
+    `select m.doc_id, m.moved_at::date as day, i.kind, sum(-m.qty * m.unit_cost) as amount
+       from stock_moves m join items i on i.id = m.item_id
+      where m.legal_entity_id = $1 and m.move_type = 'production_consume'
+        and m.moved_at >= $2::date and m.moved_at < ($2::date + interval '1 month')
+      group by m.doc_id, m.moved_at::date, i.kind`,
+    range,
+  );
+  for (const c of consumed) {
+    count += await addBatch(client, entityId, 'production_consume', c.doc_id, c.day, 'Списано у виробництво', [
+      { debit: '23', credit: inventoryAccount(c.kind), amount: c.amount },
+    ]);
+  }
+
+  // ─── Випуск готової продукції ────────────────────────────────────────────
+  const { rows: output } = await client.query<{ doc_id: string; day: string; amount: number }>(
+    `select m.doc_id, m.moved_at::date as day, sum(m.qty * m.unit_cost) as amount
+       from stock_moves m
+      where m.legal_entity_id = $1 and m.move_type = 'production_output'
+        and m.moved_at >= $2::date and m.moved_at < ($2::date + interval '1 month')
+      group by m.doc_id, m.moved_at::date`,
+    range,
+  );
+  for (const o of output) {
+    count += await addBatch(client, entityId, 'production_output', o.doc_id, o.day, 'Випуск продукції', [
+      { debit: '26', credit: '23', amount: o.amount, note: 'За вартістю сировини' },
+    ]);
+  }
+
+  // ─── Відвантаження: дохід, ПДВ, собівартість ─────────────────────────────
+  const { rows: shipments } = await client.query<{
+    id: string;
+    number: string;
+    shipped_on: string;
+    gross: number;
+    vat: number;
+    cogs: number;
+  }>(
+    `select sh.id, sh.number, sh.shipped_on,
+            coalesce(sum(sl.qty * l.unit_price * (1 + l.vat_rate / 100)), 0) as gross,
+            coalesce(sum(sl.qty * l.unit_price * l.vat_rate / 100), 0)       as vat,
+            coalesce((select sum(-m.qty * m.unit_cost) from stock_moves m
+                       where m.doc_type = 'shipment' and m.doc_id = sh.id
+                         and m.move_type = 'sale_shipment'), 0)              as cogs
+       from shipments sh
+       join sales_orders o on o.id = sh.so_id
+       join shipment_lines sl on sl.shipment_id = sh.id
+       join sales_order_lines l on l.id = sl.so_line_id
+      where o.legal_entity_id = $1
+        and sh.shipped_on >= $2::date and sh.shipped_on < ($2::date + interval '1 month')
+      group by sh.id, sh.number, sh.shipped_on`,
+    range,
+  );
+  for (const s of shipments) {
+    count += await addBatch(client, entityId, 'shipment', s.id, s.shipped_on, `Відвантаження ${s.number}`, [
+      { debit: '361', credit: '701', amount: s.gross, note: 'Дохід із ПДВ' },
+      { debit: '701', credit: '6411', amount: s.vat, note: 'Податкове зобов’язання' },
+      { debit: '901', credit: '26', amount: s.cogs, note: 'Собівартість реалізації' },
+    ]);
+  }
+
+  // ─── Оплати від покупців ─────────────────────────────────────────────────
+  const { rows: customerPayments } = await client.query<{ id: string; paid_on: string; amount: number; method: string }>(
+    `select id, paid_on, amount, method from payments
+      where legal_entity_id = $1
+        and paid_on >= $2::date and paid_on < ($2::date + interval '1 month')`,
+    range,
+  );
+  for (const p of customerPayments) {
+    count += await addBatch(client, entityId, 'customer_payment', p.id, p.paid_on, 'Оплата від покупця', [
+      { debit: cashAccount(p.method), credit: '361', amount: p.amount },
+    ]);
+  }
+
+  // ─── Витрати. Тут і проходить головна межа між обліками ──────────────────
+  const { rows: expenses } = await client.query<{
+    id: string;
+    spent_on: string;
+    category: string;
+    amount_net: number;
+    description: string | null;
+  }>(
+    `select id, spent_on, category, amount_net, description from expenses
+      where legal_entity_id = $1
+        and spent_on >= $2::date and spent_on < ($2::date + interval '1 month')`,
+    range,
+  );
+  let shopCost = 0;
+  for (const e of expenses) {
+    if (PRODUCTION_CATEGORIES.includes(e.category)) {
+      shopCost += e.amount_net;
+      // Бухгалтерія відносить цех на виробництво, управлінський облік — одразу
+      // у витрати періоду. Це і є та сама подія з різними проводками.
+      count += await addBatch(client, entityId, 'expense', e.id, e.spent_on, e.description ?? 'Витрати цеху', [
+        { debit: '23', credit: '631', amount: e.amount_net, book: 'accounting', note: 'Цех у виробничу собівартість' },
+        { debit: '91', credit: '631', amount: e.amount_net, book: 'management', note: 'Цех у витрати періоду' },
+      ]);
+    } else {
+      count += await addBatch(client, entityId, 'expense', e.id, e.spent_on, e.description ?? 'Операційні витрати', [
+        { debit: expenseAccount(e.category), credit: '631', amount: e.amount_net },
+      ]);
+    }
+  }
+
+  // ─── Втрати від псування ─────────────────────────────────────────────────
+  const { rows: writeOffs } = await client.query<{ day: string; kind: string; amount: number }>(
+    `select m.moved_at::date as day, i.kind, sum(-m.qty * m.unit_cost) as amount
+       from stock_moves m join items i on i.id = m.item_id
+      where m.legal_entity_id = $1 and m.move_type = 'write_off'
+        and m.moved_at >= $2::date and m.moved_at < ($2::date + interval '1 month')
+      group by m.moved_at::date, i.kind`,
+    range,
+  );
+  for (const w of writeOffs) {
+    count += await addBatch(client, entityId, 'write_off', null, w.day, 'Списання', [
+      { debit: '947', credit: inventoryAccount(w.kind), amount: w.amount },
+    ]);
+  }
+
+  // ─── Розподіл цеху на випуск: лише в бухгалтерській книзі ────────────────
+  // Спрощення, яке варто узгодити з бухгалтером: витрати цеху за місяць
+  // розносяться на випуск місяця пропорційно кількості, а на собівартість
+  // реалізації — у частці проданого з цього випуску.
+  if (shopCost > 0) {
+    const { rows: volume } = await client.query<{ produced: number; sold: number }>(
+      `select
+         coalesce((select sum(produced_qty) from production_orders
+                    where legal_entity_id = $1 and status = 'done'
+                      and finished_at >= $2::date and finished_at < ($2::date + interval '1 month')), 0) as produced,
+         coalesce((select sum(sl.qty) from shipment_lines sl
+                     join shipments sh on sh.id = sl.shipment_id
+                     join sales_orders o on o.id = sh.so_id
+                     join items i on i.id = sl.item_id
+                    where o.legal_entity_id = $1 and i.kind = 'finished'
+                      and sh.shipped_on >= $2::date and sh.shipped_on < ($2::date + interval '1 month')), 0) as sold`,
+      range,
+    );
+    const produced = Number(volume[0]?.produced ?? 0);
+    const sold = Number(volume[0]?.sold ?? 0);
+    const soldShare = produced > 0 ? Math.min(1, sold / produced) : 0;
+    const lastDay = new Date(new Date(period).getFullYear(), new Date(period).getMonth() + 1, 0)
+      .toISOString()
+      .slice(0, 10);
+
+    count += await addBatch(client, entityId, 'period_close', null, lastDay, 'Розподіл витрат цеху', [
+      { debit: '26', credit: '23', amount: shopCost, book: 'accounting', note: 'Цех у вартість випуску' },
+      {
+        debit: '901',
+        credit: '26',
+        amount: shopCost * soldShare,
+        book: 'accounting',
+        note: `Частка проданого ${Math.round(soldShare * 1000) / 10}%`,
+      },
+    ]);
+  }
+
+  // ─── Закриття доходів і витрат на результат, окремо для кожної книги ─────
+  const lastDay = new Date(new Date(period).getFullYear(), new Date(period).getMonth() + 1, 0)
+    .toISOString()
+    .slice(0, 10);
+
+  for (const book of ['accounting', 'management'] as const) {
+    const { rows: balances } = await client.query<{ code: string; kind: string; balance: number }>(
+      `select t.code, a.kind, sum(t.debit) - sum(t.credit) as balance
+         from v_account_turnover t
+         join chart_of_accounts a on a.code = t.code
+        where t.legal_entity_id = $1 and t.book = $3
+          and t.posted_on >= $2::date and t.posted_on < ($2::date + interval '1 month')
+          and a.kind in ('income', 'expense')
+        group by t.code, a.kind`,
+      [entityId, period, book],
+    );
+
+    const closing: Entry[] = [];
+    for (const b of balances) {
+      const balance = Number(b.balance);
+      if (Math.abs(balance) < 0.005) continue;
+      // Дохід має кредитове сальдо, витрати — дебетове.
+      if (balance < 0) closing.push({ debit: b.code, credit: '791', amount: -balance, book });
+      else closing.push({ debit: '791', credit: b.code, amount: balance, book });
+    }
+
+    count += await addBatch(
+      client,
+      entityId,
+      'period_close',
+      null,
+      lastDay,
+      `Закриття періоду (${book === 'accounting' ? 'бухгалтерський' : 'управлінський'})`,
+      closing,
+    );
+  }
+
+  await client.query(
+    `insert into posting_runs (legal_entity_id, period, generated_by, postings_count)
+     values ($1, $2, $3, $4)
+     on conflict (legal_entity_id, period) do update
+       set generated_at = now(), generated_by = excluded.generated_by,
+           postings_count = excluded.postings_count`,
+    [entityId, period, userId, count],
+  );
+
+  return count;
+}

@@ -431,7 +431,51 @@ try {
     `${fullCost} грн/шт проти ${factoryCost} в обліку`,
   );
 
-  // ─── 11. Права доступу ─────────────────────────────────────────────────────
+  // ─── 11. Бухгалтерський контур: проводки у двох книгах ─────────────────────
+  console.log('\nБухоблік: проводки, оборотка, розбіжності');
+  await owner.goto(`${BASE}/accounting`);
+  await owner.click('button:has-text("Перегенерувати період")');
+  await owner.waitForTimeout(3000);
+  await owner.reload();
+
+  const debitTurnover = await stat(owner, 'Оберти за дебетом');
+  const creditTurnover = await stat(owner, 'Оберти за кредитом');
+  check(
+    'оборотка балансує: дебет дорівнює кредиту',
+    near(debitTurnover, creditTurnover, 0.02) && debitTurnover > 0,
+    `Дт ${debitTurnover} = Кт ${creditTurnover}`,
+  );
+
+  // Управлінська книга має дати рівно той результат, що й звіт P&L.
+  await owner.goto(`${BASE}/accounting?book=management`);
+  const bookResult = await stat(owner, 'Результат на 791');
+  check(
+    'результат на 791 в управлінській книзі збігається з P&L',
+    near(bookResult, resultAfter - 24000, 1),
+    `${bookResult} грн проти ${resultAfter - 24000} у звіті`,
+  );
+
+  await owner.goto(`${BASE}/accounting/difference`);
+  const accResult = await stat(owner, 'Бухгалтерський результат');
+  const mgmtResult = await stat(owner, 'Управлінський результат');
+  const gap = await stat(owner, 'Розбіжність');
+
+  check(
+    'бухгалтерський прибуток вищий: цех осів у залишках ГП',
+    accResult > mgmtResult,
+    `${accResult} проти ${mgmtResult} грн`,
+  );
+  // 40 нерозпроданих одиниць із 980 несуть на собі 40/980 витрат цеху.
+  check(
+    'розбіжність = вартість цеху в непроданих 40 шт',
+    near(gap, (24000 * 40) / 980, 1),
+    `${gap} грн`,
+  );
+
+  const divergentRows = await owner.locator('table').last().locator('tbody tr').count();
+  check('видно проводки, що є лише в одній книзі', divergentRows >= 2, `${divergentRows} рядків`);
+
+  // ─── 12. Права доступу ─────────────────────────────────────────────────────
   console.log('\nПрава доступу');
   const denied = await warehouse.goto(`${BASE}/reports`);
   check('комірника не пускає у звіти', denied.url().includes('denied=1'));

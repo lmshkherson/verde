@@ -10,6 +10,7 @@ const ALL_ITEMS: (NavItem & { section: Section })[] = [
   { section: 'purchasing', href: '/purchasing', label: 'Закупівлі', short: 'Закупки', icon: '🚚' },
   { section: 'catalog', href: '/catalog', label: 'Номенклатура', short: 'SKU', icon: '🏷️' },
   { section: 'reports', href: '/pl', label: 'Фінрезультат', short: 'P&L', icon: '💰' },
+  { section: 'reports', href: '/accounting', label: 'Бухоблік', short: 'Бух', icon: '📒' },
   { section: 'reports', href: '/reports', label: 'Звіти', short: 'Звіти', icon: '📈' },
   { section: 'reports', href: '/entities', label: 'Юрособи', short: 'Юрособи', icon: '🏛️' },
 ];
