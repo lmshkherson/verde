@@ -17,6 +17,8 @@ import { chromium } from 'playwright';
 const BASE = process.env.BASE_URL ?? 'http://127.0.0.1:3100';
 const PASSWORD = process.env.SEED_PASSWORD ?? 'verde2026';
 
+const current = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
+
 let failures = 0;
 const check = (name, condition, detail = '') => {
   console.log(`${condition ? '  ✓' : '  ✗'} ${name}${detail ? ` — ${detail}` : ''}`);
@@ -385,6 +387,7 @@ try {
   await owner.selectOption('select[name="category"]', 'production_energy');
   await owner.fill('input[name="amount_net"]', '6000');
   await owner.fill('input[name="vat_amount"]', '1200');
+  await owner.selectOption('select[name="cost_behavior"]', 'variable');
   await owner.fill('input[name="description"]', 'Електроенергія цеху');
   await owner.click('button:has-text("Записати витрату")');
   await owner.waitForTimeout(1300);
@@ -486,9 +489,29 @@ try {
     depHint,
   );
 
+  // Виробнича лінія — постійна витрата цеху, саме її розподіл залежить від завантаження.
+  await owner.goto(`${BASE}/assets`);
+  await owner.fill('input[name="name"]', 'Лінія формування батончиків');
+  await owner.selectOption('select[name="department"]', 'production');
+  await owner.fill('input[name="cost"]', '240000');
+  await owner.fill('input[name="useful_life_months"]', '60');
+  await owner.selectOption('select[name="cost_behavior"]', 'fixed');
+  await owner.click('button:has-text("Додати")');
+  await owner.waitForTimeout(1200);
+  await owner.click('button:has-text("Нарахувати за місяць")');
+  await owner.waitForTimeout(1600);
+
+  // Нормальна потужність — 50 кг на місяць, тобто 2 000 батончиків по 25 г.
+  // Фактично випустили 980 шт = 24,5 кг, тобто завантаження 49%.
+  await owner.goto(`${BASE}/entities`);
+  await owner.selectOption('select[name="allocation_base"]', 'weight');
+  await owner.fill('input[name="capacity"]', '50');
+  await owner.click('button:has-text("Зберегти норматив")');
+  await owner.waitForTimeout(1300);
+
   // Повна вартість одиниці: сировина + цех, рознесений на випуск.
   await owner.goto(`${BASE}/pl`);
-  const shopTotal = 6000 + 48800; // енергія + зарплата цеху з ЄСВ
+  const shopTotal = 6000 + 48800 + 4000; // енергія + зарплата цеху з ЄСВ + амортизація лінії
   const fullCostRow = await rowCells(owner, 'Повна вартість одиниці');
   const fullCost = money(fullCostRow[1]);
   check(
@@ -534,14 +557,36 @@ try {
     accResult > mgmtResult,
     `${accResult} проти ${mgmtResult} грн`,
   );
-  // Розбіжність складається з двох джерел: цех, що осів у 40 непроданих одиницях,
-  // мінус вища амортизація в бухобліку через коротший строк.
-  const shopInStock = (54800 * 40) / 980;
+  // Тепер джерел розбіжності три: змінний цех і розподілена частина постійного
+  // осіли в непроданих 40 одиницях, нерозподілені постійні пішли в 901 одразу,
+  // а амортизація адмінтехніки різна через різні строки.
+  const utilization = 24.5 / 50;
+  const fixedShop = 4000;
+  const fixedAllocated = fixedShop * utilization;
+  const capitalized = 54800 + fixedAllocated;
+  const shopInStock = (capitalized * 40) / 980;
   const depreciationGap = 4000 - 2000;
+
   check(
     'розбіжність = цех у залишках мінус різниця амортизації',
     near(gap, shopInStock - depreciationGap, 1),
     `${gap} грн = ${Math.round(shopInStock)} − ${depreciationGap}`,
+  );
+
+  // Головне у Варіанті 4: недозавантаження стає збитком періоду, а не вартістю запасу.
+  await owner.goto(`${BASE}/accounting/postings?period=${current}`);
+  const postingsText = (await owner.locator('table').first().innerText()).replace(/[\s\u00a0]+/g, ' ');
+  check(
+    'нерозподілені постійні ЗВВ пішли прямо в собівартість реалізації',
+    postingsText.includes('Нерозподілені постійні ЗВВ'),
+    'проводка Дт 901 Кт 23 присутня',
+  );
+  const unallocated = fixedShop - fixedAllocated;
+  const compact = postingsText.replace(/[\s\u00a0]/g, '');
+  check(
+    `при завантаженні ${Math.round(utilization * 100)}% нерозподілено ${unallocated} грн`,
+    compact.includes(`${unallocated.toFixed(2).replace('.', ',')}`),
+    `${unallocated} грн`,
   );
 
   // ─── 11b. Баланс і звіт про фінансові результати ───────────────────────────

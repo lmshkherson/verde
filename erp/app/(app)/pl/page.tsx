@@ -353,6 +353,15 @@ export default async function ProfitAndLossPage({
                 className={inputClass}
               />
             </Field>
+            <Field
+              label="Поведінка витрати"
+              hint="Змінні ростуть із випуском, постійні — ні. Впливає на розподіл ЗВВ"
+            >
+              <select name="cost_behavior" className={inputClass} defaultValue="fixed">
+                <option value="fixed">Постійна</option>
+                <option value="variable">Змінна</option>
+              </select>
+            </Field>
             <Field label="Опис">
               <input name="description" className={inputClass} placeholder="Оренда цеху, серпень" />
             </Field>

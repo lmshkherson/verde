@@ -99,8 +99,10 @@ export async function regeneratePostings(
   );
 
   let count = 0;
-  // Витрати цеху збираються з кількох джерел і потім розносяться на випуск.
-  let shopCost = 0;
+  // Витрати цеху збираються з кількох джерел. Змінні й постійні розносяться
+  // по-різному, тож накопичуємо їх окремо.
+  let shopVariable = 0;
+  let shopFixed = 0;
   const range = [entityId, period];
 
   // ─── Прихід запасів від постачальника ────────────────────────────────────
@@ -257,16 +259,18 @@ export async function regeneratePostings(
     spent_on: string;
     category: string;
     amount_net: number;
+    cost_behavior: string;
     description: string | null;
   }>(
-    `select id, spent_on, category, amount_net, description from expenses
+    `select id, spent_on, category, amount_net, cost_behavior, description from expenses
       where legal_entity_id = $1
         and spent_on >= $2::date and spent_on < ($2::date + interval '1 month')`,
     range,
   );
   for (const e of expenses) {
     if (PRODUCTION_CATEGORIES.includes(e.category)) {
-      shopCost += e.amount_net;
+      if (e.cost_behavior === 'fixed') shopFixed += Number(e.amount_net);
+      else shopVariable += Number(e.amount_net);
       // Бухгалтерія відносить цех на виробництво, управлінський облік — одразу
       // у витрати періоду. Це і є та сама подія з різними проводками.
       count += await addBatch(client, entityId, 'expense', e.id, e.spent_on, e.description ?? 'Витрати цеху', [
@@ -302,18 +306,21 @@ export async function regeneratePostings(
     paid_on: string | null;
     period: string;
     department: string;
+    cost_behavior: string;
     gross: number;
     pdfo: number;
     military: number;
     esv: number;
     net: number;
   }>(
-    `select r.id as run_id, r.status, r.paid_on, r.period, l.department,
+    `select r.id as run_id, r.status, r.paid_on, r.period, l.department, e.cost_behavior,
             sum(l.gross) as gross, sum(l.pdfo) as pdfo, sum(l.military) as military,
             sum(l.esv) as esv, sum(l.net) as net
-       from payroll_runs r join payroll_lines l on l.run_id = r.id
+       from payroll_runs r
+       join payroll_lines l on l.run_id = r.id
+       join employees e on e.id = l.employee_id
       where r.legal_entity_id = $1 and r.status <> 'draft' and r.period = $2::date
-      group by r.id, r.status, r.paid_on, r.period, l.department`,
+      group by r.id, r.status, r.paid_on, r.period, l.department, e.cost_behavior`,
     range,
   );
 
@@ -330,7 +337,9 @@ export async function regeneratePostings(
         { debit: '23', credit: '651', amount: p.esv, book: 'accounting', note: 'ЄСВ цеху' },
         { debit: '91', credit: '651', amount: p.esv, book: 'management', note: 'ЄСВ цеху' },
       );
-      shopCost += Number(p.gross) + Number(p.esv);
+      const payrollCost = Number(p.gross) + Number(p.esv);
+      if (p.cost_behavior === 'fixed') shopFixed += payrollCost;
+      else shopVariable += payrollCost;
     } else {
       const account = departmentAccount(p.department, 'accounting');
       entries.push(
@@ -367,14 +376,17 @@ export async function regeneratePostings(
   const { rows: depreciation } = await client.query<{
     run_id: string;
     department: string;
+    cost_behavior: string;
     accounting: number;
     management: number;
   }>(
-    `select r.id as run_id, l.department,
+    `select r.id as run_id, l.department, a.cost_behavior,
             sum(l.amount_accounting) as accounting, sum(l.amount_management) as management
-       from depreciation_runs r join depreciation_lines l on l.run_id = r.id
+       from depreciation_runs r
+       join depreciation_lines l on l.run_id = r.id
+       join fixed_assets a on a.id = l.asset_id
       where r.legal_entity_id = $1 and r.period = $2::date
-      group by r.id, l.department`,
+      group by r.id, l.department, a.cost_behavior`,
     range,
   );
   for (const d of depreciation) {
@@ -391,15 +403,19 @@ export async function regeneratePostings(
             { debit: mgmtAccount, credit: '131', amount: d.management, book: 'management', note: 'Амортизація' },
           ];
 
-    if (d.department === 'production') shopCost += Number(d.accounting);
+    if (d.department === 'production') {
+      if (d.cost_behavior === 'fixed') shopFixed += Number(d.accounting);
+      else shopVariable += Number(d.accounting);
+    }
     count += await addBatch(client, entityId, 'depreciation', d.run_id, monthEnd, 'Амортизація за місяць', entries);
   }
 
-  // ─── Розподіл цеху на випуск: лише в бухгалтерській книзі ────────────────
-  // Спрощення, яке варто узгодити з бухгалтером: витрати цеху за місяць
-  // розносяться на випуск місяця пропорційно кількості, а на собівартість
-  // реалізації — у частці проданого з цього випуску.
-  if (shopCost > 0) {
+  // ─── Розподіл цеху: лише в бухгалтерській книзі, за НП(С)БО 16 ───────────
+  // Змінні ЗВВ лягають на випуск повністю. Постійні — у частці фактичного
+  // завантаження до нормальної потужності, а нерозподілений залишок іде прямо
+  // в собівартість реалізації: недозавантаження є збитком періоду, а не
+  // вартістю продукту.
+  if (shopVariable + shopFixed > 0) {
     const { rows: volume } = await client.query<{ produced: number; sold: number }>(
       `select
          coalesce((select sum(produced_qty) from production_orders
@@ -416,16 +432,59 @@ export async function regeneratePostings(
     const produced = Number(volume[0]?.produced ?? 0);
     const sold = Number(volume[0]?.sold ?? 0);
     const soldShare = produced > 0 ? Math.min(1, sold / produced) : 0;
+
+    // Фактична база випуску проти нормальної потужності.
+    const { rows: cfg } = await client.query<{ base: string }>(
+      'select overhead_allocation_base as base from legal_entities where id = $1',
+      [entityId],
+    );
+    const { rows: outputBase } = await client.query<{ quantity: number; weight_kg: number }>(
+      'select quantity, weight_kg from v_output_base_monthly where legal_entity_id = $1 and period = $2::date',
+      range,
+    );
+    const { rows: capacity } = await client.query<{ capacity: number }>(
+      `select capacity from normal_capacity
+        where legal_entity_id = $1 and valid_from <= $2::date
+        order by valid_from desc limit 1`,
+      range,
+    );
+
+    const byWeight = cfg[0]?.base === 'weight';
+    const actualBase = Number(
+      byWeight ? (outputBase[0]?.weight_kg ?? 0) : (outputBase[0]?.quantity ?? 0),
+    );
+    const normalBase = Number(capacity[0]?.capacity ?? 0);
+
+    // Якщо нормальну потужність не задано, розподіляємо все — інакше система
+    // мовчки занижувала б вартість запасів.
+    const utilization = normalBase > 0 ? Math.min(1, actualBase / normalBase) : 1;
+    const fixedAllocated = round2(shopFixed * utilization);
+    const fixedUnallocated = round2(shopFixed - fixedAllocated);
+    const capitalized = round2(shopVariable + fixedAllocated);
+
     const lastDay = new Date(new Date(period).getFullYear(), new Date(period).getMonth() + 1, 0)
       .toISOString()
       .slice(0, 10);
 
     count += await addBatch(client, entityId, 'period_close', null, lastDay, 'Розподіл витрат цеху', [
-      { debit: '26', credit: '23', amount: shopCost, book: 'accounting', note: 'Цех у вартість випуску' },
+      {
+        debit: '26',
+        credit: '23',
+        amount: capitalized,
+        book: 'accounting',
+        note: `Змінні повністю + постійні на ${Math.round(utilization * 1000) / 10}% завантаження`,
+      },
+      {
+        debit: '901',
+        credit: '23',
+        amount: fixedUnallocated,
+        book: 'accounting',
+        note: 'Нерозподілені постійні ЗВВ — збиток недозавантаження',
+      },
       {
         debit: '901',
         credit: '26',
-        amount: shopCost * soldShare,
+        amount: capitalized * soldShare,
         book: 'accounting',
         note: `Частка проданого ${Math.round(soldShare * 1000) / 10}%`,
       },

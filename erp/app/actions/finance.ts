@@ -66,8 +66,9 @@ export async function createExpense(_prev: ActionState, formData: FormData): Pro
     await transaction(async (c) => {
       const { rows } = await c.query<{ id: string }>(
         `insert into expenses
-           (legal_entity_id, category, spent_on, description, amount_net, vat_amount, supplier_id, created_by)
-         values ($1, $2, $3, $4, $5, $6, $7, $8) returning id`,
+           (legal_entity_id, category, spent_on, description, amount_net, vat_amount,
+            supplier_id, cost_behavior, created_by)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9) returning id`,
         [
           session.eid,
           category,
@@ -76,6 +77,7 @@ export async function createExpense(_prev: ActionState, formData: FormData): Pro
           net,
           vat,
           supplierId,
+          str(formData, 'cost_behavior') || 'fixed',
           session.uid,
         ],
       );

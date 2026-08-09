@@ -74,6 +74,42 @@ export async function createLegalEntity(_prev: ActionState, formData: FormData):
 }
 
 /**
+ * Нормальна потужність цеху — база для розподілу постійних ЗВВ.
+ * Зберігається історією: перегляд нормативу не має міняти минулі періоди.
+ */
+export async function setNormalCapacity(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  const session = await requireRole();
+  const capacity = num(formData, 'capacity');
+  const validFrom = str(formData, 'valid_from');
+  const base = str(formData, 'allocation_base') || 'weight';
+
+  if (capacity <= 0) return { error: 'Вкажіть нормальну потужність' };
+  if (!validFrom) return { error: 'Вкажіть, з якої дати діє норматив' };
+
+  try {
+    await transaction(async (c) => {
+      await c.query('update legal_entities set overhead_allocation_base = $2 where id = $1', [
+        session.eid,
+        base,
+      ]);
+      await c.query(
+        `insert into normal_capacity (legal_entity_id, valid_from, capacity, note)
+         values ($1, $2, $3, $4)
+         on conflict (legal_entity_id, valid_from) do update
+           set capacity = excluded.capacity, note = excluded.note`,
+        [session.eid, validFrom, capacity, strOrNull(formData, 'note')],
+      );
+    });
+  } catch (err) {
+    return { error: toMessage(err) };
+  }
+
+  revalidatePath('/entities');
+  revalidatePath('/accounting');
+  return { ok: 'Норматив збережено' };
+}
+
+/**
  * Прив'язує клієнта до власної юрособи. Після цього продаж такому клієнту
  * одночасно оприбутковує товар у покупця — це реалізація між своїми.
  */

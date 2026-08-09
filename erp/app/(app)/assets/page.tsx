@@ -180,6 +180,12 @@ export default async function AssetsPage({
               <Field label="Строк, міс. — управлінський" hint="Порожньо — той самий, що й у бухобліку">
                 <input name="useful_life_mgmt" type="number" min="1" className={inputClass} />
               </Field>
+              <Field label="Поведінка витрати" hint="Амортизація зазвичай постійна">
+                <select name="cost_behavior" className={inputClass} defaultValue="fixed">
+                  <option value="fixed">Постійна</option>
+                  <option value="variable">Змінна</option>
+                </select>
+              </Field>
             </ActionForm>
           </Card>
         </div>

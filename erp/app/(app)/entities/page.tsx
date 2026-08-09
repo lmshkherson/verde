@@ -1,16 +1,16 @@
-import { createLegalEntity, linkCustomerToEntity } from '@/app/actions/entities';
+import { createLegalEntity, linkCustomerToEntity, setNormalCapacity } from '@/app/actions/entities';
 import { ActionForm } from '@/components/action-form';
 import { Badge, Card, Cell, Empty, Field, inputClass, PageHeader, Row, Table } from '@/components/ui';
-import { query } from '@/lib/db';
-import { fmtMoney } from '@/lib/format';
+import { query, queryOne } from '@/lib/db';
+import { fmtDate, fmtMoney, fmtQty } from '@/lib/format';
 import { requireRole } from '@/lib/session';
 
 export const dynamic = 'force-dynamic';
 
 export default async function EntitiesPage() {
-  await requireRole(); // лише власник
+  const session = await requireRole(); // лише власник
 
-  const [entities, customers] = await Promise.all([
+  const [entities, customers, capacities, entityCfg] = await Promise.all([
     query<{
       id: string;
       name: string;
@@ -42,6 +42,15 @@ export default async function EntitiesPage() {
     `),
     query<{ id: string; name: string; kind: string; legal_entity_id: string | null }>(
       'select id, name, kind, legal_entity_id from customers where is_active order by name',
+    ),
+    query<{ valid_from: string; capacity: number; note: string | null }>(
+      `select valid_from, capacity, note from normal_capacity
+        where legal_entity_id = $1 order by valid_from desc limit 6`,
+      [session.eid],
+    ),
+    queryOne<{ overhead_allocation_base: string }>(
+      'select overhead_allocation_base from legal_entities where id = $1',
+      [session.eid],
     ),
   ]);
 
@@ -144,7 +153,56 @@ export default async function EntitiesPage() {
           </Card>
         </div>
 
-        <Card title="Нова юрособа">
+        <div className="space-y-4">
+          <Card title="Нормальна потужність">
+            <p className="mb-3 text-sm text-emerald-800/70">
+              База для розподілу постійних загальновиробничих витрат. Те, що не розподілилось
+              через недозавантаження, іде прямо в собівартість реалізації — так вимагає
+              НП(С)БО 16, і так собівартість одиниці не роздувається в місяць простою.
+            </p>
+            <ActionForm action={setNormalCapacity} submitLabel="Зберегти норматив">
+              <Field label="База розподілу" hint="Вага точніша, якщо продукти різної маси">
+                <select
+                  name="allocation_base"
+                  className={inputClass}
+                  defaultValue={entityCfg?.overhead_allocation_base ?? 'weight'}
+                >
+                  <option value="weight">Вага випуску, кг</option>
+                  <option value="quantity">Кількість, шт</option>
+                </select>
+              </Field>
+              <Field label="Нормальна потужність за місяць">
+                <input name="capacity" type="number" step="0.001" min="0" required className={inputClass} />
+              </Field>
+              <Field label="Діє з" hint="Норматив зберігається історією — минулі періоди не міняються">
+                <input
+                  name="valid_from"
+                  type="date"
+                  defaultValue={new Date().toISOString().slice(0, 8) + '01'}
+                  className={inputClass}
+                />
+              </Field>
+              <Field label="Примітка">
+                <input name="note" className={inputClass} placeholder="Перегляд на 2026 рік" />
+              </Field>
+            </ActionForm>
+            {capacities.length > 0 && (
+              <div className="mt-4">
+                <Table head={['Діє з', 'Потужність']}>
+                  {capacities.map((c) => (
+                    <Row key={c.valid_from}>
+                      <Cell>{fmtDate(c.valid_from)}</Cell>
+                      <Cell align="right" className="font-semibold">
+                        {fmtQty(c.capacity, entityCfg?.overhead_allocation_base === 'quantity' ? 'шт' : 'кг')}
+                      </Cell>
+                    </Row>
+                  ))}
+                </Table>
+              </div>
+            )}
+          </Card>
+
+          <Card title="Нова юрособа">
           <ActionForm action={createLegalEntity} submitLabel="Додати юрособу">
             <Field label="Повна назва">
               <input name="name" required className={inputClass} placeholder="ТОВ «Верде Фудс»" />
@@ -192,8 +250,9 @@ export default async function EntitiesPage() {
             <Field label="Адреса">
               <input name="address" className={inputClass} />
             </Field>
-          </ActionForm>
-        </Card>
+            </ActionForm>
+          </Card>
+        </div>
       </div>
     </>
   );

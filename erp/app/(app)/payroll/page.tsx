@@ -204,6 +204,12 @@ export default async function PayrollPage({
               <Field label="Оклад за місяць">
                 <input name="monthly_salary" type="number" step="0.01" min="0" required className={inputClass} />
               </Field>
+              <Field label="Поведінка витрати" hint="Погодинна оплата — змінна, оклад — постійна">
+                <select name="cost_behavior" className={inputClass} defaultValue="variable">
+                  <option value="variable">Змінна</option>
+                  <option value="fixed">Постійна</option>
+                </select>
+              </Field>
               <Field label="Дата прийому">
                 <input name="hired_on" type="date" className={inputClass} />
               </Field>

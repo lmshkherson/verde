@@ -20,8 +20,9 @@ export async function createEmployee(_prev: ActionState, formData: FormData): Pr
   try {
     await transaction((c) =>
       c.query(
-        `insert into employees (legal_entity_id, full_name, position, department, monthly_salary, hired_on, note)
-         values ($1, $2, $3, $4, $5, $6, $7)`,
+        `insert into employees
+           (legal_entity_id, full_name, position, department, monthly_salary, hired_on, cost_behavior, note)
+         values ($1, $2, $3, $4, $5, $6, $7, $8)`,
         [
           session.eid,
           name,
@@ -29,6 +30,7 @@ export async function createEmployee(_prev: ActionState, formData: FormData): Pr
           department,
           salary,
           strOrNull(formData, 'hired_on'),
+          str(formData, 'cost_behavior') || 'variable',
           strOrNull(formData, 'note'),
         ],
       ),
@@ -142,8 +144,8 @@ export async function createFixedAsset(_prev: ActionState, formData: FormData): 
       c.query(
         `insert into fixed_assets
            (legal_entity_id, name, inventory_no, department, acquired_on, cost,
-            residual_value, useful_life_months, useful_life_mgmt, note)
-         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+            residual_value, useful_life_months, useful_life_mgmt, cost_behavior, note)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
         [
           session.eid,
           name,
@@ -154,6 +156,7 @@ export async function createFixedAsset(_prev: ActionState, formData: FormData): 
           num(formData, 'residual_value'),
           life,
           lifeMgmt > 0 ? lifeMgmt : null,
+          str(formData, 'cost_behavior') || 'fixed',
           strOrNull(formData, 'note'),
         ],
       ),
