@@ -206,6 +206,7 @@ try {
   await sales.fill('input[name="ttn_number"]', '59000123456789');
   await sales.fill('input[name="proxy_number"]', 'АА-104');
   await sales.fill('input[name="proxy_person"]', 'Панченко І.В.');
+  await sales.fill('input[name="proxy_position"]', 'Комірник');
   await sales.click('button:has-text("Провести відвантаження")');
   await sales.waitForTimeout(1600);
   await sales.reload();
@@ -244,6 +245,16 @@ try {
   check('ПДВ виділено окремим рядком', blank.includes('3 808,00'), '22 848 − 19 040');
   check('довіреність потрапила у бланк', blank.includes('АА-104') && blank.includes('Панченко І.В.'));
   check('підписант — директор із ЄДР', blank.includes('Проніна Аліса Сергіївна'));
+  // ч. 2 ст. 9 Закону № 996-XIV вимагає саме посади, а не лише прізвища.
+  check(
+    'посади обох сторін у бланку',
+    blank.includes('Менеджер з продажу') && blank.includes('Директор') && blank.includes('Комірник'),
+    'відпустив, підписант продавця, отримувач',
+  );
+  check(
+    'одиниця виміру господарської операції в таблиці',
+    blank.includes('Од.') && blank.includes('шт'),
+  );
   check(
     'меню й кнопки в друк не йдуть',
     (await sales.locator('.no-print').count()) > 0,

@@ -326,8 +326,8 @@ export async function shipSalesOrder(_prev: ActionState, formData: FormData): Pr
       const { rows: shipmentRows } = await c.query<{ id: string }>(
         `insert into shipments
            (number, so_id, shipped_on, ttn_number, carrier,
-            proxy_number, proxy_date, proxy_person, created_by)
-         values ($1, $2, $3, $4, $5, $6, $7, $8, $9) returning id`,
+            proxy_number, proxy_date, proxy_person, proxy_position, created_by)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) returning id`,
         [
           number,
           soId,
@@ -337,6 +337,7 @@ export async function shipSalesOrder(_prev: ActionState, formData: FormData): Pr
           strOrNull(formData, 'proxy_number'),
           strOrNull(formData, 'proxy_date'),
           strOrNull(formData, 'proxy_person'),
+          strOrNull(formData, 'proxy_position'),
           session.uid,
         ],
       );

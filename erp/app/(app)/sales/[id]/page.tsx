@@ -286,6 +286,12 @@ export default async function SalesOrderPage({ params }: { params: Promise<{ id:
                   <input name="proxy_person" className={inputClass} placeholder="Панченко І.В." />
                 </Field>
               </div>
+              <Field
+                label="Посада отримувача"
+                hint="обов'язковий реквізит первинного документа — ч. 2 ст. 9 Закону № 996-XIV"
+              >
+                <input name="proxy_position" className={inputClass} placeholder="Комірник" />
+              </Field>
               <p className="text-xs text-emerald-800/60">
                 Партії підбираються за FEFO: клієнту поїде те, у чого раніше закінчується термін.
               </p>

@@ -12,11 +12,13 @@ if (!connectionString) {
 
 const DEMO_PASSWORD = process.env.SEED_PASSWORD ?? 'verde2026';
 
+// Останнє поле — посада за штатним розписом. Роль у системі це права доступу,
+// а в первинному документі потрібна саме посада.
 const USERS = [
-  ['olena@v-verde.ua', 'Олена Ковальчук', 'owner'],
-  ['taras@v-verde.ua', 'Тарас Мельник', 'sales'],
-  ['iryna@v-verde.ua', 'Ірина Бондаренко', 'production'],
-  ['petro@v-verde.ua', 'Петро Савченко', 'warehouse'],
+  ['olena@v-verde.ua', 'Олена Ковальчук', 'owner', 'Директор'],
+  ['taras@v-verde.ua', 'Тарас Мельник', 'sales', 'Менеджер з продажу'],
+  ['iryna@v-verde.ua', 'Ірина Бондаренко', 'production', 'Технолог'],
+  ['petro@v-verde.ua', 'Петро Савченко', 'warehouse', 'Комірник'],
 ];
 
 const WAREHOUSES = [
@@ -222,13 +224,14 @@ try {
     );
   }
 
-  for (const [email, name, role] of USERS) {
+  for (const [email, name, role, position] of USERS) {
     await client.query(
-      `insert into app_users (email, full_name, role, password_hash, is_demo)
-       values ($1, $2, $3, $4, true)
+      `insert into app_users (email, full_name, role, password_hash, is_demo, position)
+       values ($1, $2, $3, $4, true, $5)
        on conflict (lower(email)) do update
-         set full_name = excluded.full_name, role = excluded.role, is_demo = true`,
-      [email, name, role, await hashPassword(DEMO_PASSWORD)],
+         set full_name = excluded.full_name, role = excluded.role, is_demo = true,
+             position = excluded.position`,
+      [email, name, role, await hashPassword(DEMO_PASSWORD), position],
     );
   }
 

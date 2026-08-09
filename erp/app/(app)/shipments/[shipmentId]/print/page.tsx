@@ -37,7 +37,9 @@ export default async function ShipmentPrintPage({
     proxy_number: string | null;
     proxy_date: string | null;
     proxy_person: string | null;
+    proxy_position: string | null;
     issued_by: string | null;
+    issued_by_position: string | null;
     order_number: string;
     order_id: string;
     seller_name: string;
@@ -56,8 +58,8 @@ export default async function ShipmentPrintPage({
     buyer_phone: string | null;
   }>(
     `select sh.number, sh.shipped_on, sh.ttn_number, sh.carrier,
-            sh.proxy_number, sh.proxy_date, sh.proxy_person,
-            u.full_name as issued_by,
+            sh.proxy_number, sh.proxy_date, sh.proxy_person, sh.proxy_position,
+            u.full_name as issued_by, u.position as issued_by_position,
             o.number as order_number, o.id as order_id,
             e.name as seller_name, e.edrpou as seller_edrpou, e.ipn as seller_ipn,
             e.address as seller_address, e.phone as seller_phone,
@@ -234,26 +236,56 @@ export default async function ShipmentPrintPage({
           </p>
         )}
 
+        {/* Підписи. Посада поруч із прізвищем — обов'язковий реквізит первинного
+            документа (ч. 2 ст. 9 Закону № 996-XIV), тому вона друкується завжди:
+            або значенням із довідника, або підписом порожнього рядка під заповнення. */}
         <div className="mt-10 grid grid-cols-2 gap-10 text-[12px]">
           <div>
             <div className="mb-1 font-semibold">Від постачальника</div>
-            <div className="mt-8 border-b border-black" />
-            <div className="mt-0.5 text-[10px] text-black/60">
-              {doc.seller_director_position}
-              {doc.seller_director ? ` — ${doc.seller_director}` : ''}
+
+            <div className="mt-2">
+              <span className="font-semibold">
+                {doc.issued_by_position ?? 'Відпустив (посада)'}
+              </span>
+              <div className="mt-6 border-b border-black" />
+              <div className="mt-0.5 text-[10px] text-black/60">
+                підпис · {doc.issued_by ?? 'прізвище та ініціали'}
+              </div>
             </div>
-            {doc.issued_by && (
-              <div className="mt-3 text-[10px] text-black/60">Відпустив: {doc.issued_by}</div>
+
+            <div className="mt-5">
+              <span className="font-semibold">{doc.seller_director_position}</span>
+              <div className="mt-6 border-b border-black" />
+              <div className="mt-0.5 text-[10px] text-black/60">
+                підпис · {doc.seller_director ?? 'прізвище та ініціали'}
+              </div>
+            </div>
+
+            {doc.seller_accountant && (
+              <div className="mt-5">
+                <span className="font-semibold">Головний бухгалтер</span>
+                <div className="mt-6 border-b border-black" />
+                <div className="mt-0.5 text-[10px] text-black/60">
+                  підпис · {doc.seller_accountant}
+                </div>
+              </div>
             )}
-            <div className="mt-4 text-[10px] text-black/60">М.П.</div>
+
+            <div className="mt-5 text-[10px] text-black/60">М.П. (за наявності печатки)</div>
           </div>
+
           <div>
             <div className="mb-1 font-semibold">Отримав(ла)</div>
-            <div className="mt-8 border-b border-black" />
-            <div className="mt-0.5 text-[10px] text-black/60">
-              {doc.proxy_person ?? 'підпис, прізвище та ініціали'}
+            <div className="mt-2">
+              <span className="font-semibold">
+                {doc.proxy_position ?? 'Посада'}
+              </span>
+              <div className="mt-6 border-b border-black" />
+              <div className="mt-0.5 text-[10px] text-black/60">
+                підпис · {doc.proxy_person ?? 'прізвище та ініціали'}
+              </div>
             </div>
-            <div className="mt-4 text-[10px] text-black/60">М.П.</div>
+            <div className="mt-5 text-[10px] text-black/60">М.П. (за наявності печатки)</div>
           </div>
         </div>
       </div>

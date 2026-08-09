@@ -91,12 +91,19 @@ try {
   );
 
   await client.query(
-    `insert into app_users (email, full_name, role, password_hash, default_entity_id)
-     values ($1, $2, 'owner', $3, $4)
+    `insert into app_users (email, full_name, role, password_hash, default_entity_id, position)
+     values ($1, $2, 'owner', $3, $4, $5)
      on conflict (lower(email)) do update
        set full_name = excluded.full_name, password_hash = excluded.password_hash,
-           role = 'owner', is_active = true, default_entity_id = excluded.default_entity_id`,
-    [env.ADMIN_EMAIL, env.ADMIN_NAME, await hashPassword(env.ADMIN_PASSWORD), entity[0].id],
+           role = 'owner', is_active = true, default_entity_id = excluded.default_entity_id,
+           position = excluded.position`,
+    [
+      env.ADMIN_EMAIL,
+      env.ADMIN_NAME,
+      await hashPassword(env.ADMIN_PASSWORD),
+      entity[0].id,
+      env.ADMIN_POSITION ?? 'Директор',
+    ],
   );
 
   await client.query('update app_users set is_demo = false where lower(email) = lower($1)', [
