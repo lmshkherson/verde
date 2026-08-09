@@ -347,6 +347,40 @@ export async function regeneratePostings(
     ]);
   }
 
+  // ─── Банк: операції без документа-посередника ────────────────────────────
+  // Комісія банку чи сплата податку не мають ні накладної, ні акта: первинним
+  // документом для них є сама виписка. Тому проводка будується з рядка
+  // виписки напряму, а рахунок вибирає той, хто розносив.
+  const { rows: bankOther } = await client.query<{
+    id: string;
+    op_date: string;
+    amount: number;
+    other_account: string;
+    note: string | null;
+  }>(
+    `select id, op_date, amount, other_account, note from bank_transactions
+      where legal_entity_id = $1 and status = 'matched' and match_kind = 'other'
+        and other_account is not null
+        and op_date >= $2::date and op_date < ($2::date + interval '1 month')`,
+    range,
+  );
+  for (const t of bankOther) {
+    const outflow = Number(t.amount) < 0;
+    count += await addBatch(
+      client,
+      entityId,
+      'bank_transaction',
+      t.id,
+      t.op_date,
+      t.note ?? 'Операція за випискою',
+      [
+        outflow
+          ? { debit: t.other_account, credit: '311', amount: -Number(t.amount) }
+          : { debit: '311', credit: t.other_account, amount: Number(t.amount) },
+      ],
+    );
+  }
+
   // ─── Оплати від покупців ─────────────────────────────────────────────────
   const { rows: customerPayments } = await client.query<{ id: string; paid_on: string; amount: number; method: string }>(
     `select id, paid_on, amount, method from payments

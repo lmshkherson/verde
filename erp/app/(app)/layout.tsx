@@ -16,6 +16,7 @@ const ALL_ITEMS: (NavItem & { section: Section })[] = [
   { section: 'quality', href: '/quality', label: 'Вхідний контроль', short: 'Вхід.к', icon: '🧪' },
   { section: 'quality', href: '/haccp', label: 'HACCP', short: 'HACCP', icon: '🌡️' },
   { section: 'production', href: '/recalls', label: 'Відкликання', short: 'Відкл.', icon: '⚠️' },
+  { section: 'bank', href: '/bank', label: 'Банк', short: 'Банк', icon: '🏦' },
   { section: 'reports', href: '/pl', label: 'Фінрезультат', short: 'P&L', icon: '💰' },
   { section: 'reports', href: '/accounting', label: 'Бухоблік', short: 'Бух', icon: '📒' },
   { section: 'reports', href: '/vat', label: 'ПДВ', short: 'ПДВ', icon: '🧮' },

@@ -1599,6 +1599,101 @@ try {
   check('нестача пішла у втрати', invPostings.includes('Нестача'));
   check('і рахунком 947', invPostings.includes('947'));
 
+  // ─── 13е. Банківська виписка ───────────────────────────────────────────────
+  // Головне тут: повторний імпорт не дублює рядки, а автомат розносить лише
+  // те, де контрагент визначився однозначно.
+  console.log('\nБанківська виписка');
+
+  const today = new Date();
+  const day = `${String(today.getDate()).padStart(2, '0')}.${String(today.getMonth() + 1).padStart(2, '0')}.${today.getFullYear()}`;
+  const statementCsv = [
+    'Дата;Контрагент;ЄДРПОУ;Призначення платежу;Сума',
+    `${day};ТОВ «АТБ-Маркет»;30487219;Оплата за батончики зг. ВС-ЗАМ-${today.getFullYear()}-0001, у т.ч. ПДВ;12500,00`,
+    `${day};ТОВ «Сухофрукт Трейд»;38271940;Оплата за сировину зг. рахунку;-15000,50`,
+    `${day};АТ КБ ПриватБанк;;Комісія за розрахунково-касове обслуговування;-250,00`,
+  ].join('\n');
+
+  await sales.goto(`${BASE}/sales/customers`);
+  const atbBefore = await rowCells(sales, 'АТБ-Маркет');
+  const atbShipped = money(atbBefore[5]);
+  check('до виписки борг АТБ дорівнює відвантаженому', atbShipped > 0, `${atbBefore[5]}`);
+
+  await warehouse.goto(`${BASE}/bank`);
+  await warehouse.fill('form:has(input[name="iban"]) input[name="name"]', 'Основний рахунок');
+  await warehouse.fill('input[name="iban"]', 'UA903052990000026007018811777');
+  await warehouse.fill('input[name="bank_name"]', 'АТ КБ «ПриватБанк»');
+  await warehouse.click('button:has-text("Додати рахунок")');
+  await warehouse.waitForTimeout(1200);
+  await warehouse.reload();
+  check('рахунок заведено', (await warehouse.locator('text=Основний рахунок').count()) > 0);
+
+  await warehouse.fill('textarea[name="content"]', statementCsv);
+  await warehouse.click('button:has-text("Імпортувати")');
+  await warehouse.waitForURL(/\/bank\/[0-9a-f-]{36}/);
+  const statementUrl = warehouse.url();
+  check('виписку розібрано', (await stat(warehouse, 'Рядків')) === 3);
+  check('надходження порахувалися окремо', near(await stat(warehouse, 'Надходження'), 12500, 0.01));
+  check('списання порахувалися окремо', near(await stat(warehouse, 'Списання'), 15250.5, 0.01));
+  check('усі рядки поки не рознесені', (await stat(warehouse, 'Не рознесено')) === 3);
+
+  await warehouse.click('button:has-text("Рознести автоматично")');
+  await warehouse.waitForTimeout(1800);
+  await warehouse.reload();
+  check(
+    'автомат рознiс те, де ЄДРПОУ однозначний',
+    (await stat(warehouse, 'Не рознесено')) === 1,
+    'лишилася комісія банку без контрагента',
+  );
+
+  // Комісію банку розносимо руками на рахунок обліку: документа-посередника
+  // в неї немає, первинним є сама виписка.
+  const feeForm = warehouse.locator('form:has(select[name="target"])').first();
+  await feeForm.locator('select[name="target"]').selectOption('account:92');
+  await feeForm.locator('input[name="note"]').fill('Комісія за РКО');
+  await feeForm.locator('button[type="submit"]').click();
+  await warehouse.waitForTimeout(1500);
+  await warehouse.reload();
+  check('виписку рознесено повністю', (await stat(warehouse, 'Не рознесено')) === 0);
+
+  // Повторний імпорт того самого періоду — звична річ, дублів бути не має.
+  await warehouse.goto(`${BASE}/bank`);
+  await warehouse.fill('textarea[name="content"]', statementCsv);
+  await warehouse.click('button:has-text("Імпортувати")');
+  await warehouse.waitForURL(/\/bank\/[0-9a-f-]{36}/);
+  check('повторний імпорт не створив дублів', (await stat(warehouse, 'Рядків')) === 0);
+  const repeatText = (await warehouse.locator('body').innerText()).replace(/[\s ]+/g, ' ');
+  check('і чесно сказав, скільки пропустив', repeatText.includes('повторних пропущено 3'));
+
+  // Оплата з виписки має бути звичайною оплатою: вона зменшує борг клієнта.
+  await sales.goto(`${BASE}/sales/customers`);
+  const atbCells = await rowCells(sales, 'АТБ-Маркет');
+  check(
+    'оплата з виписки зменшила дебіторку АТБ',
+    near(money(atbCells[4]), 12500, 0.01) && near(money(atbCells[5]), atbShipped - 12500, 0.02),
+    `оплачено ${atbCells[4]}, борг ${atbCells[5]}`,
+  );
+
+  // І потрапляє у проводки як звичайний документ.
+  await owner.goto(`${BASE}/accounting`);
+  await owner.click('button:has-text("Перегенерувати період")');
+  await owner.waitForTimeout(3000);
+  await owner.reload();
+  check(
+    'оборотка балансує після рознесення виписки',
+    near(await stat(owner, 'Оберти за дебетом'), await stat(owner, 'Оберти за кредитом'), 0.02),
+  );
+
+  await owner.goto(`${BASE}/accounting/postings`);
+  const bankPostings = (await owner.locator('body').innerText()).replace(/[\s ]+/g, ' ');
+  check('комісія банку стала проводкою Дт 92 Кт 311', bankPostings.includes('Операція за випискою'));
+
+  // Скасування рознесення прибирає створену оплату разом із її слідом.
+  await warehouse.goto(statementUrl);
+  await warehouse.locator('button:has-text("Скасувати рознесення")').first().click();
+  await warehouse.waitForTimeout(1500);
+  await warehouse.reload();
+  check('скасування повернуло рядок у чергу', (await stat(warehouse, 'Не рознесено')) === 1);
+
   // ─── 14. Права доступу ─────────────────────────────────────────────────────
   console.log('\nПрава доступу');
   const denied = await warehouse.goto(`${BASE}/reports`);

@@ -21,6 +21,7 @@ const DOC_LABELS: Record<string, string> = {
   production_output: 'Випуск продукції',
   shipment: 'Відвантаження',
   customer_payment: 'Оплата від покупця',
+  bank_transaction: 'Операція за випискою',
   expense: 'Витрати',
   write_off: 'Списання втрат',
   period_close: 'Закриття періоду',
