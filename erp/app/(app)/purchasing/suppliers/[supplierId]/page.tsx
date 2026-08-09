@@ -4,7 +4,7 @@ import { setSupplierActive, updateSupplier } from '@/app/actions/purchasing';
 import { ActionForm } from '@/components/action-form';
 import { Alert, Badge, Card, Cell, Empty, Field, inputClass, LinkButton, PageHeader, Row, Table } from '@/components/ui';
 import { query, queryOne } from '@/lib/db';
-import { fmtDate, fmtMoney, PO_STATUS } from '@/lib/format';
+import { fmtDate, fmtMoney, isoDay, PO_STATUS } from '@/lib/format';
 import { requireRole } from '@/lib/session';
 
 export const dynamic = 'force-dynamic';
@@ -27,6 +27,10 @@ export default async function SupplierEditPage({
     is_vat_payer: boolean;
     note: string | null;
     is_active: boolean;
+    is_approved: boolean;
+    approved_on: string | Date | null;
+    approved_until: string | Date | null;
+    approval_note: string | null;
     total_due: number;
   }>(
     `select s.*,
@@ -118,6 +122,45 @@ export default async function SupplierEditPage({
                 Статус впливає лише на нові приходи: у вже оприбуткованих партіях собівартість і
                 податковий кредит порахувалися за статусом на дату документа.
               </p>
+
+              <div className="rounded-xl border border-emerald-900/10 p-3">
+                <label className="flex items-center gap-2">
+                  <input
+                    name="is_approved"
+                    type="checkbox"
+                    defaultChecked={supplier.is_approved}
+                    className="size-5 accent-emerald-700"
+                  />
+                  <span className="text-sm font-semibold text-emerald-900">
+                    Затверджений постачальник
+                  </span>
+                </label>
+                <p className="mt-1 text-sm text-emerald-800/70">
+                  Приймати сировину дозволено лише від затверджених: це передумова системи НАССР.
+                  Поки прапорця немає, акт вхідного контролю не дасть прийняти партію.
+                  {supplier.approved_on
+                    ? ` Затверджено ${fmtDate(supplier.approved_on)}.`
+                    : ''}
+                </p>
+                <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                  <Field label="Затвердження дійсне до" hint="порожньо — без перегляду">
+                    <input
+                      name="approved_until"
+                      type="date"
+                      defaultValue={isoDay(supplier.approved_until) ?? ''}
+                      className={inputClass}
+                    />
+                  </Field>
+                  <Field label="Підстава оцінки">
+                    <input
+                      name="approval_note"
+                      defaultValue={supplier.approval_note ?? ''}
+                      className={inputClass}
+                      placeholder="Аудит 12.03.2026, сертифікат ISO 22000"
+                    />
+                  </Field>
+                </div>
+              </div>
 
               <Field label="Примітка">
                 <input name="note" defaultValue={supplier.note ?? ''} className={inputClass} />

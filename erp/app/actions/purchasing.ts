@@ -55,7 +55,12 @@ export async function updateSupplier(_prev: ActionState, formData: FormData): Pr
       c.query(
         `update suppliers set
            name = $2, edrpou = $3, contact = $4, phone = $5,
-           payment_terms_days = $6, is_vat_payer = $7, note = $8
+           payment_terms_days = $6, is_vat_payer = $7, note = $8,
+           is_approved = $9,
+           -- Дату затвердження ставимо один раз, коли постачальник уперше
+           -- потрапив у перелік: вона доводить, що оцінка була.
+           approved_on = case when $9 then coalesce(approved_on, current_date) else approved_on end,
+           approved_until = $10, approval_note = $11
          where id = $1`,
         [
           id,
@@ -66,6 +71,9 @@ export async function updateSupplier(_prev: ActionState, formData: FormData): Pr
           num(formData, 'payment_terms_days'),
           formData.get('is_vat_payer') === 'on',
           strOrNull(formData, 'note'),
+          formData.get('is_approved') === 'on',
+          strOrNull(formData, 'approved_until'),
+          strOrNull(formData, 'approval_note'),
         ],
       ),
     );
@@ -234,11 +242,12 @@ export async function receivePurchaseOrder(_prev: ActionState, formData: FormDat
         supplier_is_vat_payer: boolean;
         supplier_name: string;
         supplier_edrpou: string | null;
+        supplier_id: string;
       }>(
         `select p.number, p.status, p.legal_entity_id, p.prices_include_vat,
                 e.is_vat_payer as buyer_is_vat_payer,
                 s.is_vat_payer as supplier_is_vat_payer,
-                s.name as supplier_name, s.edrpou as supplier_edrpou
+                s.name as supplier_name, s.edrpou as supplier_edrpou, s.id as supplier_id
            from purchase_orders p
            join legal_entities e on e.id = p.legal_entity_id
            join suppliers s on s.id = p.supplier_id
@@ -260,9 +269,10 @@ export async function receivePurchaseOrder(_prev: ActionState, formData: FormDat
         sku: string;
         name: string;
         shelf_life_days: number | null;
+        quality_control: boolean;
       }>(
         `select l.id, l.item_id, l.qty, l.received_qty, l.unit_price, l.vat_rate,
-                i.sku, i.name, i.shelf_life_days
+                i.sku, i.name, i.shelf_life_days, i.quality_control
            from purchase_order_lines l join items i on i.id = l.item_id
           where l.po_id = $1
           order by i.name`,
@@ -273,6 +283,8 @@ export async function receivePurchaseOrder(_prev: ActionState, formData: FormDat
       let received = 0;
       let creditBase = 0;
       let creditVat = 0;
+      // Партії, які підуть у карантин і потраплять до акта вхідного контролю.
+      const controlled: { batchId: string; itemId: string; qty: number }[] = [];
 
       for (const line of lines) {
         const qty = round3(num(formData, `qty_${line.id}`));
@@ -305,6 +317,19 @@ export async function receivePurchaseOrder(_prev: ActionState, formData: FormDat
            returning id`,
           [line.item_id, batchCode, receivedOn, expiresOn],
         );
+
+        // Позиція під вхідним контролем стає в карантин на кожному прийманні,
+        // а не лише при першому. Довіз під тим самим кодом партії — це нова
+        // фізична сировина, і перевіряти її треба заново.
+        if (line.quality_control) {
+          await c.query(
+            `update batches set quality_status = 'quarantine',
+                    quality_note = 'Очікує вхідного контролю'
+              where id = $1 and quality_status <> 'rejected'`,
+            [batchRows[0].id],
+          );
+          controlled.push({ batchId: batchRows[0].id, itemId: line.item_id, qty });
+        }
 
         await insertMoves(c, [
           {
@@ -355,6 +380,28 @@ export async function receivePurchaseOrder(_prev: ActionState, formData: FormDat
         );
       }
 
+      // Акт вхідного контролю створюється сам і одразу на всю поставку:
+      // документи постачальник виписує на партію поставки, а машину комірник
+      // приймає цілком. Окремий акт на кожне приймання — щоб довіз через
+      // тиждень не дописувався в підписаний позаминулий акт.
+      if (controlled.length > 0) {
+        const actNumber = await nextDocNumber(c, po.legal_entity_id, 'ВХК');
+        const { rows: actRows } = await c.query<{ id: string }>(
+          `insert into incoming_inspections
+             (number, legal_entity_id, po_id, supplier_id, received_on, created_by)
+           values ($1, $2, $3, $4, $5, $6) returning id`,
+          [actNumber, po.legal_entity_id, poId, po.supplier_id, receivedOn, session.uid],
+        );
+        for (const b of controlled) {
+          await c.query(
+            `insert into incoming_inspection_lines (inspection_id, batch_id, item_id, qty)
+             values ($1, $2, $3, $4)
+             on conflict (inspection_id, batch_id) do update set qty = incoming_inspection_lines.qty + excluded.qty`,
+            [actRows[0].id, b.batchId, b.itemId, b.qty],
+          );
+        }
+      }
+
       const { rows: leftRows } = await c.query<{ left: number }>(
         'select coalesce(sum(qty - received_qty), 0) as left from purchase_order_lines where po_id = $1',
         [poId],
@@ -374,5 +421,6 @@ export async function receivePurchaseOrder(_prev: ActionState, formData: FormDat
 
   revalidatePath(`/purchasing/${poId}`);
   revalidatePath('/stock');
+  revalidatePath('/quality');
   return { ok: 'Прихід оприбутковано' };
 }

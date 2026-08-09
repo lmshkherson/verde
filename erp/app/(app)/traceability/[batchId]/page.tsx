@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { declareRecall } from '@/app/actions/recalls';
+import { setBatchQuality } from '@/app/actions/quality';
 import { ActionForm } from '@/components/action-form';
 import {
   Alert,
@@ -16,8 +17,9 @@ import {
   Stat,
   Table,
 } from '@/components/ui';
-import { queryOne } from '@/lib/db';
+import { query, queryOne } from '@/lib/db';
 import { fmtDate, fmtQty, unitLabel } from '@/lib/format';
+import { DOC_KINDS, QUALITY_STATUS } from '@/lib/quality';
 import { affectedShipments, ancestors, descendants, RECALL_REASONS } from '@/lib/traceability';
 import { requireRole } from '@/lib/session';
 
@@ -42,9 +44,12 @@ export default async function BatchTracePage({ params }: { params: Promise<{ bat
     purchase_order_id: string | null;
     production_number: string | null;
     production_order_id: string | null;
+    quality_status: string;
+    quality_note: string | null;
     on_hand: number;
   }>(
     `select b.id, b.code, i.name as item_name, i.sku, i.unit, b.produced_on, b.expires_on, b.source,
+            b.quality_status, b.quality_note,
             o.supplier_name, o.supplier_edrpou, o.purchase_number, o.purchase_order_id,
             o.production_number, o.production_order_id,
             coalesce((select sum(m.qty) from stock_moves m
@@ -57,7 +62,7 @@ export default async function BatchTracePage({ params }: { params: Promise<{ bat
   );
   if (!batch) notFound();
 
-  const [back, forward, affected, existingRecall] = await Promise.all([
+  const [back, forward, affected, existingRecall, documents] = await Promise.all([
     ancestors(batchId),
     descendants(batchId),
     affectedShipments(batchId, session.eid),
@@ -66,6 +71,17 @@ export default async function BatchTracePage({ params }: { params: Promise<{ bat
         where batch_id = $1 and legal_entity_id = $2 and status <> 'cancelled'
         order by declared_on desc limit 1`,
       [batchId, session.eid],
+    ),
+    query<{
+      id: string;
+      kind: string;
+      number: string;
+      issuer: string | null;
+      valid_until: string | null;
+    }>(
+      `select id, kind, number, issuer, valid_until from batch_documents
+        where batch_id = $1 order by kind, number`,
+      [batchId],
     ),
   ]);
 
@@ -242,6 +258,61 @@ export default async function BatchTracePage({ params }: { params: Promise<{ bat
         </div>
 
         <div className="space-y-4">
+          <Card
+            title="Стан партії"
+            action={
+              <Badge
+                tone={
+                  batch.quality_status === 'released'
+                    ? 'green'
+                    : batch.quality_status === 'rejected'
+                      ? 'red'
+                      : 'amber'
+                }
+              >
+                {QUALITY_STATUS[batch.quality_status]}
+              </Badge>
+            }
+          >
+            {batch.quality_note && (
+              <p className="mb-3 text-sm text-emerald-800/70">{batch.quality_note}</p>
+            )}
+
+            {documents.length > 0 ? (
+              <ul className="mb-3 space-y-1 text-sm text-emerald-800/80">
+                {documents.map((d) => (
+                  <li key={d.id}>
+                    {DOC_KINDS[d.kind] ?? d.kind} № {d.number}
+                    {d.valid_until ? ` · до ${fmtDate(d.valid_until)}` : ''}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="mb-3 text-sm text-emerald-800/60">Документів якості на партію немає.</p>
+            )}
+
+            <p className="mb-3 text-sm text-emerald-800/70">
+              Партія в карантині або в браку не підбирається ні у варку, ні у відвантаження. Це та
+              сама кнопка, якої бракує в день скарги: зупинити зараз, розібратися потім.
+            </p>
+
+            <ActionForm action={setBatchQuality} submitLabel="Змінити стан" variant="ghost">
+              <input type="hidden" name="batch_id" value={batch.id} />
+              <Field label="Стан">
+                <select name="quality_status" className={inputClass} defaultValue={batch.quality_status}>
+                  {Object.entries(QUALITY_STATUS).map(([k, v]) => (
+                    <option key={k} value={k}>
+                      {v}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <Field label="Підстава" hint="обов'язкова для карантину й браку">
+                <input name="quality_note" className={inputClass} />
+              </Field>
+            </ActionForm>
+          </Card>
+
           <Card title="Оголосити відкликання">
             <p className="mb-3 text-sm text-emerald-800/70">
               Документ зафіксує цей самий перелік як чек-лист: кого повідомили, скільки повернули.

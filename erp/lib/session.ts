@@ -152,6 +152,7 @@ export type Section =
   | 'sales'
   | 'purchasing'
   | 'catalog'
+  | 'quality'
   | 'reports';
 
 // Ролі навмисно вузькі: комірник не бачить маржі, менеджер не закриває варки.
@@ -163,5 +164,8 @@ export const SECTION_ROLES: Record<Section, Role[]> = {
   sales: ['sales'],
   purchasing: ['warehouse'],
   catalog: ['production', 'sales'],
+  // Вхідний контроль і HACCP — спільна зона комірника й технолога: приймає
+  // один, а рішення про придатність сировини ухвалює інший.
+  quality: ['warehouse', 'production'],
   reports: [],
 };

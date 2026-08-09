@@ -197,6 +197,50 @@ const CUSTOMERS = [
   ['ФОП Ковальчук О.М. (наша роздрібна)', 'distributor', '3184507621', 'Олена Ковальчук', '+380671234000', 'distributor', 0, 0, null, false, '04070, м. Київ, вул. Набережно-Хрещатицька, буд. 3'],
 ];
 
+
+// План HACCP: критичні контрольні точки й програми-передумови. Порожні межі
+// означають якісний контроль — «відповідає / ні». Гранична пауза — скільки
+// годин допустимо без запису: за нею видно, що журнал перестали вести.
+// [код, назва, тип, етап, показник, од., від, до, періодичність, пауза год,
+//  моніторинг, дія при відхиленні, перевірка, автоджерело]
+const HACCP_POINTS = [
+  ['ПРП-1', 'Приймання сировини', 'prp', 'receiving', 'Температура при розвантаженні', '°C', 0, 25,
+   'кожна поставка', 48,
+   'Термощуп у товщу продукту, звірка з документами постачальника',
+   'Не приймати; зафіксувати в акті вхідного контролю; повернути постачальнику',
+   'Щоквартальна перевірка термощупа', 'incoming'],
+  ['ККТ-1', 'Металодетектування', 'ccp', 'production', 'Виявлення сторонніх включень', null, null, null,
+   'кожна партія', 24,
+   'Пропуск 100% продукції; перевірка тест-зразками Fe 2,0 / non-Fe 2,5 / SS 3,0 мм',
+   'Затримати партію від останньої успішної перевірки, перепустити, викликати техніка',
+   'Тест-зразки на початку й у кінці зміни', null],
+  ['ККТ-2', 'Зберігання сировини', 'ccp', 'storage', 'Температура складу сировини', '°C', 0, 20,
+   'двічі на зміну', 12,
+   'Реєстратор температури + контрольний термометр',
+   'Оцінити придатність партій, перевести в карантин, викликати сервіс холодильного обладнання',
+   'Щорічна повірка реєстратора', null],
+  ['ККТ-3', 'Зберігання готової продукції', 'ccp', 'storage', 'Температура складу ГП', '°C', 0, 20,
+   'двічі на зміну', 12,
+   'Реєстратор температури на складі ГП',
+   'Оцінити придатність, ізолювати партію, повідомити технолога',
+   'Щорічна повірка реєстратора', null],
+  ['ПРП-2', 'Пакування', 'prp', 'packaging', 'Цілісність зварного шва', null, null, null,
+   'щогодини', 4,
+   'Візуальний контроль шва й маркування дати на 5 пачках',
+   'Відбракувати продукцію від попередньої перевірки, відрегулювати зварювальні губки',
+   'Перевірка герметичності раз на зміну', null],
+  ['ПРП-3', 'Відвантаження', 'prp', 'shipping', 'Температура в кузові при завантаженні', '°C', 0, 20,
+   'кожен рейс', 72,
+   'Замір термощупом до завантаження, запис у ТТН',
+   'Не завантажувати; замінити транспорт',
+   'Звірка із записами перевізника', 'shipping'],
+  ['ПРП-4', 'Санітарна обробка', 'prp', 'production', 'Стан обладнання після мийки', null, null, null,
+   'щозміни', 24,
+   'Візуальний контроль, змиви за графіком',
+   'Повторна мийка, зупинка лінії до результату',
+   'Лабораторні змиви раз на місяць', null],
+];
+
 const client = new pg.Client({
   connectionString,
   ssl: /supabase|amazonaws|render|neon/.test(connectionString) ? { rejectUnauthorized: false } : undefined,
@@ -334,6 +378,46 @@ try {
     }
   }
 
+  // Вхідний контроль: сировина завжди, з пакування — те, що контактує з
+  // продуктом. Плівці потрібна декларація про відповідність матеріалів,
+  // призначених для контакту з харчовими продуктами, а картонному шоубоксу ні.
+  await client.query("update items set quality_control = (kind = 'raw' or sku = 'PAK-FLOW')");
+  await client.query(
+    `update items set acceptance_spec = $1
+      where kind = 'raw' and acceptance_spec is null`,
+    ['Посвідчення про якість, цілісність тари, без стороннього запаху, залишковий строк не менше 2/3'],
+  );
+
+  // Затверджені постачальники: без цього переліку вхідний контроль не дасть
+  // прийняти жодної партії. Дата перегляду — рік, як у типовій процедурі.
+  await client.query(
+    `update suppliers
+        set is_approved = true,
+            approved_on = coalesce(approved_on, current_date - 30),
+            approved_until = coalesce(approved_until, current_date + 335),
+            approval_note = coalesce(approval_note, 'Анкета постачальника, декларації виробника')
+      where is_active`,
+  );
+
+  for (const [code, name, kind, stage, parameter, unit, min, max, freq, gap,
+              monitoring, corrective, verification, auto] of HACCP_POINTS) {
+    await client.query(
+      `insert into haccp_points
+         (code, name, kind, stage, parameter, unit, limit_min, limit_max, frequency,
+          max_gap_hours, monitoring, corrective_action, verification, auto_source)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+       on conflict (code) do update set
+         name = excluded.name, kind = excluded.kind, stage = excluded.stage,
+         parameter = excluded.parameter, unit = excluded.unit,
+         limit_min = excluded.limit_min, limit_max = excluded.limit_max,
+         frequency = excluded.frequency, max_gap_hours = excluded.max_gap_hours,
+         monitoring = excluded.monitoring, corrective_action = excluded.corrective_action,
+         verification = excluded.verification, auto_source = excluded.auto_source`,
+      [code, name, kind, stage, parameter, unit, min, max, freq, gap,
+       monitoring, corrective, verification, auto],
+    );
+  }
+
   // Коди для податкової накладної. Значення робочі, але їх треба звірити
   // з довідниками — помилковий код є підставою не прийняти накладну.
   await client.query(
@@ -366,7 +450,8 @@ try {
   await client.query('commit');
   console.log(
     `Довідники заповнено: ${ENTITIES.length} юрособи, ${USERS.length} користувачів, ${ITEMS.length} позицій, ` +
-      `${RECIPES.length} рецептур, ${SUPPLIERS.length} постачальників, ${CUSTOMERS.length} клієнтів.`,
+      `${RECIPES.length} рецептур, ${SUPPLIERS.length} постачальників, ${CUSTOMERS.length} клієнтів, ` +
+      `${HACCP_POINTS.length} точок HACCP.`,
   );
   console.log(`Пароль для всіх демо-акаунтів: ${DEMO_PASSWORD}`);
 } catch (err) {

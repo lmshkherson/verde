@@ -55,8 +55,9 @@ export async function createItem(_prev: ActionState, formData: FormData): Promis
         `insert into items
            (sku, name, kind, unit, shelf_life_days, min_stock, weight_g, pcs_per_box,
             price_distributor, price_network, price_rrp, uktzed, uom_code, note, barcode,
-            temp_min_c, temp_max_c, temp_note)
-         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)`,
+            temp_min_c, temp_max_c, temp_note, quality_control, acceptance_spec)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18,
+                 $19, $20)`,
         [
           sku,
           name,
@@ -76,6 +77,8 @@ export async function createItem(_prev: ActionState, formData: FormData): Promis
           temp.min,
           temp.max,
           strOrNull(formData, 'temp_note'),
+          formData.get('quality_control') === 'on',
+          strOrNull(formData, 'acceptance_spec'),
         ],
       ),
     );
@@ -145,7 +148,8 @@ export async function updateItem(_prev: ActionState, formData: FormData): Promis
            shelf_life_days = $6, min_stock = $7, weight_g = $8, pcs_per_box = $9,
            price_distributor = $10, price_network = $11, price_rrp = $12,
            uktzed = $13, uom_code = $14, note = $15, vat_rate = $16, barcode = $17,
-           temp_min_c = $18, temp_max_c = $19, temp_note = $20
+           temp_min_c = $18, temp_max_c = $19, temp_note = $20,
+           quality_control = $21, acceptance_spec = $22
          where id = $1`,
         [
           id,
@@ -168,6 +172,8 @@ export async function updateItem(_prev: ActionState, formData: FormData): Promis
           temp.min,
           temp.max,
           strOrNull(formData, 'temp_note'),
+          formData.get('quality_control') === 'on',
+          strOrNull(formData, 'acceptance_spec'),
         ],
       );
     });

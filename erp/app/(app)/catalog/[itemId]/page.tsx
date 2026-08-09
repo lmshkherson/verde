@@ -34,6 +34,8 @@ export default async function ItemEditPage({ params }: { params: Promise<{ itemI
     temp_min_c: number | null;
     temp_max_c: number | null;
     temp_note: string | null;
+    quality_control: boolean;
+    acceptance_spec: string | null;
     note: string | null;
     is_active: boolean;
     moves: number;
@@ -260,6 +262,32 @@ export default async function ItemEditPage({ params }: { params: Promise<{ itemI
                   placeholder="вологість не вище 75%"
                 />
               </Field>
+            </div>
+
+            <div className="rounded-xl border border-emerald-900/10 p-3">
+              <label className="flex items-center gap-2 text-sm font-semibold text-emerald-900">
+                <input
+                  type="checkbox"
+                  name="quality_control"
+                  defaultChecked={item.quality_control}
+                  className="size-4"
+                />
+                Потребує вхідного контролю
+              </label>
+              <p className="mt-1 text-xs text-emerald-800/60">
+                Партія такої позиції після приходу стає в карантин і не підбирається у виробництво,
+                доки не буде закритий акт вхідного контролю з документом постачальника.
+              </p>
+              <div className="mt-3">
+                <Field label="Вимоги приймання" hint="що саме звіряють із поставкою">
+                  <input
+                    name="acceptance_spec"
+                    defaultValue={item.acceptance_spec ?? ''}
+                    className={inputClass}
+                    placeholder="Без стороннього запаху, вологість не вище 20%, посвідчення про якість"
+                  />
+                </Field>
+              </div>
             </div>
 
             <Field

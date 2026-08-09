@@ -7,6 +7,7 @@ import { type ActionState, num, str, strOrNull, toMessage } from '@/lib/action-s
 import { allocateFefo, defaultWarehouseId, insertMoves, nextDocNumber, round2, round3 } from '@/lib/stock';
 import { calcPurchaseVat, saleVatRate } from '@/lib/vat';
 import { requireRole } from '@/lib/session';
+import { logAutoPoint } from '@/lib/haccp';
 
 export async function createCustomer(_prev: ActionState, formData: FormData): Promise<ActionState> {
   await requireRole('sales');
@@ -540,13 +541,16 @@ export async function updateShipmentTransport(
   _prev: ActionState,
   formData: FormData,
 ): Promise<ActionState> {
-  await requireRole('sales', 'warehouse');
+  const session = await requireRole('sales', 'warehouse');
   const shipmentId = str(formData, 'shipment_id');
   if (!shipmentId) return { error: 'Не вказано відвантаження' };
 
+  const tempAtLoading =
+    str(formData, 'temp_at_loading') === '' ? null : num(formData, 'temp_at_loading');
+
   try {
-    await transaction((c) =>
-      c.query(
+    await transaction(async (c) => {
+      await c.query(
         `update shipments set
            ttn_number = $2, carrier = $3, carrier_edrpou = $4, carrier_storage_place = $5,
            transport_kind = $6, vehicle_model = $7, vehicle_plate = $8,
@@ -574,15 +578,26 @@ export async function updateShipmentTransport(
           num(formData, 'places') || null,
           strOrNull(formData, 'temp_mode'),
           strOrNull(formData, 'body_type'),
-          str(formData, 'temp_at_loading') === '' ? null : num(formData, 'temp_at_loading'),
+          tempAtLoading,
           str(formData, 'temp_at_unloading') === '' ? null : num(formData, 'temp_at_unloading'),
         ],
-      ),
-    );
+      );
+
+      // Температура в кузові на завантаженні — запис точки контролю
+      // «Відвантаження». Вона вже виміряна й записана в ТТН, тож просити
+      // ту саму цифру вдруге, вже в журнал, немає сенсу.
+      if (tempAtLoading !== null) {
+        await logAutoPoint(c, 'shipping', session.eid, session.uid, tempAtLoading, {
+          docType: 'shipment',
+          docId: shipmentId,
+        });
+      }
+    });
   } catch (err) {
     return { error: toMessage(err) };
   }
 
   revalidatePath(`/shipments/${shipmentId}/ttn`);
+  revalidatePath('/haccp');
   return { ok: 'Реквізити збережено' };
 }

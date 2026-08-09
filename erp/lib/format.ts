@@ -10,6 +10,31 @@ export const fmtQty = (n: number | null | undefined, unit?: string) =>
 export const fmtDate = (d: string | Date | null | undefined) =>
   d ? dateFmt.format(typeof d === 'string' ? new Date(d) : d) : '—';
 
+// Для журналів моніторингу година має значення: запис «о 6:20» і «о 14:20»
+// в одну добу — це різні зміни й різні відповідальні.
+const dateTimeFmt = new Intl.DateTimeFormat('uk-UA', {
+  day: '2-digit',
+  month: '2-digit',
+  year: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+});
+
+export const fmtDateTime = (d: string | Date | null | undefined) =>
+  d ? dateTimeFmt.format(typeof d === 'string' ? new Date(d) : d) : '—';
+
+/**
+ * Дата у вигляді YYYY-MM-DD для input[type=date] і порівнянь. Драйвер
+ * повертає колонки типу date вже об'єктом Date, тож рядкові операції над
+ * ними падають — саме тому це окремий хелпер, а не .slice(0, 10).
+ */
+export const isoDay = (d: string | Date | null | undefined): string | null => {
+  if (!d) return null;
+  const date = typeof d === 'string' ? new Date(d) : d;
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+};
+
 export const fmtPct = (n: number | null | undefined) => `${qtyFmt.format(Number(n ?? 0))}%`;
 
 export const ITEM_KINDS: Record<string, string> = {

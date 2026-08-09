@@ -35,6 +35,25 @@ export interface Allocation {
   unitCost: number;
 }
 
+/**
+ * Партія є, але вона не допущена: чекає вхідного контролю або забракована.
+ * Окрема помилка потрібна, бо «немає на складі» і «є, але не можна» — це різні
+ * ситуації з різними діями: у першій докупають, у другій ідуть до комірника.
+ */
+export class QualityHoldError extends Error {
+  constructor(
+    public readonly itemName: string,
+    public readonly blocked: number,
+    public readonly unit: string,
+  ) {
+    super(
+      `«${itemName}»: ${blocked} ${unit} не допущено до використання ` +
+        '(карантин або брак). Партія без закритого вхідного контролю у виробництво не йде.',
+    );
+    this.name = 'QualityHoldError';
+  }
+}
+
 export class InsufficientStockError extends Error {
   constructor(
     public readonly itemName: string,
@@ -107,8 +126,9 @@ export async function allocateFefo(
     batch_id: string;
     qty: number;
     value: number;
+    quality_status: string;
   }>(
-    `select sb.batch_id, sb.qty, sb.value
+    `select sb.batch_id, sb.qty, sb.value, b.quality_status
        from v_stock_batches sb
        join batches b on b.id = sb.batch_id
       where sb.item_id = $1 and sb.warehouse_id = $2 and sb.legal_entity_id = $3 and sb.qty > 0
@@ -116,23 +136,33 @@ export async function allocateFefo(
     [itemId, warehouseId, legalEntityId],
   );
 
-  const available = rows.reduce((sum, r) => sum + r.qty, 0);
+  // Недопущені партії до підбору не потрапляють узагалі — ні першими, ні
+  // останніми. FEFO працює лише серед того, що дозволено використовувати.
+  const usable = rows.filter((r) => r.quality_status === 'released');
+  const blocked = rows
+    .filter((r) => r.quality_status !== 'released')
+    .reduce((sum, r) => sum + Number(r.qty), 0);
+
+  const available = usable.reduce((sum, r) => sum + Number(r.qty), 0);
   if (available + 0.0005 < qty) {
     const info = await client.query<{ name: string; unit: string }>(
       'select name, unit from items where id = $1',
       [itemId],
     );
-    throw new InsufficientStockError(
-      info.rows[0]?.name ?? itemId,
-      qty,
-      round3(available),
-      info.rows[0]?.unit ?? '',
-    );
+    const name = info.rows[0]?.name ?? itemId;
+    const unit = info.rows[0]?.unit ?? '';
+
+    // Якщо заблокованого вистачило б на різницю — причина саме в контролі,
+    // і користувачеві треба сказати про це, а не про порожній склад.
+    if (blocked > 0.0005 && available + blocked + 0.0005 >= qty) {
+      throw new QualityHoldError(name, round3(blocked), unit);
+    }
+    throw new InsufficientStockError(name, qty, round3(available), unit);
   }
 
   const allocations: Allocation[] = [];
   let left = qty;
-  for (const row of rows) {
+  for (const row of usable) {
     if (left <= 0.0005) break;
     const take = Math.min(row.qty, left);
     allocations.push({

@@ -142,6 +142,220 @@ try {
     `${pistachio.cost} грн/кг`,
   );
 
+  // ─── 1б. Вхідний контроль сировини ─────────────────────────────────────────
+  // Найважливіше тут: партія, яку не перевірили, у виробництво не потрапляє.
+  console.log('\nВхідний контроль сировини');
+
+  await warehouse.goto(`${BASE}/quality`);
+  const inQuarantine = await stat(warehouse, 'У карантині');
+  check(
+    'прихід поставив сировину в карантин',
+    inQuarantine >= 7,
+    `${inQuarantine} партій чекають перевірки`,
+  );
+  check('акт вхідного контролю створився сам', (await warehouse.locator('text=ВС-ВХК').count()) > 0);
+
+  // Акти нумеруються послідовно, база в сценарії чиста — тож перша поставка
+  // це завжди 0001, а друга 0002.
+  const year = new Date().getFullYear();
+  const actNumber = (n) => `ВС-ВХК-${year}-000${n}`;
+
+  async function openAct(page, n) {
+    await page.goto(`${BASE}/quality`);
+    await page.click(`a:has-text("${actNumber(n)}")`);
+    await page.waitForURL(/\/quality\/[0-9a-f-]{36}/);
+  }
+
+  await openAct(warehouse, 1);
+  const firstAct = warehouse.url();
+
+  check(
+    'у акті видно, що документів немає',
+    (await warehouse.locator('text=без документа').count()) >= 7,
+  );
+
+  // Спроба прийняти без документа має провалитись — це головне правило.
+  async function lineForm(page, itemName) {
+    return page.locator(`div[data-line]:has-text("${itemName}") form:has(select[name="verdict"])`).first();
+  }
+
+  let form = await lineForm(warehouse, 'Фініки');
+  await form.locator('select[name="verdict"]').selectOption('accepted');
+  await form.locator('button[type="submit"]').click();
+  await warehouse.waitForTimeout(1200);
+  check(
+    'без документа якості партію не приймають',
+    (await warehouse.locator('text=немає чинного документа').count()) > 0,
+  );
+
+  // Вносимо посвідчення про якість одразу на всю поставку.
+  await warehouse.fill('form:has(input[name="file_url"]) input[name="number"]', 'ЯК-2026/0417');
+  await warehouse.fill('form:has(input[name="file_url"]) input[name="issuer"]', 'ТОВ «Сухофрукт Трейд»');
+  await warehouse.click('button:has-text("Додати до всіх позицій")');
+  await warehouse.waitForTimeout(1500);
+  await warehouse.reload();
+  check(
+    'документ ліг на всі партії поставки',
+    (await warehouse.locator('text=без документа').count()) === 0,
+  );
+
+  // Температура поза режимом: прийняти без коригувальної дії не дають.
+  form = await lineForm(warehouse, 'Фініки');
+  await form.locator('input[name="temp_c"]').fill('30');
+  await form.locator('select[name="verdict"]').selectOption('accepted');
+  await form.locator('button[type="submit"]').click();
+  await warehouse.waitForTimeout(1200);
+  check(
+    'відхилення без коригувальної дії не проходить',
+    (await warehouse.locator('text=Запишіть коригувальну дію').count()) > 0,
+  );
+
+  form = await lineForm(warehouse, 'Фініки');
+  await form.locator('input[name="temp_c"]').fill('30');
+  await form.locator('select[name="verdict"]').selectOption('accepted');
+  await form
+    .locator('input[name="corrective_action"]')
+    .fill('Охолоджено до 8 °C, витримка 2 год, органолептика без змін');
+  await form.locator('button[type="submit"]').click();
+  await warehouse.waitForTimeout(1500);
+  await warehouse.reload();
+  check('із записаним рішенням партію приймають', (await stat(warehouse, 'Прийнято')) === 1);
+
+  // Решту приймаємо в межах режиму.
+  const stillPending = await warehouse
+    .locator('div[data-line]:has-text("Не перевірено")')
+    .count();
+  for (let i = 0; i < stillPending; i += 1) {
+    const f = warehouse
+      .locator('div[data-line]:has-text("Не перевірено") form:has(select[name="verdict"])')
+      .first();
+    await f.locator('input[name="temp_c"]').fill('12');
+    await f.locator('select[name="verdict"]').selectOption('accepted');
+    await f.locator('button[type="submit"]').click();
+    await warehouse.waitForTimeout(1100);
+    await warehouse.reload();
+  }
+  check('усі позиції поставки перевірено', (await stat(warehouse, 'Не перевірено')) === 0);
+
+  await warehouse.fill('input[name="transport_temp_c"]', '11');
+  await warehouse.fill('input[name="vehicle"]', 'Renault Master, АА 4417 ІК');
+  await warehouse.click('button:has-text("Закрити акт")');
+  await warehouse.waitForTimeout(1800);
+  await warehouse.reload();
+  check('акт закрито', (await warehouse.locator('text=Закрито').count()) > 0);
+
+  // Партія фісташки з другої поставки ще в карантині — варка має впертися саме в неї.
+  const blocked = await session('iryna@v-verde.ua');
+  await blocked.goto(`${BASE}/production`);
+  await selectByText(blocked, 'select[name="recipe_id"]', 'Фісташка');
+  await blocked.fill('input[name="planned_qty"]', '1000');
+  await blocked.click('form:has(select[name="recipe_id"]) button[type="submit"]');
+  await blocked.waitForURL(/\/production\/[0-9a-f-]{36}/);
+  check(
+    'потреба показує сировину як не допущену',
+    (await blocked.locator('text=не допущено').count()) > 0,
+  );
+
+  await blocked.click('button:has-text("Почати")');
+  await blocked.waitForTimeout(600);
+  await blocked.reload();
+  await blocked.fill('input[name="produced_qty"]', '980');
+  await blocked.waitForTimeout(300);
+  await blocked.click('button:has-text("Закрити варку")');
+  await blocked.waitForTimeout(1800);
+  check(
+    'карантинну партію у варку не пускає',
+    (await blocked.locator('text=не допущено до використання').count()) > 0,
+  );
+  await blocked.locator('button:has-text("Скасувати")').first().click();
+  await blocked.waitForTimeout(900);
+
+  // Другий акт: постачальник поза переліком затверджених.
+  await warehouse.goto(`${BASE}/purchasing/suppliers`);
+  await warehouse.click('a:has-text("Гриценко")');
+  await warehouse.waitForURL(/\/purchasing\/suppliers\/[0-9a-f-]{36}/);
+  await warehouse.uncheck('input[name="is_approved"]');
+  await warehouse.click('form:has(input[name="is_approved"]) button[type="submit"]');
+  await warehouse.waitForTimeout(1300);
+
+  await openAct(warehouse, 2);
+  check('другий акт відкрито', warehouse.url() !== firstAct);
+
+  await warehouse.fill('form:has(input[name="file_url"]) input[name="number"]', 'ЯК-2026/0088');
+  await warehouse.click('button:has-text("Додати до всіх позицій")');
+  await warehouse.waitForTimeout(1500);
+  await warehouse.reload();
+
+  form = await lineForm(warehouse, 'фісташки');
+  await form.locator('input[name="temp_c"]').fill('14');
+  await form.locator('select[name="verdict"]').selectOption('accepted');
+  await form.locator('button[type="submit"]').click();
+  await warehouse.waitForTimeout(1300);
+  check(
+    'від незатвердженого постачальника приймати не дають',
+    (await warehouse.locator('text=не входить до переліку затверджених').count()) > 0,
+  );
+
+  await warehouse.goto(`${BASE}/purchasing/suppliers`);
+  await warehouse.click('a:has-text("Гриценко")');
+  await warehouse.waitForURL(/\/purchasing\/suppliers\/[0-9a-f-]{36}/);
+  await warehouse.check('input[name="is_approved"]');
+  await warehouse.click('form:has(input[name="is_approved"]) button[type="submit"]');
+  await warehouse.waitForTimeout(1300);
+
+  await openAct(warehouse, 2);
+  form = await lineForm(warehouse, 'фісташки');
+  await form.locator('input[name="temp_c"]').fill('14');
+  await form.locator('select[name="verdict"]').selectOption('accepted');
+  await form.locator('button[type="submit"]').click();
+  await warehouse.waitForTimeout(1400);
+  await warehouse.click('button:has-text("Закрити акт")');
+  await warehouse.waitForTimeout(1800);
+
+  await warehouse.goto(`${BASE}/quality`);
+  check(
+    'після контролю карантин порожній',
+    (await stat(warehouse, 'У карантині')) === 0,
+    'уся сировина допущена',
+  );
+
+  // Журнал HACCP заповнився з акта сам — і побачив відхилення 30 °C.
+  const tech = await session('iryna@v-verde.ua');
+  await tech.goto(`${BASE}/haccp`);
+  const haccpText = (await tech.locator('body').innerText()).replace(/[\s ]+/g, ' ');
+  check('приймання записалося в журнал HACCP', haccpText.includes('ПРП-1'));
+  check(
+    'перевищення температури позначене відхиленням',
+    (await tech.locator('text=відхилення').count()) > 0,
+  );
+  check(
+    'у журналі видно, що запис прийшов з акта',
+    (await tech.locator('text=з акта').count()) > 0,
+  );
+
+  // Ручний запис по ККТ: без коригувальної дії відхилення не приймають.
+  const metal = tech.locator('div[data-point="ККТ-2"] form');
+  await metal.locator('input[name="value"]').fill('26');
+  await metal.locator('button[type="submit"]').click();
+  await tech.waitForTimeout(1300);
+  check(
+    'запис поза межами вимагає коригувальної дії',
+    (await tech.locator('text=Запишіть коригувальну дію').count()) > 0,
+  );
+
+  const metal2 = tech.locator('div[data-point="ККТ-2"] form');
+  await metal2.locator('input[name="value"]').fill('26');
+  await metal2
+    .locator('input[name="corrective_action"]')
+    .fill('Партії переведено в карантин, викликано сервіс холодильника');
+  await metal2.locator('button[type="submit"]').click();
+  await tech.waitForTimeout(1400);
+  await tech.reload();
+  check(
+    'із рішенням запис проходить',
+    (await tech.locator('text=Партії переведено в карантин').count()) > 0,
+  );
+
   // ─── 2. Виробництво в ТОВ ──────────────────────────────────────────────────
   console.log('\nТОВ «Верде Світ» — виробництво');
   const production = await session('iryna@v-verde.ua');

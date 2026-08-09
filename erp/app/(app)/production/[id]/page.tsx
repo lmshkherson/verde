@@ -63,13 +63,25 @@ export default async function ProductionOrderPage({ params }: { params: Promise<
       qty_per_batch: number;
       loss_pct: number;
       available: number;
+      blocked: number;
       avg_cost: number;
     }>(
+      // «На складі» — це лише допущені партії: карантинні у варку не підуть,
+      // і показувати їх як доступні означало б обіцяти те, чого немає.
       `select rl.item_id, i.name, i.unit, rl.qty_per_batch, rl.loss_pct,
-              coalesce(s.qty, 0) as available, coalesce(s.avg_cost, 0) as avg_cost
+              coalesce(q.released_qty, 0) as available,
+              coalesce(q.blocked_qty, 0) as blocked,
+              coalesce(s.avg_cost, 0) as avg_cost
          from recipe_lines rl
          join items i on i.id = rl.item_id
          left join v_item_stock s on s.item_id = rl.item_id and s.legal_entity_id = $2
+         left join lateral (
+           select sum(sb.qty) filter (where b.quality_status = 'released')  as released_qty,
+                  sum(sb.qty) filter (where b.quality_status <> 'released') as blocked_qty
+             from v_stock_batches sb
+             join batches b on b.id = sb.batch_id
+            where sb.item_id = rl.item_id and sb.legal_entity_id = $2
+         ) q on true
         where rl.recipe_id = $1
         order by i.name`,
       [order.recipe_id, session.eid],
@@ -172,7 +184,14 @@ export default async function ProductionOrderPage({ params }: { params: Promise<
                       )}
                     </Cell>
                     <Cell align="right">{fmtQty(required, unitLabel(m.unit))}</Cell>
-                    <Cell align="right">{fmtQty(m.available, unitLabel(m.unit))}</Cell>
+                    <Cell align="right">
+                      {fmtQty(m.available, unitLabel(m.unit))}
+                      {Number(m.blocked) > 0.0005 && (
+                        <div className="text-xs font-semibold text-amber-600">
+                          + {fmtQty(m.blocked)} не допущено
+                        </div>
+                      )}
+                    </Cell>
                     <Cell align="right">
                       {enough ? (
                         <Badge tone="green">так</Badge>
