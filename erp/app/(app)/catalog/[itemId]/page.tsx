@@ -31,6 +31,9 @@ export default async function ItemEditPage({ params }: { params: Promise<{ itemI
     uktzed: string | null;
     uom_code: string | null;
     barcode: string | null;
+    temp_min_c: number | null;
+    temp_max_c: number | null;
+    temp_note: string | null;
     note: string | null;
     is_active: boolean;
     moves: number;
@@ -227,6 +230,35 @@ export default async function ItemEditPage({ params }: { params: Promise<{ itemI
               </Field>
               <Field label="Код одиниці" hint="КСПОВО: кг — 0301, шт — 2009">
                 <input name="uom_code" defaultValue={item.uom_code ?? ''} className={inputClass} />
+              </Field>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-3">
+              <Field label="Температура від, °C" hint="порожньо — режим не задано">
+                <input
+                  name="temp_min_c"
+                  type="number"
+                  step="0.1"
+                  defaultValue={item.temp_min_c ?? ''}
+                  className={inputClass}
+                />
+              </Field>
+              <Field label="Температура до, °C">
+                <input
+                  name="temp_max_c"
+                  type="number"
+                  step="0.1"
+                  defaultValue={item.temp_max_c ?? ''}
+                  className={inputClass}
+                />
+              </Field>
+              <Field label="Уточнення з етикетки">
+                <input
+                  name="temp_note"
+                  defaultValue={item.temp_note ?? ''}
+                  className={inputClass}
+                  placeholder="вологість не вище 75%"
+                />
               </Field>
             </div>
 

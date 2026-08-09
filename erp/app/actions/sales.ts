@@ -552,7 +552,8 @@ export async function updateShipmentTransport(
            transport_kind = $6, vehicle_model = $7, vehicle_plate = $8,
            trailer_model = $9, trailer_plate = $10, driver_name = $11,
            freight_payer = $12, loading_point = $13, unloading_point = $14,
-           gross_weight_kg = $15, places = $16
+           gross_weight_kg = $15, places = $16,
+           temp_mode = $17, body_type = $18, temp_at_loading = $19, temp_at_unloading = $20
          where id = $1`,
         [
           shipmentId,
@@ -571,6 +572,10 @@ export async function updateShipmentTransport(
           strOrNull(formData, 'unloading_point'),
           num(formData, 'gross_weight_kg') || null,
           num(formData, 'places') || null,
+          strOrNull(formData, 'temp_mode'),
+          strOrNull(formData, 'body_type'),
+          str(formData, 'temp_at_loading') === '' ? null : num(formData, 'temp_at_loading'),
+          str(formData, 'temp_at_unloading') === '' ? null : num(formData, 'temp_at_unloading'),
         ],
       ),
     );

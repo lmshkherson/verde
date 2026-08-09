@@ -42,6 +42,10 @@ export default async function TtnPage({ params }: { params: Promise<{ shipmentId
     unloading_point: string | null;
     gross_weight_kg: number | null;
     places: number | null;
+    temp_mode: string | null;
+    body_type: string | null;
+    temp_at_loading: number | null;
+    temp_at_unloading: number | null;
     order_id: string;
     order_number: string;
     seller_name: string;
@@ -53,17 +57,22 @@ export default async function TtnPage({ params }: { params: Promise<{ shipmentId
     warehouse_address: string | null;
     net_weight_kg: number | null;
     calc_places: number | null;
+    need_min_c: number | null;
+    need_max_c: number | null;
+    without_mode: number | null;
   }>(
     `select sh.*, o.id as order_id, o.number as order_number,
             e.name as seller_name, e.edrpou as seller_edrpou, e.address as seller_address,
             c.name as buyer_name, c.edrpou as buyer_edrpou, c.address as buyer_address,
             (select w.address from warehouses w where w.kind = 'finished' limit 1) as warehouse_address,
-            cargo.net_weight_kg, cargo.places as calc_places
+            cargo.net_weight_kg, cargo.places as calc_places,
+            t.need_min_c, t.need_max_c, t.without_mode
        from shipments sh
        join sales_orders o on o.id = sh.so_id
        join legal_entities e on e.id = o.legal_entity_id
        join customers c on c.id = o.customer_id
        left join v_shipment_cargo cargo on cargo.shipment_id = sh.id
+       left join v_shipment_temp t on t.shipment_id = sh.id
       where sh.id = $1`,
     [shipmentId],
   );
@@ -75,8 +84,12 @@ export default async function TtnPage({ params }: { params: Promise<{ shipmentId
     qty: number;
     pcs_per_box: number | null;
     weight_g: number | null;
+    temp_min_c: number | null;
+    temp_max_c: number | null;
+    temp_note: string | null;
   }>(
-    `select i.name, i.unit, sl.qty, i.pcs_per_box, i.weight_g
+    `select i.name, i.unit, sl.qty, i.pcs_per_box, i.weight_g,
+            i.temp_min_c, i.temp_max_c, i.temp_note
        from shipment_lines sl join items i on i.id = sl.item_id
       where sl.shipment_id = $1 order by i.name`,
     [shipmentId],
@@ -88,6 +101,21 @@ export default async function TtnPage({ params }: { params: Promise<{ shipmentId
   const loading = doc.loading_point || doc.warehouse_address || doc.seller_address || '';
   const unloading = doc.unloading_point || doc.buyer_address || '';
 
+  // Найвужчий діапазон, який має витримати рейс. Якщо межі перетнулися —
+  // у машині позиції, які просто не можна везти разом.
+  const needMin = doc.need_min_c != null ? Number(doc.need_min_c) : null;
+  const needMax = doc.need_max_c != null ? Number(doc.need_max_c) : null;
+  const tempConflict = needMin != null && needMax != null && needMin > needMax;
+  const suggested =
+    needMin != null || needMax != null
+      ? `${needMin != null ? `від ${needMin}` : ''}${needMin != null && needMax != null ? ' ' : ''}${needMax != null ? `до ${needMax}` : ''} °C`.trim()
+      : '';
+  const tempMode = doc.temp_mode || (suggested ? `Дотримувати ${suggested}` : '');
+  const outOfRange =
+    doc.temp_at_loading != null &&
+    ((needMin != null && Number(doc.temp_at_loading) < needMin) ||
+      (needMax != null && Number(doc.temp_at_loading) > needMax));
+
   const missing = [
     !doc.ttn_number && 'номер ТТН',
     !doc.carrier && 'перевізник',
@@ -96,6 +124,7 @@ export default async function TtnPage({ params }: { params: Promise<{ shipmentId
     !doc.carrier_storage_place && 'місце, де зберігається автомобіль',
     !loading && 'пункт навантаження',
     !unloading && 'пункт розвантаження',
+    !tempMode && 'температурний режим',
   ].filter(Boolean) as string[];
 
   return (
@@ -105,6 +134,34 @@ export default async function TtnPage({ params }: { params: Promise<{ shipmentId
         <LinkButton href={`/shipments/${doc.id}/print`}>Видаткова накладна</LinkButton>
         <LinkButton href={`/sales/${doc.order_id}`}>← До замовлення</LinkButton>
       </div>
+
+      {tempConflict && (
+        <div className="no-print mb-4">
+          <Alert tone="red">
+            У рейсі позиції з несумісними режимами: одна вимагає не нижче {needMin} °C, інша не
+            вище {needMax} °C. Везти разом не можна — розділіть відвантаження.
+          </Alert>
+        </div>
+      )}
+
+      {outOfRange && (
+        <div className="no-print mb-4">
+          <Alert tone="red">
+            Температура при завантаженні {String(doc.temp_at_loading)} °C виходить за потрібний
+            діапазон {suggested}. Це фіксується в документі — виправляти треба на рампі, а не в
+            бланку.
+          </Alert>
+        </div>
+      )}
+
+      {Number(doc.without_mode ?? 0) > 0 && (
+        <div className="no-print mb-4">
+          <Alert tone="amber">
+            У {doc.without_mode} позицій рейсу не заданий температурний режим — система не може
+            перевірити, чи витримано умови. Заповніть його в картці номенклатури.
+          </Alert>
+        </div>
+      )}
 
       {missing.length > 0 && (
         <div className="no-print mb-4">
@@ -167,6 +224,16 @@ export default async function TtnPage({ params }: { params: Promise<{ shipmentId
           />
           <Line label="Пункт навантаження" value={loading} />
           <Line label="Пункт розвантаження" value={unloading} />
+          <Line label="Температурний режим перевезення" value={tempMode} />
+          <Line label="Тип кузова" value={doc.body_type ?? ''} />
+          <Line
+            label="Температура при завантаженні, °C"
+            value={doc.temp_at_loading != null ? String(doc.temp_at_loading) : ''}
+          />
+          <Line
+            label="Температура при розвантаженні, °C"
+            value={doc.temp_at_unloading != null ? String(doc.temp_at_unloading) : ''}
+          />
           <Line
             label="Супровідні документи на вантаж"
             value={`Видаткова накладна № ${doc.number} від ${fmtDate(doc.shipped_on)}`}
@@ -186,6 +253,7 @@ export default async function TtnPage({ params }: { params: Promise<{ shipmentId
                 'Кількість місць',
                 'Вид пакування',
                 'Маса брутто, т',
+                'Темп. режим, °C',
                 'Примітка',
               ].map((h) => (
                 <th key={h} className="border border-black px-1 py-0.5 text-center font-semibold">
@@ -213,7 +281,12 @@ export default async function TtnPage({ params }: { params: Promise<{ shipmentId
                   <td className="border border-black px-1 py-0.5 text-right tabular-nums">
                     {weightT > 0 ? weightT.toFixed(3) : '—'}
                   </td>
-                  <td className="border border-black px-1 py-0.5" />
+                  <td className="border border-black px-1 py-0.5 text-center">
+                    {l.temp_min_c != null || l.temp_max_c != null
+                      ? `${l.temp_min_c != null ? l.temp_min_c : ''}${l.temp_min_c != null && l.temp_max_c != null ? '…' : ''}${l.temp_max_c != null ? l.temp_max_c : ''}`
+                      : '—'}
+                  </td>
+                  <td className="border border-black px-1 py-0.5 text-[9px]">{l.temp_note ?? ''}</td>
                 </tr>
               );
             })}
@@ -227,6 +300,9 @@ export default async function TtnPage({ params }: { params: Promise<{ shipmentId
               <td className="border border-black px-1 py-0.5" />
               <td className="border border-black px-1 py-0.5 text-right font-bold tabular-nums">
                 {(grossWeight / 1000).toFixed(3)}
+              </td>
+              <td className="border border-black px-1 py-0.5 text-center font-semibold">
+                {suggested || '—'}
               </td>
               <td className="border border-black px-1 py-0.5" />
             </tr>
@@ -247,6 +323,13 @@ export default async function TtnPage({ params }: { params: Promise<{ shipmentId
             </div>
           ))}
         </div>
+
+        {tempMode && (
+          <p className="mt-4 text-[10px]">
+            Температурний режим перевіряв: ____________________ / ____________________
+            <span className="ml-2 text-black/60">(підпис, прізвище)</span>
+          </p>
+        )}
 
         <p className="mt-5 text-[9px] text-black/60">
           Складається у трьох примірниках: вантажовідправнику, вантажоодержувачу й перевізнику.
@@ -311,6 +394,49 @@ export default async function TtnPage({ params }: { params: Promise<{ shipmentId
               </Field>
               <Field label="Номер причепа">
                 <input name="trailer_plate" defaultValue={doc.trailer_plate ?? ''} className={inputClass} />
+              </Field>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field
+                label="Температурний режим перевезення"
+                hint={suggested ? `за позиціями рейсу потрібно ${suggested}` : 'у позиціях режим не заданий'}
+              >
+                <input
+                  name="temp_mode"
+                  defaultValue={doc.temp_mode ?? ''}
+                  className={inputClass}
+                  placeholder={suggested ? `Дотримувати ${suggested}` : '+2…+6 °C'}
+                />
+              </Field>
+              <Field label="Тип кузова">
+                <input
+                  name="body_type"
+                  defaultValue={doc.body_type ?? ''}
+                  className={inputClass}
+                  placeholder="Ізотермічний / рефрижератор"
+                />
+              </Field>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field label="Температура при завантаженні, °C" hint="заміряна на рампі">
+                <input
+                  name="temp_at_loading"
+                  type="number"
+                  step="0.1"
+                  defaultValue={doc.temp_at_loading ?? ''}
+                  className={inputClass}
+                />
+              </Field>
+              <Field label="Температура при розвантаженні, °C" hint="вписує одержувач">
+                <input
+                  name="temp_at_unloading"
+                  type="number"
+                  step="0.1"
+                  defaultValue={doc.temp_at_unloading ?? ''}
+                  className={inputClass}
+                />
               </Field>
             </div>
 

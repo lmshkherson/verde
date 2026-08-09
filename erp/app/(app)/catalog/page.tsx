@@ -180,6 +180,14 @@ export default async function CatalogPage({
             <Field label="РРЦ">
               <input name="price_rrp" type="number" step="0.01" min="0" className={inputClass} />
             </Field>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Темп. від, °C">
+                <input name="temp_min_c" type="number" step="0.1" className={inputClass} />
+              </Field>
+              <Field label="Темп. до, °C">
+                <input name="temp_max_c" type="number" step="0.1" className={inputClass} placeholder="20" />
+              </Field>
+            </div>
             <Field label="Штрихкод" hint="EAN-13 або 12 цифр від GS1 — контрольну дорахуємо">
               <input name="barcode" inputMode="numeric" className={inputClass} placeholder="4820024700016" />
             </Field>

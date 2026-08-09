@@ -361,6 +361,48 @@ try {
   check('кількість місць порахована за вкладенням у шоубокс', ttn.includes('40'), '640 ÷ 16');
   check('у бланку немає цінових граф', !ttn.includes('Ціна без ПДВ'), 'форма 1-ТН їх не містить');
   check('позначено три примірники', ttn.includes('трьох примірниках'));
+
+  // Температурний режим для харчового рейсу — умова перевезення, а не примітка.
+  check(
+    'режим підказано з позицій рейсу',
+    ttn.includes('Дотримувати від 0 до 20 °C'),
+    'батончики 0…+20 °C',
+  );
+  check('режим стоїть у шапці бланка', ttnLower.includes('температурний режим перевезення'));
+  check('і колонкою в таблиці вантажу', ttn.includes('0…20'));
+  check(
+    'є рядки для замірів на завантаженні й розвантаженні',
+    ttnLower.includes('температура при завантаженні') &&
+      ttnLower.includes('температура при розвантаженні'),
+  );
+
+  await sales.fill('input[name="body_type"]', 'Ізотермічний');
+  await sales.fill('input[name="temp_at_loading"]', '18');
+  await sales.click('button:has-text("Зберегти реквізити")');
+  await sales.waitForTimeout(1300);
+  await sales.reload();
+  const ttnTemp = (await sales.locator('body').innerText()).replace(/[\s ]+/g, ' ');
+  check('замір при завантаженні потрапив у бланк', ttnTemp.includes('Ізотермічний') && ttnTemp.includes('18'));
+  check(
+    'підпис про перевірку режиму з’явився',
+    ttnTemp.includes('Температурний режим перевіряв'),
+  );
+
+  // Замір поза діапазоном система має показати, а не проковтнути.
+  await sales.fill('input[name="temp_at_loading"]', '27');
+  await sales.click('button:has-text("Зберегти реквізити")');
+  await sales.waitForTimeout(1300);
+  await sales.reload();
+  check(
+    'вихід за діапазон видно одразу',
+    (await sales.locator('text=виходить за потрібний діапазон').count()) > 0,
+    '27 °C проти 0…20',
+  );
+  await sales.fill('input[name="temp_at_loading"]', '18');
+  await sales.click('button:has-text("Зберегти реквізити")');
+  await sales.waitForTimeout(1300);
+  await sales.reload();
+
   check(
     'після заповнення попередження зникло',
     (await sales.locator('text=Бланк неповний').count()) === 0,

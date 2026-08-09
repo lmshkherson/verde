@@ -28,7 +28,9 @@ const WAREHOUSES = [
   ['CEH', 'Цех (незавершене)', 'wip', 'Україна, 04060, м. Київ, вул. Щусєва, буд. 15'],
 ];
 
-// [sku, назва, тип, од., термін днів, мін. залишок, вага г, шт/бокс, ціни..., штрихкод]
+// [sku, назва, тип, од., термін днів, мін. залишок, вага г, шт/бокс, ціни..., штрихкод,
+//  темп. від °C, темп. до °C]
+//
 // Увага: ціни зберігаються БЕЗ ПДВ. Роздрібні з лендінгу (25,80 / 35,70 / 49,99)
 // поділені на 1,2 — податок додається в документі за ставкою юрособи.
 //
@@ -36,50 +38,54 @@ const WAREHOUSES = [
 // тримає під внутрішнє використання і реальним товарам не видає, тож демо-код
 // ніколи не збігнеться з чужим GTIN. Справжні коди приходять із реєстрації
 // в GS1 Україна — їх вписують у картку позиції.
+//
+// Температурний режим — умова перевезення, а не примітка: порушили — товар
+// зіпсовано, а довести дотримання можна лише документом. У пакування його
+// немає, і це не пропуск: плівці та картону режим не потрібен.
 const ITEMS = [
   // Готова продукція — лінійка «Зарядись», 25 г, шоубокс 16 шт, термін 9 місяців.
-  ['VRD-Z-PIST', 'Батончик «Зарядись» Фісташка 25 г', 'finished', 'pcs', 270, 800, 25, 16, 21.5, 29.75, 41.66, '2900000000018'],
-  ['VRD-Z-ARAH', 'Батончик «Зарядись» Арахіс 25 г', 'finished', 'pcs', 270, 800, 25, 16, 21.5, 29.75, 41.66, '2900000000025'],
-  ['VRD-Z-MIGD', 'Батончик «Зарядись» Мигдаль 25 г', 'finished', 'pcs', 270, 800, 25, 16, 21.5, 29.75, 41.66, '2900000000032'],
-  ['VRD-Z-KOKO', 'Батончик «Зарядись» Кокос 25 г', 'finished', 'pcs', 270, 800, 25, 16, 21.5, 29.75, 41.66, '2900000000049'],
-  ['VRD-Z-FUND', 'Батончик «Зарядись» Фундук 25 г', 'finished', 'pcs', 270, 800, 25, 16, 21.5, 29.75, 41.66, '2900000000056'],
-  ['VRD-COLLAGEN', 'Батончик Collagen 40 г', 'finished', 'pcs', 270, 500, 40, 12, 30.5, 47.0, 65.83, '2900000000063'],
+  ['VRD-Z-PIST', 'Батончик «Зарядись» Фісташка 25 г', 'finished', 'pcs', 270, 800, 25, 16, 21.5, 29.75, 41.66, '2900000000018', 0, 20],
+  ['VRD-Z-ARAH', 'Батончик «Зарядись» Арахіс 25 г', 'finished', 'pcs', 270, 800, 25, 16, 21.5, 29.75, 41.66, '2900000000025', 0, 20],
+  ['VRD-Z-MIGD', 'Батончик «Зарядись» Мигдаль 25 г', 'finished', 'pcs', 270, 800, 25, 16, 21.5, 29.75, 41.66, '2900000000032', 0, 20],
+  ['VRD-Z-KOKO', 'Батончик «Зарядись» Кокос 25 г', 'finished', 'pcs', 270, 800, 25, 16, 21.5, 29.75, 41.66, '2900000000049', 0, 20],
+  ['VRD-Z-FUND', 'Батончик «Зарядись» Фундук 25 г', 'finished', 'pcs', 270, 800, 25, 16, 21.5, 29.75, 41.66, '2900000000056', 0, 20],
+  ['VRD-COLLAGEN', 'Батончик Collagen 40 г', 'finished', 'pcs', 270, 500, 40, 12, 30.5, 47.0, 65.83, '2900000000063', 0, 20],
 
   // Сировина
-  ['RAW-FINIK', 'Фініки Деглет Нур паста', 'raw', 'kg', 365, 60, null, null, null, null, null, null],
-  ['RAW-PIST', 'Ядро фісташки', 'raw', 'kg', 300, 25, null, null, null, null, null, null],
-  ['RAW-ARAH', 'Арахіс смажений', 'raw', 'kg', 240, 30, null, null, null, null, null, null],
-  ['RAW-MIGD', 'Мигдаль ядро', 'raw', 'kg', 300, 25, null, null, null, null, null, null],
-  ['RAW-KOKO', 'Кокосова стружка', 'raw', 'kg', 300, 20, null, null, null, null, null, null],
-  ['RAW-FUND', 'Фундук ядро', 'raw', 'kg', 300, 20, null, null, null, null, null, null],
-  ['RAW-KAKAO', 'Какао терте', 'raw', 'kg', 365, 15, null, null, null, null, null, null],
-  ['RAW-OLIA', 'Олія кокосова', 'raw', 'kg', 365, 15, null, null, null, null, null, null],
-  ['RAW-CYKOR', 'Сироп цикорію', 'raw', 'kg', 365, 25, null, null, null, null, null, null],
-  ['RAW-PROTEIN', 'Ізолят горохового білка', 'raw', 'kg', 365, 20, null, null, null, null, null, null],
-  ['RAW-COLLAG', 'Колаген пептиди', 'raw', 'kg', 545, 8, null, null, null, null, null, null],
-  ['RAW-VITC', 'Премікс вітамін C', 'raw', 'kg', 545, 3, null, null, null, null, null, null],
-  ['RAW-VITD3', 'Премікс вітамін D3', 'raw', 'kg', 545, 2, null, null, null, null, null, null],
-  ['RAW-VITB12', 'Премікс вітамін B12', 'raw', 'kg', 545, 2, null, null, null, null, null, null],
-  ['RAW-GUARANA', 'Екстракт гуарани', 'raw', 'kg', 545, 2, null, null, null, null, null, null],
-  ['RAW-MAGNIY', 'Магній цитрат', 'raw', 'kg', 545, 3, null, null, null, null, null, null],
-  ['RAW-OMEGA', 'Омега-3 порошок', 'raw', 'kg', 365, 3, null, null, null, null, null, null],
+  ['RAW-FINIK', 'Фініки Деглет Нур паста', 'raw', 'kg', 365, 60, null, null, null, null, null, null, 0, 20],
+  ['RAW-PIST', 'Ядро фісташки', 'raw', 'kg', 300, 25, null, null, null, null, null, null, 0, 20],
+  ['RAW-ARAH', 'Арахіс смажений', 'raw', 'kg', 240, 30, null, null, null, null, null, null, 0, 20],
+  ['RAW-MIGD', 'Мигдаль ядро', 'raw', 'kg', 300, 25, null, null, null, null, null, null, 0, 20],
+  ['RAW-KOKO', 'Кокосова стружка', 'raw', 'kg', 300, 20, null, null, null, null, null, null, 0, 20],
+  ['RAW-FUND', 'Фундук ядро', 'raw', 'kg', 300, 20, null, null, null, null, null, null, 0, 20],
+  ['RAW-KAKAO', 'Какао терте', 'raw', 'kg', 365, 15, null, null, null, null, null, null, 0, 20],
+  ['RAW-OLIA', 'Олія кокосова', 'raw', 'kg', 365, 15, null, null, null, null, null, null, 0, 25],
+  ['RAW-CYKOR', 'Сироп цикорію', 'raw', 'kg', 365, 25, null, null, null, null, null, null, 0, 20],
+  ['RAW-PROTEIN', 'Ізолят горохового білка', 'raw', 'kg', 365, 20, null, null, null, null, null, null, 0, 20],
+  ['RAW-COLLAG', 'Колаген пептиди', 'raw', 'kg', 545, 8, null, null, null, null, null, null, 0, 20],
+  ['RAW-VITC', 'Премікс вітамін C', 'raw', 'kg', 545, 3, null, null, null, null, null, null, 0, 20],
+  ['RAW-VITD3', 'Премікс вітамін D3', 'raw', 'kg', 545, 2, null, null, null, null, null, null, 0, 20],
+  ['RAW-VITB12', 'Премікс вітамін B12', 'raw', 'kg', 545, 2, null, null, null, null, null, null, 0, 20],
+  ['RAW-GUARANA', 'Екстракт гуарани', 'raw', 'kg', 545, 2, null, null, null, null, null, null, 0, 20],
+  ['RAW-MAGNIY', 'Магній цитрат', 'raw', 'kg', 545, 3, null, null, null, null, null, null, 0, 20],
+  ['RAW-OMEGA', 'Омега-3 порошок', 'raw', 'kg', 365, 3, null, null, null, null, null, null, 0, 20],
 
   // Пакування
-  ['PAK-FLOW', 'Плівка флоу-пак', 'packaging', 'pcs', null, 20000, null, null, null, null, null, null],
-  ['PAK-BOX', 'Шоубокс картонний', 'packaging', 'pcs', null, 1200, null, null, null, null, null, null],
-  ['PAK-ETIK', 'Етикетка самоклейна', 'packaging', 'pcs', null, 20000, null, null, null, null, null, null],
+  ['PAK-FLOW', 'Плівка флоу-пак', 'packaging', 'pcs', null, 20000, null, null, null, null, null, null, null, null],
+  ['PAK-BOX', 'Шоубокс картонний', 'packaging', 'pcs', null, 1200, null, null, null, null, null, null, null, null],
+  ['PAK-ETIK', 'Етикетка самоклейна', 'packaging', 'pcs', null, 20000, null, null, null, null, null, null, null, null],
 ];
 
 // Рецептури на 1000 батончиків по 25 г: [sku сировини, кг на варку, % втрат]
 const BASE_25 = [
-  ['RAW-FINIK', 11, 2, null],
-  ['RAW-PROTEIN', 3, 1, null],
-  ['RAW-OLIA', 2, 1, null],
-  ['RAW-CYKOR', 3.5, 1, null],
-  ['RAW-VITC', 0.15, 0, null],
-  ['PAK-FLOW', 1000, 1, null],
-  ['PAK-ETIK', 1000, 1, null],
-  ['PAK-BOX', 63, 0, null],
+  ['RAW-FINIK', 11, 2],
+  ['RAW-PROTEIN', 3, 1],
+  ['RAW-OLIA', 2, 1],
+  ['RAW-CYKOR', 3.5, 1],
+  ['RAW-VITC', 0.15, 0],
+  ['PAK-FLOW', 1000, 1],
+  ['PAK-ETIK', 1000, 1],
+  ['PAK-BOX', 63, 0],
 ];
 
 const RECIPES = [
@@ -254,18 +260,19 @@ try {
     );
   }
 
-  for (const [sku, name, kind, unit, shelf, min, weight, box, pd, pn, prrp, barcode] of ITEMS) {
+  for (const [sku, name, kind, unit, shelf, min, weight, box, pd, pn, prrp, barcode, tMin, tMax] of ITEMS) {
     await client.query(
       `insert into items (sku, name, kind, unit, shelf_life_days, min_stock, weight_g, pcs_per_box,
-                          price_distributor, price_network, price_rrp, barcode)
-       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+                          price_distributor, price_network, price_rrp, barcode, temp_min_c, temp_max_c)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
        on conflict (sku) do update set
          name = excluded.name, min_stock = excluded.min_stock,
          price_distributor = excluded.price_distributor,
          price_network = excluded.price_network,
          price_rrp = excluded.price_rrp,
-         barcode = excluded.barcode`,
-      [sku, name, kind, unit, shelf, min, weight, box, pd, pn, prrp, barcode],
+         barcode = excluded.barcode,
+         temp_min_c = excluded.temp_min_c, temp_max_c = excluded.temp_max_c`,
+      [sku, name, kind, unit, shelf, min, weight, box, pd, pn, prrp, barcode, tMin, tMax],
     );
   }
 
