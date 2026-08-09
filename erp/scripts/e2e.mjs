@@ -589,6 +589,29 @@ try {
     `${unallocated} грн`,
   );
 
+  // ─── 11a. Рухи документа: аналог ДтКт ──────────────────────────────────────
+  console.log('\nРухи документа');
+  await owner.goto(`${BASE}/accounting/postings?period=${current}`);
+  // Беремо саме випуск продукції: у нього є і проводки, і рухи по складу.
+  await owner.locator('a:has-text("Випуск продукції")').first().click();
+  await owner.waitForURL(/\/movements\//);
+
+  const docPostings = await stat(owner, 'Проводок');
+  const docMoves = await stat(owner, 'Складських рухів');
+  const bookAcc = await stat(owner, 'Сума в бухобліку');
+
+  check('екран рухів показує проводки документа', docPostings > 0, `${docPostings} шт`);
+  check('і його складські рухи', docMoves > 0, `${docMoves} шт`);
+  check('із сумою по книзі', bookAcc > 0, `${bookAcc} грн`);
+
+  // Зворотний перехід: з рухів на сам документ, і звідти знову на рухи.
+  await owner.click('a:has-text("До документа")');
+  await owner.waitForURL(/\/production\/[0-9a-f-]{36}/);
+  check(
+    'з картки варки можна відкрити її рухи',
+    (await owner.locator('a:has-text("Рухи документа")').count()) > 0,
+  );
+
   // ─── 11b. Баланс і звіт про фінансові результати ───────────────────────────
   console.log('\nФінансова звітність');
   for (const bookKey of ['accounting', 'management']) {

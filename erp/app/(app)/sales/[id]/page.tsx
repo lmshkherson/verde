@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { addSalesLine, cancelSalesOrder, confirmSalesOrder, recordPayment, removeSalesLine, shipSalesOrder } from '@/app/actions/sales';
 import { ActionForm } from '@/components/action-form';
@@ -289,7 +290,15 @@ export default async function SalesOrderPage({ params }: { params: Promise<{ id:
               <Table head={['Документ', 'Дата', 'ТТН']}>
                 {shipments.map((s) => (
                   <Row key={s.id}>
-                    <Cell className="font-semibold">{s.number}</Cell>
+                    <Cell>
+                      <Link
+                        href={`/movements/${s.id}`}
+                        className="font-semibold text-emerald-700 hover:underline"
+                      >
+                        {s.number}
+                      </Link>
+                      <div className="text-xs text-emerald-800/50">рухи документа</div>
+                    </Cell>
                     <Cell>{fmtDate(s.shipped_on)}</Cell>
                     <Cell>
                       {s.ttn_number ?? '—'}

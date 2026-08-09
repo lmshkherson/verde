@@ -101,7 +101,12 @@ export default async function ProductionOrderPage({ params }: { params: Promise<
       <PageHeader
         title={`Варка ${order.number}`}
         subtitle={`${order.product} · рецептура v${order.version}`}
-        action={<LinkButton href="/production">← До списку</LinkButton>}
+        action={
+          <div className="flex gap-2">
+            <LinkButton href={`/movements/${order.id}`}>Рухи документа</LinkButton>
+            <LinkButton href="/production">← До списку</LinkButton>
+          </div>
+        }
       />
 
       <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">

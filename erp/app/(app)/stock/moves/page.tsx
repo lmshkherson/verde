@@ -36,10 +36,11 @@ export default async function StockMovesPage({
     batch_code: string | null;
     warehouse: string;
     user_name: string | null;
+    doc_id: string | null;
   }>(
     `select m.id, m.moved_at, m.qty, m.unit_cost, m.move_type, m.note,
             i.id as item_id, i.sku, i.name, i.unit,
-            b.code as batch_code, w.name as warehouse, u.full_name as user_name
+            b.code as batch_code, w.name as warehouse, u.full_name as user_name, m.doc_id
        from stock_moves m
        join items i on i.id = m.item_id
        join warehouses w on w.id = m.warehouse_id
@@ -104,7 +105,13 @@ export default async function StockMovesPage({
                   <div className="font-mono text-xs text-emerald-800/50">{m.batch_code ?? m.sku}</div>
                 </Cell>
                 <Cell>
-                  <div>{MOVE_TYPES[m.move_type] ?? m.move_type}</div>
+                  {m.doc_id ? (
+                    <Link href={`/movements/${m.doc_id}`} className="text-emerald-700 hover:underline">
+                      {MOVE_TYPES[m.move_type] ?? m.move_type}
+                    </Link>
+                  ) : (
+                    <div>{MOVE_TYPES[m.move_type] ?? m.move_type}</div>
+                  )}
                   {m.note && <div className="text-xs text-emerald-800/50">{m.note}</div>}
                 </Cell>
                 <Cell>{m.warehouse}</Cell>

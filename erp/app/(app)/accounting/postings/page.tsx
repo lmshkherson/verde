@@ -49,11 +49,12 @@ export default async function PostingsPage({
     amount: number;
     note: string | null;
     doc_type: string;
+    doc_id: string | null;
     description: string | null;
   }>(
     `select p.id, p.posted_on, p.book, p.debit_code, da.name as debit_name,
             p.credit_code, ca.name as credit_name, p.amount, p.note,
-            b.doc_type, b.description
+            b.doc_type, b.doc_id, b.description
        from postings p
        join posting_batches b on b.id = p.batch_id
        join chart_of_accounts da on da.code = p.debit_code
@@ -104,7 +105,16 @@ export default async function PostingsPage({
               <Row key={r.id}>
                 <Cell>{fmtDate(r.posted_on)}</Cell>
                 <Cell>
-                  <div className="font-semibold">{DOC_LABELS[r.doc_type] ?? r.doc_type}</div>
+                  {r.doc_id ? (
+                    <Link
+                      href={`/movements/${r.doc_id}`}
+                      className="font-semibold text-emerald-700 hover:underline"
+                    >
+                      {DOC_LABELS[r.doc_type] ?? r.doc_type}
+                    </Link>
+                  ) : (
+                    <div className="font-semibold">{DOC_LABELS[r.doc_type] ?? r.doc_type}</div>
+                  )}
                   {r.description && <div className="text-xs text-emerald-800/50">{r.description}</div>}
                 </Cell>
                 <Cell>
