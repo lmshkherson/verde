@@ -241,6 +241,35 @@ const HACCP_POINTS = [
    'Лабораторні змиви раз на місяць', null],
 ];
 
+
+// Поживний склад сировини на 100 г і алергени.
+// [sku, назва для складу, ккал, білки, жири, насичені, вуглеводи, цукри,
+//  спирти, волокна, сіль, алергени]
+//
+// УВАГА: значення тут ДЕМОНСТРАЦІЙНІ, узяті з довідників харчового складу.
+// Для етикетки їх треба замінити на дані зі специфікацій ваших постачальників
+// або протоколів досліджень — саме тому в картці позиції є поле «Джерело
+// даних». Вуглеводи вказані без харчових волокон, як і в таблиці на етикетці.
+const NUTRITION = [
+  ['RAW-FINIK',   'паста фінікова',                282, 2.5, 0.4, 0.03, 67,  63,  0, 8,    0.005, []],
+  ['RAW-PIST',    'фісташка',                      560, 20,  45,  5.6,  17,  7.7, 0, 10.6, 0.003, ['nuts']],
+  ['RAW-ARAH',    'арахіс смажений',               587, 26,  49,  7,    13,  4,   0, 8,    0.01,  ['peanuts']],
+  ['RAW-MIGD',    'мигдаль',                       579, 21,  50,  3.8,  9.1, 4.4, 0, 12.5, 0.001, ['nuts']],
+  ['RAW-KOKO',    'кокосова стружка',              660, 6.9, 65,  57,   8,   7.4, 0, 16,   0.04,  []],
+  ['RAW-FUND',    'фундук',                        628, 15,  61,  4.5,  7,   4.3, 0, 9.7,  0.001, ['nuts']],
+  ['RAW-KAKAO',   'какао терте',                   600, 13,  52,  32,   6,   1,   0, 30,   0.02,  []],
+  ['RAW-OLIA',    'олія кокосова',                 892, 0,   99,  87,   0,   0,   0, 0,    0,     []],
+  ['RAW-CYKOR',   'сироп цикорію (інулін)',        205, 0.5, 0.1, 0,    12,  8,   0, 65,   0.05,  []],
+  ['RAW-PROTEIN', 'білок гороховий',               380, 85,  5,   0.8,  2,   0.5, 0, 3,    2.5,   []],
+  ['RAW-COLLAG',  'колаген пептиди',               360, 90,  0,   0,    0,   0,   0, 0,    0.5,   []],
+  ['RAW-VITC',    'вітамін C',                     330, 0,   0,   0,    90,  0,   0, 0,    0,     []],
+  ['RAW-VITD3',   'вітамін D3',                    380, 0,   5,   3,    80,  0,   0, 0,    0,     []],
+  ['RAW-VITB12',  'вітамін B12',                   350, 0,   0,   0,    90,  0,   0, 0,    0,     []],
+  ['RAW-GUARANA', 'екстракт гуарани',              320, 5,   1,   0.2,  60,  2,   0, 20,   0.01,  []],
+  ['RAW-MAGNIY',  'магній цитрат',                 0,   0,   0,   0,    0,   0,   0, 0,    0,     []],
+  ['RAW-OMEGA',   'омега-3 (порошок олії водоростей)', 450, 12, 40, 5,  10,  2,   0, 0,    0.3,   []],
+];
+
 const client = new pg.Client({
   connectionString,
   ssl: /supabase|amazonaws|render|neon/.test(connectionString) ? { rejectUnauthorized: false } : undefined,
@@ -388,6 +417,44 @@ try {
     ['Посвідчення про якість, цілісність тари, без стороннього запаху, залишковий строк не менше 2/3'],
   );
 
+  for (const [sku, label, kcal, protein, fat, sat, carbs, sugars, polyols, fiber, salt, allergens]
+       of NUTRITION) {
+    await client.query(
+      `update items set
+         label_name = coalesce(label_name, $2),
+         kcal_100 = $3, protein_100 = $4, fat_100 = $5, fat_sat_100 = $6,
+         carbs_100 = $7, sugars_100 = $8, polyols_100 = $9, fiber_100 = $10, salt_100 = $11,
+         nutrition_source = coalesce(nutrition_source, $12),
+         country_of_origin = coalesce(country_of_origin, 'Україна')
+       where sku = $1`,
+      [sku, label, kcal, protein, fat, sat, carbs, sugars, polyols, fiber, salt,
+       'Демонстраційні дані — замінити на специфікацію постачальника'],
+    );
+
+    for (const code of allergens) {
+      await client.query(
+        `insert into item_allergens (item_id, allergen_code, kind)
+         select id, $2, 'contains' from items where sku = $1
+         on conflict (item_id, allergen_code) do update set kind = excluded.kind`,
+        [sku, code],
+      );
+    }
+  }
+
+  // Сліди арахісу оголошує сам продукт, а не інгредієнт: ризик іде від
+  // спільної лінії, на якій робиться арахісовий батончик. У самому
+  // арахісовому це не «сліди», а склад, тож його виключаємо.
+  await client.query(
+    `insert into item_allergens (item_id, allergen_code, kind)
+     select id, 'peanuts', 'traces' from items
+      where kind = 'finished' and sku <> 'VRD-Z-ARAH'
+     on conflict (item_id, allergen_code) do nothing`,
+  );
+  await client.query(
+    `update items set country_of_origin = coalesce(country_of_origin, 'Україна')
+      where kind in ('finished', 'semi')`,
+  );
+
   // Затверджені постачальники: без цього переліку вхідний контроль не дасть
   // прийняти жодної партії. Дата перегляду — рік, як у типовій процедурі.
   await client.query(
@@ -451,7 +518,7 @@ try {
   console.log(
     `Довідники заповнено: ${ENTITIES.length} юрособи, ${USERS.length} користувачів, ${ITEMS.length} позицій, ` +
       `${RECIPES.length} рецептур, ${SUPPLIERS.length} постачальників, ${CUSTOMERS.length} клієнтів, ` +
-      `${HACCP_POINTS.length} точок HACCP.`,
+      `${HACCP_POINTS.length} точок HACCP, поживні дані для ${NUTRITION.length} видів сировини.`,
   );
   console.log(`Пароль для всіх демо-акаунтів: ${DEMO_PASSWORD}`);
 } catch (err) {

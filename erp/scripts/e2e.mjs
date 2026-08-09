@@ -1694,6 +1694,124 @@ try {
   await warehouse.reload();
   check('скасування повернуло рядок у чергу', (await stat(warehouse, 'Не рознесено')) === 1);
 
+  // ─── 13ж. Маркування ───────────────────────────────────────────────────────
+  // Найцінніше: енергетична цінність не сумується з ккал інгредієнтів, а
+  // рахується з макронутрієнтів за нормативними коефіцієнтами.
+  console.log('\nМаркування');
+
+  const tech2 = await session('iryna@v-verde.ua');
+  await tech2.goto(`${BASE}/labeling`);
+  check(
+    'уся сировина має поживні дані',
+    (await stat(tech2, 'Сировини без даних')) === 0,
+  );
+
+  await tech2.click('a:has-text("Фісташка")');
+  await tech2.waitForURL(/\/labeling\/[0-9a-f-]{36}/);
+  const specUrl = tech2.url();
+
+  const compositionRow = (await rowCells(tech2, 'паста фінікова')).join(' | ');
+  check('склад впорядкований за спаданням маси', compositionRow.includes('44'), compositionRow);
+  const specText = (await tech2.locator('body').innerText()).replace(/[\s ]+/g, ' ');
+  check(
+    'у складі стоять відсотки для значущих інгредієнтів',
+    specText.includes('паста фінікова 44%') && specText.includes('фісташка 20%'),
+  );
+  check(
+    'пакування у склад не потрапило',
+    !specText.includes('Плівка флоу-пак') && !specText.includes('Шоубокс'),
+  );
+
+  // Енергетична цінність має сходитися з макронутрієнтами за коефіцієнтами
+  // 4/9/4/2 — це і є нормативний спосіб, а не сума ккал сировини.
+  const nutrientRow = async (label) => money((await rowCells(tech2, label))[1]);
+  const fat = await nutrientRow('Жири');
+  const carbs = await nutrientRow('Вуглеводи');
+  const fiber = await nutrientRow('Харчові волокна');
+  const protein = await nutrientRow('Білки');
+  const kcal = await stat(tech2, 'Енергетична цінність');
+  check(
+    'енергетична цінність порахована за коефіцієнтами, а не сумою ккал сировини',
+    near(kcal, protein * 4 + fat * 9 + carbs * 4 + fiber * 2, 1.5),
+    `${kcal} ккал проти ${Math.round(protein * 4 + fat * 9 + carbs * 4 + fiber * 2)} розрахункових`,
+  );
+  const perPortion = await stat(tech2, 'На порцію');
+  check(
+    'на порцію — рівно чверть від 100 г для батончика 25 г',
+    near(perPortion, kcal / 4, 1.5),
+    `${perPortion} ккал`,
+  );
+
+  check(
+    'алергени зібралися з інгредієнтів',
+    specText.includes('Містить: Горіхи'),
+  );
+  check(
+    'сліди зі спільної лінії показані окремо від складу',
+    specText.includes('Може містити сліди: Арахіс'),
+  );
+
+  // Без поживних даних інгредієнта специфікація не затверджується.
+  await tech2.goto(`${BASE}/catalog?kind=raw`);
+  await tech2.click('a:has-text("Премікс вітамін C")');
+  await tech2.waitForURL(/\/catalog\/[0-9a-f-]{36}/);
+  const vitcUrl = tech2.url();
+  await tech2.fill('input[name="fat_100"]', '');
+  await tech2.click('button:has-text("Зберегти поживні дані")');
+  await tech2.waitForTimeout(1300);
+
+  await tech2.goto(specUrl);
+  check(
+    'брак даних по інгредієнту видно одразу',
+    (await tech2.locator('text=немає даних').count()) > 0,
+  );
+  await tech2.click('button:has-text("Затвердити специфікацію")');
+  await tech2.waitForTimeout(1400);
+  check(
+    'і затвердити специфікацію не дають',
+    (await tech2.locator('text=Специфікацію не можна затвердити').count()) > 0,
+  );
+
+  await tech2.goto(vitcUrl);
+  await tech2.fill('input[name="fat_100"]', '0');
+  await tech2.click('button:has-text("Зберегти поживні дані")');
+  await tech2.waitForTimeout(1300);
+
+  await tech2.goto(specUrl);
+  await tech2.click('button:has-text("Затвердити специфікацію")');
+  await tech2.waitForTimeout(1600);
+  await tech2.reload();
+  check('специфікацію затверджено', (await tech2.locator('text=Специфікація версії 1').count()) > 0);
+  // Макет етикетки видимий лише при друку, тож innerText його не бачить —
+  // читаємо textContent, який повертає й приховане.
+  const labelText = ((await tech2.locator('body').textContent()) ?? '').replace(/[\s ]+/g, ' ');
+  check(
+    'на макеті етикетки є обов’язкові дані',
+    labelText.includes('Маса нетто') &&
+      labelText.includes('Придатний до') &&
+      labelText.includes('Виробник') &&
+      labelText.includes('Країна походження'),
+  );
+  check(
+    'і виробник — наша юрособа з ЄДР',
+    labelText.includes('ВЕРДЕ СВІТ'),
+  );
+
+  // Змінили рецептуру — специфікація застаріла, і система це показує.
+  await tech2.goto(`${BASE}/production/recipes`);
+  await selectByText(tech2, 'select[name="product_item_id"]', 'Фісташка');
+  await tech2.fill('input[name="output_qty"]', '1000');
+  await tech2.click('form:has(select[name="product_item_id"]) button[type="submit"]');
+  await tech2.waitForURL(/\/production\/recipes\/[0-9a-f-]{36}/);
+
+  await tech2.goto(specUrl);
+  check(
+    'після зміни рецептури специфікація позначена застарілою',
+    (await tech2.locator('text=використовувати не можна').count()) > 0,
+  );
+  await tech2.goto(`${BASE}/labeling`);
+  check('і це видно в переліку продукції', (await stat(tech2, 'Застарілих')) === 1);
+
   // ─── 14. Права доступу ─────────────────────────────────────────────────────
   console.log('\nПрава доступу');
   const denied = await warehouse.goto(`${BASE}/reports`);

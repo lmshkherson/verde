@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { setItemActive, updateItem } from '@/app/actions/catalog';
+import { saveAllergens, saveNutrition } from '@/app/actions/labeling';
 import { Barcode } from '@/components/barcode';
 import { ActionForm } from '@/components/action-form';
 import { Alert, Badge, Card, Cell, Empty, Field, inputClass, LinkButton, PageHeader, Row, Table } from '@/components/ui';
@@ -36,6 +37,18 @@ export default async function ItemEditPage({ params }: { params: Promise<{ itemI
     temp_note: string | null;
     quality_control: boolean;
     acceptance_spec: string | null;
+    label_name: string | null;
+    nutrition_source: string | null;
+    country_of_origin: string | null;
+    kcal_100: number | null;
+    protein_100: number | null;
+    fat_100: number | null;
+    fat_sat_100: number | null;
+    carbs_100: number | null;
+    sugars_100: number | null;
+    polyols_100: number | null;
+    fiber_100: number | null;
+    salt_100: number | null;
     note: string | null;
     is_active: boolean;
     moves: number;
@@ -45,6 +58,14 @@ export default async function ItemEditPage({ params }: { params: Promise<{ itemI
     [itemId],
   );
   if (!item) notFound();
+
+  const allergens = await query<{ code: string; name: string; kind: string | null }>(
+    `select a.code, a.name, ia.kind
+       from allergens a
+       left join item_allergens ia on ia.allergen_code = a.code and ia.item_id = $1
+      order by a.sort_order`,
+    [itemId],
+  );
 
   const stock = await query<{ entity: string; qty: number; value: number }>(
     `select e.short_name as entity, s.qty, s.value
@@ -311,6 +332,88 @@ export default async function ItemEditPage({ params }: { params: Promise<{ itemI
             <Field label="Примітка">
               <input name="note" defaultValue={item.note ?? ''} className={inputClass} />
             </Field>
+          </ActionForm>
+        </Card>
+
+        <Card title="Поживна цінність на 100 г">
+          <p className="mb-3 text-sm text-emerald-800/70">
+            Дані беруться зі специфікації постачальника або з протоколу досліджень. Порожнє поле —
+            це «даних немає», а не нуль: нуль жиру в олії був би брехнею на етикетці, тож
+            специфікація продукту з незаповненим інгредієнтом не затвердиться.
+          </p>
+          <ActionForm action={saveNutrition} submitLabel="Зберегти поживні дані" variant="ghost">
+            <input type="hidden" name="item_id" value={item.id} />
+            <div className="grid gap-3 sm:grid-cols-3">
+              {(
+                [
+                  ['kcal_100', 'Енергія, ккал', item.kcal_100],
+                  ['protein_100', 'Білки, г', item.protein_100],
+                  ['fat_100', 'Жири, г', item.fat_100],
+                  ['fat_sat_100', 'у т.ч. насичені, г', item.fat_sat_100],
+                  ['carbs_100', 'Вуглеводи, г', item.carbs_100],
+                  ['sugars_100', 'у т.ч. цукри, г', item.sugars_100],
+                  ['polyols_100', 'у т.ч. спирти, г', item.polyols_100],
+                  ['fiber_100', 'Харчові волокна, г', item.fiber_100],
+                  ['salt_100', 'Сіль, г', item.salt_100],
+                ] as [string, string, number | null][]
+              ).map(([name, label, value]) => (
+                <Field key={name} label={label}>
+                  <input
+                    name={name}
+                    type="number"
+                    step="0.01"
+                    defaultValue={value ?? ''}
+                    className={inputClass}
+                  />
+                </Field>
+              ))}
+            </div>
+            <Field label="Назва для складу на етикетці" hint="«паста фінікова», а не назва з довідника">
+              <input name="label_name" defaultValue={item.label_name ?? ''} className={inputClass} />
+            </Field>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field label="Джерело даних">
+                <input
+                  name="nutrition_source"
+                  defaultValue={item.nutrition_source ?? ''}
+                  className={inputClass}
+                  placeholder="Специфікація постачальника № 12/2026"
+                />
+              </Field>
+              <Field label="Країна походження">
+                <input
+                  name="country_of_origin"
+                  defaultValue={item.country_of_origin ?? ''}
+                  className={inputClass}
+                />
+              </Field>
+            </div>
+          </ActionForm>
+        </Card>
+
+        <Card title="Алергени">
+          <p className="mb-3 text-sm text-emerald-800/70">
+            Перелік закритий — це 14 груп із додатка до Закону № 2639-VIII. «Містить» іде у склад
+            виділенням, «сліди» — окремим рядком нижче: перше є складом, друге попередженням про
+            перехресне забруднення, і плутати їх не можна.
+          </p>
+          <ActionForm action={saveAllergens} submitLabel="Зберегти алергени" variant="ghost">
+            <input type="hidden" name="item_id" value={item.id} />
+            <div className="grid gap-2 sm:grid-cols-2">
+              {allergens.map((a) => (
+                <Field key={a.code} label={a.name}>
+                  <select
+                    name={`allergen_${a.code}`}
+                    defaultValue={a.kind ?? ''}
+                    className={inputClass}
+                  >
+                    <option value="">немає</option>
+                    <option value="contains">містить</option>
+                    <option value="traces">сліди</option>
+                  </select>
+                </Field>
+              ))}
+            </div>
           </ActionForm>
         </Card>
 
