@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { setItemActive, updateItem } from '@/app/actions/catalog';
+import { Barcode } from '@/components/barcode';
 import { ActionForm } from '@/components/action-form';
 import { Alert, Badge, Card, Cell, Empty, Field, inputClass, LinkButton, PageHeader, Row, Table } from '@/components/ui';
 import { query, queryOne } from '@/lib/db';
@@ -29,6 +30,7 @@ export default async function ItemEditPage({ params }: { params: Promise<{ itemI
     vat_rate: number;
     uktzed: string | null;
     uom_code: string | null;
+    barcode: string | null;
     note: string | null;
     is_active: boolean;
     moves: number;
@@ -227,6 +229,24 @@ export default async function ItemEditPage({ params }: { params: Promise<{ itemI
                 <input name="uom_code" defaultValue={item.uom_code ?? ''} className={inputClass} />
               </Field>
             </div>
+
+            <Field
+              label="Штрихкод (EAN-13 / EAN-8)"
+              hint="Можна ввести 12 цифр від GS1 — контрольну система дорахує сама"
+            >
+              <input
+                name="barcode"
+                inputMode="numeric"
+                defaultValue={item.barcode ?? ''}
+                className={inputClass}
+                placeholder="4820024700016"
+              />
+            </Field>
+            {item.barcode && (
+              <div className="rounded-xl border border-emerald-900/10 bg-white p-3 text-center">
+                <Barcode value={item.barcode} barHeight={50} />
+              </div>
+            )}
 
             <Field label="Примітка">
               <input name="note" defaultValue={item.note ?? ''} className={inputClass} />

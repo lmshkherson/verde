@@ -30,10 +30,12 @@ export default async function CatalogPage({
     price_network: number | null;
     price_rrp: number | null;
     is_active: boolean;
+    barcode: string | null;
     qty: number;
   }>(
     `select i.id, i.sku, i.name, i.kind, i.unit, i.min_stock, i.shelf_life_days, i.pcs_per_box,
-            i.price_distributor, i.price_network, i.price_rrp, i.is_active, coalesce(s.qty, 0) as qty
+            i.price_distributor, i.price_network, i.price_rrp, i.is_active, i.barcode,
+            coalesce(s.qty, 0) as qty
        from items i
        left join v_item_stock s on s.item_id = i.id and s.legal_entity_id = $2
       where ($3::bool or i.is_active) and ($1::text is null or i.kind = $1)
@@ -91,6 +93,7 @@ export default async function CatalogPage({
                     </Link>
                     <div className="text-xs text-emerald-800/50">
                       {i.sku}
+                      {i.barcode ? ` · ${i.barcode}` : ''}
                       {i.shelf_life_days ? ` · термін ${i.shelf_life_days} дн.` : ''}
                       {i.pcs_per_box ? ` · шоубокс ${i.pcs_per_box} шт` : ''}
                     </div>
@@ -176,6 +179,9 @@ export default async function CatalogPage({
             </Field>
             <Field label="РРЦ">
               <input name="price_rrp" type="number" step="0.01" min="0" className={inputClass} />
+            </Field>
+            <Field label="Штрихкод" hint="EAN-13 або 12 цифр від GS1 — контрольну дорахуємо">
+              <input name="barcode" inputMode="numeric" className={inputClass} placeholder="4820024700016" />
             </Field>
           </ActionForm>
         </Card>

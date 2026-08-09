@@ -15,6 +15,7 @@
 import { readFile } from 'node:fs/promises';
 import pg from 'pg';
 import { num, parseCsv, str, strOrNull } from '../lib/csv.mjs';
+import { normalizeEan } from '../lib/barcode.mjs';
 
 const [, , kind, file, ...rest] = process.argv;
 const dryRun = rest.includes('--dry-run');
@@ -65,8 +66,20 @@ async function resolveEntity() {
   return found[0];
 }
 
+/**
+ * Штрихкод із файлу приймається лише коректний: помилкова контрольна цифра в
+ * імпорті розійдеться по всіх майбутніх накладних, і знайти її буде важко.
+ */
+function barcode(raw, sku) {
+  const value = strOrNull(raw);
+  if (!value) return null;
+  const result = normalizeEan(value);
+  if ('error' in result) throw new Error(`Штрихкод у рядку ${sku}: ${result.error}`);
+  return result.ean;
+}
+
 const handlers = {
-  // sku;назва;тип;одиниця;термін_днів;мін_залишок;вага_г;шт_у_боксі;ціна_дистриб;ціна_мережа;ррц;уктзед;код_одиниці
+  // sku;назва;тип;одиниця;термін_днів;мін_залишок;вага_г;шт_у_боксі;ціна_дистриб;ціна_мережа;ррц;уктзед;код_одиниці;штрихкод
   async items() {
     let count = 0;
     for (const r of rows) {
@@ -74,14 +87,15 @@ const handlers = {
       if (!sku) continue;
       await client.query(
         `insert into items (sku, name, kind, unit, shelf_life_days, min_stock, weight_g, pcs_per_box,
-                            price_distributor, price_network, price_rrp, uktzed, uom_code)
-         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+                            price_distributor, price_network, price_rrp, uktzed, uom_code, barcode)
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
          on conflict (sku) do update set
            name = excluded.name, kind = excluded.kind, unit = excluded.unit,
            shelf_life_days = excluded.shelf_life_days, min_stock = excluded.min_stock,
            weight_g = excluded.weight_g, pcs_per_box = excluded.pcs_per_box,
            price_distributor = excluded.price_distributor, price_network = excluded.price_network,
-           price_rrp = excluded.price_rrp, uktzed = excluded.uktzed, uom_code = excluded.uom_code`,
+           price_rrp = excluded.price_rrp, uktzed = excluded.uktzed, uom_code = excluded.uom_code,
+           barcode = coalesce(excluded.barcode, items.barcode)`,
         [
           sku,
           str(r['назва']),
@@ -96,6 +110,7 @@ const handlers = {
           num(r['ррц']) || null,
           strOrNull(r['уктзед']),
           strOrNull(r['код_одиниці']),
+          barcode(r['штрихкод'], sku),
         ],
       );
       count += 1;
@@ -103,7 +118,7 @@ const handlers = {
     return count;
   },
 
-  // назва;тип;єдрпоу;іпн;платник_пдв;контакт;телефон;прайс;відтермінування;кредитний_ліміт
+  // назва;тип;єдрпоу;іпн;платник_пдв;контакт;телефон;прайс;відтермінування;кредитний_ліміт;адреса
   async customers() {
     let count = 0;
     for (const r of rows) {
@@ -121,19 +136,21 @@ const handlers = {
         str(r['прайс']) || 'distributor',
         num(r['відтермінування']),
         num(r['кредитний_ліміт']),
+        strOrNull(r['адреса']),
       ];
       if (exists[0]) {
         await client.query(
-          `update customers set kind=$2, edrpou=$3, ipn=$4, is_vat_payer=$5, contact=$6, phone=$7,
-                                price_level=$8, payment_terms_days=$9, credit_limit=$10
-            where id = $11`,
+          `update customers set name=$1, kind=$2, edrpou=$3, ipn=$4, is_vat_payer=$5, contact=$6,
+                                phone=$7, price_level=$8, payment_terms_days=$9, credit_limit=$10,
+                                address=coalesce($11, address)
+            where id = $12`,
           [...params, exists[0].id],
         );
       } else {
         await client.query(
           `insert into customers (name, kind, edrpou, ipn, is_vat_payer, contact, phone,
-                                  price_level, payment_terms_days, credit_limit)
-           values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+                                  price_level, payment_terms_days, credit_limit, address)
+           values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
           params,
         );
       }
@@ -159,7 +176,9 @@ const handlers = {
       ];
       if (exists[0]) {
         await client.query(
-          'update suppliers set edrpou=$2, is_vat_payer=$3, contact=$4, phone=$5, payment_terms_days=$6 where id=$7',
+          `update suppliers set name=$1, edrpou=$2, is_vat_payer=$3, contact=$4, phone=$5,
+                                payment_terms_days=$6
+            where id=$7`,
           [...params, exists[0].id],
         );
       } else {
@@ -196,7 +215,8 @@ const handlers = {
       ];
       if (exists[0]) {
         await client.query(
-          `update employees set position=$3, department=$4, monthly_salary=$5, cost_behavior=$6, hired_on=$7
+          `update employees set legal_entity_id=$1, full_name=$2, position=$3, department=$4,
+                                monthly_salary=$5, cost_behavior=$6, hired_on=$7
             where id = $8`,
           [...params, exists[0].id],
         );

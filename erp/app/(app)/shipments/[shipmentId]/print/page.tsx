@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import { Barcode } from '@/components/barcode';
 import { PrintButton } from '@/components/print-button';
 import { LinkButton } from '@/components/ui';
 import { query, queryOne } from '@/lib/db';
@@ -82,11 +83,12 @@ export default async function ShipmentPrintPage({
     name: string;
     unit: string;
     uktzed: string | null;
+    barcode: string | null;
     qty: number;
     unit_price: number;
     vat_rate: number;
   }>(
-    `select i.name, i.unit, i.uktzed, sl.qty, l.unit_price, l.vat_rate
+    `select i.name, i.unit, i.uktzed, i.barcode, sl.qty, l.unit_price, l.vat_rate
        from shipment_lines sl
        join items i on i.id = sl.item_id
        join sales_order_lines l on l.id = sl.so_line_id
@@ -162,13 +164,20 @@ export default async function ShipmentPrintPage({
         <table className="mt-4 w-full border-collapse text-[12px]">
           <thead>
             <tr>
-              {['№', 'Товар', 'Код УКТ ЗЕД', 'Од.', 'Кількість', 'Ціна без ПДВ', 'Сума без ПДВ'].map(
-                (h) => (
-                  <th key={h} className="border border-black px-1.5 py-1 text-center font-semibold">
-                    {h}
-                  </th>
-                ),
-              )}
+              {[
+                '№',
+                'Товар',
+                'Штрихкод',
+                'Код УКТ ЗЕД',
+                'Од.',
+                'Кількість',
+                'Ціна без ПДВ',
+                'Сума без ПДВ',
+              ].map((h) => (
+                <th key={h} className="border border-black px-1.5 py-1 text-center font-semibold">
+                  {h}
+                </th>
+              ))}
             </tr>
           </thead>
           <tbody>
@@ -176,6 +185,13 @@ export default async function ShipmentPrintPage({
               <tr key={`${r.name}-${i}`}>
                 <td className="border border-black px-1.5 py-1 text-center">{i + 1}</td>
                 <td className="border border-black px-1.5 py-1">{r.name}</td>
+                <td className="border border-black px-1 py-1 text-center align-middle">
+                  {r.barcode ? (
+                    <Barcode value={r.barcode} barHeight={44} />
+                  ) : (
+                    '—'
+                  )}
+                </td>
                 <td className="border border-black px-1.5 py-1 text-center">{r.uktzed ?? '—'}</td>
                 <td className="border border-black px-1.5 py-1 text-center">{unitLabel(r.unit)}</td>
                 <td className="border border-black px-1.5 py-1 text-right tabular-nums">
@@ -192,7 +208,7 @@ export default async function ShipmentPrintPage({
           </tbody>
           <tfoot>
             <tr>
-              <td colSpan={6} className="border border-black px-1.5 py-1 text-right font-semibold">
+              <td colSpan={7} className="border border-black px-1.5 py-1 text-right font-semibold">
                 Разом без ПДВ
               </td>
               <td className="border border-black px-1.5 py-1 text-right font-semibold tabular-nums">
@@ -200,7 +216,7 @@ export default async function ShipmentPrintPage({
               </td>
             </tr>
             <tr>
-              <td colSpan={6} className="border border-black px-1.5 py-1 text-right font-semibold">
+              <td colSpan={7} className="border border-black px-1.5 py-1 text-right font-semibold">
                 {doc.seller_is_vat_payer ? 'ПДВ 20%' : 'ПДВ (не платник)'}
               </td>
               <td className="border border-black px-1.5 py-1 text-right font-semibold tabular-nums">
@@ -208,7 +224,7 @@ export default async function ShipmentPrintPage({
               </td>
             </tr>
             <tr>
-              <td colSpan={6} className="border border-black px-1.5 py-1 text-right font-bold">
+              <td colSpan={7} className="border border-black px-1.5 py-1 text-right font-bold">
                 Разом із ПДВ
               </td>
               <td className="border border-black px-1.5 py-1 text-right font-bold tabular-nums">

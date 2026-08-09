@@ -255,6 +255,47 @@ try {
     'одиниця виміру господарської операції в таблиці',
     blank.includes('Од.') && blank.includes('шт'),
   );
+
+  // Штрихкод має бути саме малюнком: цифри під ним сканер не читає.
+  const barcodeSvg = sales.locator('td [data-barcode] svg');
+  check('у рядку товару намальовано штрихкод', (await barcodeSvg.count()) === 1);
+  check(
+    'це код фісташкового батончика з довідника',
+    (await sales.locator('td [data-barcode]').first().getAttribute('data-barcode')) ===
+      '2900000000018',
+  );
+  const barWidth = await barcodeSvg.first().getAttribute('width');
+  check(
+    'ширина модуля не менша за мінімум GS1 (0,264 мм)',
+    String(barWidth).endsWith('mm') && Number(String(barWidth).replace('mm', '')) >= 29.8,
+    barWidth,
+  );
+  // 11 модулів зони спокою + 95 модулів коду + 7 модулів справа — це і є EAN-13.
+  // Кількість смуг залежить від самих цифр, а ширина в модулях — ні.
+  const viewBox = await barcodeSvg.first().getAttribute('viewBox');
+  check('ширина коду — 113 модулів, як вимагає EAN-13', viewBox?.startsWith('0 0 113 '), viewBox);
+
+  // Контрольна цифра — єдиний захист від друку чужого коду, тож перевіряємо відмову.
+  await sales.goto(`${BASE}/catalog`);
+  await sales.click('a:has-text("Батончик «Зарядись» Арахіс 25 г")');
+  await sales.waitForURL(/\/catalog\/[0-9a-f-]{36}/);
+  await sales.fill('input[name="barcode"]', '2900000000026');
+  await sales.click('button:has-text("Зберегти")');
+  await sales.waitForTimeout(1200);
+  check(
+    'штрихкод із помилковою контрольною цифрою не приймається',
+    (await sales.locator('text=Контрольна цифра не сходиться').count()) > 0,
+  );
+
+  // GS1 видає 12 цифр — тринадцяту система має дорахувати сама.
+  await sales.fill('input[name="barcode"]', '482002470001');
+  await sales.click('button:has-text("Зберегти")');
+  await sales.waitForTimeout(1200);
+  await sales.reload();
+  check(
+    'з 12 цифр дораховано контрольну',
+    (await sales.locator('input[name="barcode"]').inputValue()) === '4820024700016',
+  );
   check(
     'меню й кнопки в друк не йдуть',
     (await sales.locator('.no-print').count()) > 0,

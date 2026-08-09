@@ -4,6 +4,19 @@ import { revalidatePath } from 'next/cache';
 import { transaction } from '@/lib/db';
 import { type ActionState, num, str, strOrNull, toMessage } from '@/lib/action-state';
 import { requireRole } from '@/lib/session';
+import { normalizeEan } from '@/lib/barcode.mjs';
+
+/**
+ * Порожній штрихкод — це нормально, а от помилковий гірший за відсутній:
+ * сканер на складі мовчки віддасть чужий товар. Тому контрольна цифра
+ * перевіряється тут, а не десь у формі.
+ */
+function readBarcode(formData: FormData): { value: string | null } | { error: string } {
+  const raw = str(formData, 'barcode');
+  if (!raw) return { value: null };
+  const result = normalizeEan(raw);
+  return 'error' in result ? result : { value: result.ean };
+}
 
 export async function createItem(_prev: ActionState, formData: FormData): Promise<ActionState> {
   await requireRole('production', 'sales', 'warehouse');
@@ -16,13 +29,16 @@ export async function createItem(_prev: ActionState, formData: FormData): Promis
   if (!name) return { error: 'Вкажіть назву' };
   if (!kind || !unit) return { error: 'Оберіть тип і одиницю виміру' };
 
+  const barcode = readBarcode(formData);
+  if ('error' in barcode) return { error: barcode.error };
+
   try {
     await transaction((c) =>
       c.query(
         `insert into items
            (sku, name, kind, unit, shelf_life_days, min_stock, weight_g, pcs_per_box,
-            price_distributor, price_network, price_rrp, uktzed, uom_code, note)
-         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+            price_distributor, price_network, price_rrp, uktzed, uom_code, note, barcode)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
         [
           sku,
           name,
@@ -38,13 +54,18 @@ export async function createItem(_prev: ActionState, formData: FormData): Promis
           strOrNull(formData, 'uktzed'),
           strOrNull(formData, 'uom_code'),
           strOrNull(formData, 'note'),
+          barcode.value,
         ],
       ),
     );
   } catch (err) {
     const message = toMessage(err);
     return {
-      error: message.includes('items_sku_key') ? `Артикул ${sku} вже існує` : message,
+      error: message.includes('items_sku_key')
+        ? `Артикул ${sku} вже існує`
+        : message.includes('items_barcode_key')
+          ? `Штрихкод ${barcode.value} уже закріплений за іншою позицією`
+          : message,
     };
   }
 
@@ -67,6 +88,9 @@ export async function updateItem(_prev: ActionState, formData: FormData): Promis
 
   if (!id) return { error: 'Не вказано номенклатуру' };
   if (!sku || !name) return { error: 'Артикул і назва обов’язкові' };
+
+  const barcode = readBarcode(formData);
+  if ('error' in barcode) return { error: barcode.error };
 
   try {
     await transaction(async (c) => {
@@ -97,7 +121,7 @@ export async function updateItem(_prev: ActionState, formData: FormData): Promis
            sku = $2, name = $3, kind = $4, unit = $5,
            shelf_life_days = $6, min_stock = $7, weight_g = $8, pcs_per_box = $9,
            price_distributor = $10, price_network = $11, price_rrp = $12,
-           uktzed = $13, uom_code = $14, note = $15, vat_rate = $16
+           uktzed = $13, uom_code = $14, note = $15, vat_rate = $16, barcode = $17
          where id = $1`,
         [
           id,
@@ -116,13 +140,18 @@ export async function updateItem(_prev: ActionState, formData: FormData): Promis
           strOrNull(formData, 'uom_code'),
           strOrNull(formData, 'note'),
           num(formData, 'vat_rate', 20),
+          barcode.value,
         ],
       );
     });
   } catch (err) {
     const message = toMessage(err);
     return {
-      error: message.includes('items_sku_key') ? `Артикул ${sku} вже зайнятий` : message,
+      error: message.includes('items_sku_key')
+        ? `Артикул ${sku} вже зайнятий`
+        : message.includes('items_barcode_key')
+          ? `Штрихкод ${barcode.value} уже закріплений за іншою позицією`
+          : message,
     };
   }
 
