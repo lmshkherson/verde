@@ -70,6 +70,7 @@ export const MOVE_TYPES: Record<string, string> = {
   production_output: 'Випуск продукції',
   sale_shipment: 'Відвантаження клієнту',
   sale_return: 'Повернення від клієнта',
+  purchase_return: 'Повернення постачальнику',
   write_off: 'Списання',
   adjustment: 'Коригування (інвентаризація)',
   transfer_in: 'Переміщення (прихід)',
@@ -96,6 +97,13 @@ export const RETURN_REASONS: Record<string, string> = {
   surplus: 'Надлишок / не продалось',
   quality: 'Брак',
   expiry: 'Закінчився термін',
+  other: 'Інше',
+};
+
+export const SUPPLIER_RETURN_REASONS: Record<string, string> = {
+  quality: 'Брак / невідповідна якість',
+  surplus: 'Надлишок / пересорт',
+  expiry: 'Малий залишковий термін',
   other: 'Інше',
 };
 

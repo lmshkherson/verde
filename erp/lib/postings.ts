@@ -165,6 +165,43 @@ export async function regeneratePostings(
     ]);
   }
 
+  // ─── Повернення постачальникам ───────────────────────────────────────────
+  // Дзеркало приходу: запаси йдуть зі складу, борг меншає, кредит знімається.
+  const { rows: supplierReturns } = await client.query<{
+    id: string;
+    number: string;
+    returned_on: string;
+    kind: string;
+    net: number;
+    vat: number;
+  }>(
+    `select a.return_id as id, r.number, a.returned_on, i.kind,
+            sum(l.qty * l.unit_cost) as net,
+            sum(l.qty * l.unit_vat)  as vat
+       from v_supplier_return_amounts a
+       join supplier_returns r on r.id = a.return_id
+       join supplier_return_lines l on l.return_id = a.return_id
+       join items i on i.id = l.item_id
+      where a.legal_entity_id = $1
+        and a.returned_on >= $2::date and a.returned_on < ($2::date + interval '1 month')
+      group by a.return_id, r.number, a.returned_on, i.kind`,
+    range,
+  );
+  for (const r of supplierReturns) {
+    count += await addBatch(
+      client,
+      entityId,
+      'supplier_return',
+      r.id,
+      r.returned_on,
+      `Повернення постачальнику ${r.number}`,
+      [
+        { debit: '631', credit: inventoryAccount(r.kind), amount: r.net, note: 'Запаси повернуто' },
+        { debit: '631', credit: '6441', amount: r.vat, note: 'Сторно податкового кредиту' },
+      ],
+    );
+  }
+
   // ─── Оплати постачальникам ───────────────────────────────────────────────
   const { rows: supplierPayments } = await client.query<{ id: string; paid_on: string; amount: number; method: string }>(
     `select id, paid_on, amount, method from supplier_payments

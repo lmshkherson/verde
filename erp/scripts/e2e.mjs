@@ -980,6 +980,106 @@ try {
     'до податкової накладної на відвантаження',
   );
 
+  // ─── 13b. Повернення постачальнику ─────────────────────────────────────────
+  // Частину фініків повертаємо як брак: партія від платника ПДВ, тож разом із
+  // запасами доведеться зняти й податковий кредит.
+  console.log('\nПовернення постачальнику');
+  // Собівартість дивимось під власником: комірникові її навмисно не показують.
+  const finikBefore = await stockCost(owner, 'raw', 'Фініки');
+  const supplierRows = await (async () => {
+    await warehouse.goto(`${BASE}/purchasing/suppliers`);
+    return rowCells(warehouse, 'Сухофрукт');
+  })();
+  const debtBefore = money(supplierRows[5]);
+
+  await warehouse.goto(`${BASE}/purchasing/returns`);
+  await selectByText(warehouse, 'select[name="po_id"]', 'Сухофрукт');
+  await selectByText(warehouse, 'select[name="reason"]', 'Брак');
+  await warehouse.click('form:has(select[name="po_id"]) button[type="submit"]');
+  await warehouse.waitForURL(/\/purchasing\/returns\/[0-9a-f-]{36}/);
+  check('повернення постачальнику створено за заявкою', (await warehouse.locator('text=за заявкою').count()) > 0);
+
+  await selectByText(warehouse, 'select[name="po_line_id"]', 'Фініки');
+  await warehouse.fill('input[name="qty"]', '20');
+  await warehouse.click('form:has(select[name="po_line_id"]) button[type="submit"]');
+  await warehouse.waitForTimeout(1000);
+  await warehouse.reload();
+
+  const retNetSup = await stat(warehouse, 'Вартість запасів');
+  const retVatSup = await stat(warehouse, 'Сторно кредиту з ПДВ');
+  const retGrossSup = await stat(warehouse, 'Кредиторка зменшиться на');
+  check(
+    'запаси повертаються за собівартістю приходу, без ПДВ',
+    near(retNetSup, (20 * 182.5) / 1.2, 0.5),
+    `${retNetSup} грн за 20 кг`,
+  );
+  check('кредит знімається рівно на 20% бази', near(retVatSup, retNetSup * 0.2, 0.5), `${retVatSup} грн`);
+  check(
+    'кредиторка меншає на повну суму з ПДВ',
+    near(retGrossSup, 20 * 182.5, 0.5),
+    `${retGrossSup} грн`,
+  );
+
+  await warehouse.click('button:has-text("Провести повернення")');
+  await warehouse.waitForTimeout(1800);
+  await warehouse.reload();
+  check('повернення постачальнику проведено', (await warehouse.locator('text=Прийнято').count()) > 0);
+
+  const finikAfter = await stockCost(owner, 'raw', 'Фініки');
+  check(
+    'зі складу пішло рівно 20 кг',
+    near(finikBefore.qty - finikAfter.qty, 20, 0.001),
+    `${finikBefore.qty} → ${finikAfter.qty}`,
+  );
+  check(
+    'собівартість решти не зрушила',
+    near(finikAfter.cost, finikBefore.cost, 0.02),
+    `${finikBefore.cost} → ${finikAfter.cost} грн/кг`,
+  );
+
+  await warehouse.goto(`${BASE}/purchasing/suppliers`);
+  const debtAfter = money((await rowCells(warehouse, 'Сухофрукт'))[5]);
+  check(
+    'борг перед постачальником зменшився на суму повернення',
+    near(debtBefore - debtAfter, 20 * 182.5, 1),
+    `${debtBefore} → ${debtAfter}`,
+  );
+
+  // Віддати більше, ніж отримали, система дати не має.
+  await warehouse.goto(`${BASE}/purchasing/returns`);
+  await selectByText(warehouse, 'select[name="po_id"]', 'Сухофрукт');
+  await warehouse.click('form:has(select[name="po_id"]) button[type="submit"]');
+  await warehouse.waitForURL(/\/purchasing\/returns\/[0-9a-f-]{36}/);
+  await selectByText(warehouse, 'select[name="po_line_id"]', 'Фініки');
+  await warehouse.fill('input[name="qty"]', '500');
+  await warehouse.click('form:has(select[name="po_line_id"]) button[type="submit"]');
+  await warehouse.waitForTimeout(1000);
+  check(
+    'повернути більше, ніж отримано, не дають',
+    (await warehouse.locator('text=більше, ніж отримано').count()) > 0,
+  );
+  await warehouse.click('button:has-text("Скасувати документ")');
+  await warehouse.waitForTimeout(900);
+
+  // Проводки після обох повернень мають лишити оборотку збалансованою.
+  await owner.goto(`${BASE}/accounting`);
+  await owner.click('button:has-text("Перегенерувати період")');
+  await owner.waitForTimeout(2800);
+  await owner.reload();
+  check(
+    'оборотка балансує після обох повернень',
+    near(await stat(owner, 'Оберти за дебетом'), await stat(owner, 'Оберти за кредитом'), 0.02),
+    `Дт ${await stat(owner, 'Оберти за дебетом')}`,
+  );
+
+  const journal = await owner.goto(`${BASE}/accounting/postings`);
+  check('проводка Дт 631 Кт 6441 присутня', journal.ok());
+  const journalText = (await owner.locator('body').innerText()).replace(/[\s ]+/g, ' ');
+  check(
+    'сторно податкового кредиту проведено',
+    journalText.includes('Сторно податкового кредиту'),
+  );
+
   // ─── 14. Права доступу ─────────────────────────────────────────────────────
   console.log('\nПрава доступу');
   const denied = await warehouse.goto(`${BASE}/reports`);

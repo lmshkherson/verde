@@ -57,6 +57,7 @@ export default async function SuppliersPage({
             <LinkButton href={showInactive ? '/purchasing/suppliers' : '/purchasing/suppliers?inactive=1'}>
               {showInactive ? 'Лише активні' : 'Показати деактивованих'}
             </LinkButton>
+            <LinkButton href="/purchasing/returns">Повернення</LinkButton>
             <LinkButton href="/purchasing">← До закупівель</LinkButton>
           </div>
         }

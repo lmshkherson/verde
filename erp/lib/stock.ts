@@ -7,6 +7,7 @@ export type MoveType =
   | 'production_output'
   | 'sale_shipment'
   | 'sale_return'
+  | 'purchase_return'
   | 'write_off'
   | 'adjustment'
   | 'transfer_in'
