@@ -11,7 +11,7 @@
  *
  * Запуск: BASE_URL=http://127.0.0.1:3100 node scripts/e2e.mjs
  */
-import { globSync } from 'node:fs';
+import { globSync, readFileSync } from 'node:fs';
 import { chromium } from 'playwright';
 
 const BASE = process.env.BASE_URL ?? 'http://127.0.0.1:3100';
@@ -933,6 +933,73 @@ try {
   check(
     'контакт постачальника збережено',
     (await owner.locator('input[name="contact"]').inputValue()) === 'Марина Дудник (нова)',
+  );
+
+  // ─── 12a. Обмін документами: черга й тека ──────────────────────────────────
+  // Файловий канал перевіряємо повністю: він працює без облікових даних, тож
+  // сценарій доводить не «код компілюється», а що документ реально ліг у теку.
+  console.log('\nОбмін документами');
+  const exportDir = `${process.env.TMPDIR ?? '/tmp'}/verde-outbox-${Date.now()}`;
+
+  await owner.goto(`${BASE}/integrations`);
+  await selectByText(owner, 'select[name="provider"]', 'Тека обміну');
+  await owner.fill('input[name="export_dir"]', exportDir);
+  await owner.click('button:has-text("Зберегти")');
+  await owner.waitForTimeout(1200);
+  await owner.reload();
+
+  await owner.click('button:has-text("Поставити ПН і РК у чергу")');
+  await owner.waitForTimeout(1600);
+  await owner.reload();
+  const queued = await stat(owner, 'У черзі');
+  // На цей момент виписано дві накладні; РК з'явиться пізніше, з поверненням.
+  check('податкові накладні стали в чергу', queued >= 2, `${queued} документів`);
+
+  const queueText = (await owner.locator('body').innerText()).replace(/[\s ]+/g, ' ');
+  check(
+    'ім’я файла за конвенцією «Вчасно»: код, дата, тип',
+    /30487219_\d{8}_PN_/.test(queueText),
+    'ЄДРПОУ АТБ у назві',
+  );
+
+  // Повторна постановка нічого не має додати.
+  await owner.click('button:has-text("Поставити ПН і РК у чергу")');
+  await owner.waitForTimeout(1500);
+  await owner.reload();
+  check(
+    'повторна постановка не дублює документи',
+    near(await stat(owner, 'У черзі'), queued, 0.1),
+    `${queued} лишилось ${await stat(owner, 'У черзі')}`,
+  );
+
+  await owner.click('button:has-text("Надіслати")');
+  await owner.waitForTimeout(2200);
+  await owner.reload();
+  check('документи надіслано', (await stat(owner, 'Надіслано')) >= 2);
+  check('черга спорожніла', near(await stat(owner, 'У черзі'), 0, 0.1));
+
+  const written = globSync(`${exportDir}/*.xml`);
+  check('файли справді лягли в теку', written.length >= 2, `${written.length} файлів`);
+  const sample = readFileSync(written[0], 'utf8');
+  check('усередині конверт документа з реквізитами продавця', sample.includes('<DECLAR>') && sample.includes('45014741'));
+  check('і сумами документа', sample.includes('<TOTALVAT>') && sample.includes('<ROW ROWNUM="1">'));
+
+  // Відмітка реєстрації — поки ручна, бо квитанції з ЄРПН система не читає.
+  await owner.click('button:has-text("Зареєстровано")');
+  await owner.waitForTimeout(1200);
+  await owner.reload();
+  check('реєстрацію можна відмітити руками', (await stat(owner, 'Доставлено')) >= 1);
+
+  // Канал без токена має падати зрозуміло, а не мовчки.
+  await selectByText(owner, 'select[name="provider"]', 'Вчасно');
+  await owner.fill('input[name="api_base_url"]', 'https://api.example.invalid/v2');
+  await owner.fill('input[name="api_token_env"]', 'VCHASNO_TOKEN_MISSING');
+  await owner.click('button:has-text("Зберегти")');
+  await owner.waitForTimeout(1200);
+  await owner.reload();
+  check(
+    'порожній токен видно ще до відправки',
+    (await owner.locator('text=порожня').count()) > 0,
   );
 
   // ─── 13a. Повернення від клієнта ────────────────────────────────────────────
