@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { createCustomer } from '@/app/actions/sales';
 import { ActionForm } from '@/components/action-form';
 import { Badge, Card, Cell, Empty, Field, inputClass, LinkButton, PageHeader, Row, Table } from '@/components/ui';
@@ -7,8 +8,13 @@ import { requireRole } from '@/lib/session';
 
 export const dynamic = 'force-dynamic';
 
-export default async function CustomersPage() {
+export default async function CustomersPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ inactive?: string }>;
+}) {
   await requireRole('sales');
+  const showInactive = (await searchParams).inactive === '1';
 
   const customers = await query<{
     id: string;
@@ -19,25 +25,34 @@ export default async function CustomersPage() {
     price_level: string;
     payment_terms_days: number;
     credit_limit: number;
+    is_active: boolean;
     shipped_amount: number;
     paid_amount: number;
     balance_due: number;
-  }>(`
-    select c.id, c.name, c.kind, c.contact, c.phone, c.price_level,
-           c.payment_terms_days, c.credit_limit,
-           b.shipped_amount, b.paid_amount, b.balance_due
-      from customers c
-      join v_customer_balance b on b.customer_id = c.id
-     where c.is_active
-     order by b.balance_due desc, c.name
-  `);
+  }>(
+    `select c.id, c.name, c.kind, c.contact, c.phone, c.price_level,
+            c.payment_terms_days, c.credit_limit, c.is_active,
+            b.shipped_amount, b.paid_amount, b.balance_due
+       from customers c
+       join v_customer_balance b on b.customer_id = c.id
+      where $1::bool or c.is_active
+      order by c.is_active desc, b.balance_due desc, c.name`,
+    [showInactive],
+  );
 
   return (
     <>
       <PageHeader
         title="Клієнти"
         subtitle="Мережі, дистриб'ютори, аптеки — з умовами оплати й поточним боргом"
-        action={<LinkButton href="/sales">← До продажів</LinkButton>}
+        action={
+          <div className="flex gap-2">
+            <LinkButton href={showInactive ? '/sales/customers' : '/sales/customers?inactive=1'}>
+              {showInactive ? 'Лише активні' : 'Показати деактивованих'}
+            </LinkButton>
+            <LinkButton href="/sales">← До продажів</LinkButton>
+          </div>
+        }
       />
 
       <div className="grid gap-4 lg:grid-cols-[1fr_320px]">
@@ -51,7 +66,12 @@ export default async function CustomersPage() {
                 return (
                   <Row key={c.id}>
                     <Cell>
-                      <div className="font-semibold">{c.name}</div>
+                      <Link
+                        href={`/sales/customers/${c.id}`}
+                        className="font-semibold text-emerald-800 hover:underline"
+                      >
+                        {c.name}
+                      </Link>
                       <div className="text-xs text-emerald-800/50">
                         {c.contact ?? '—'}
                         {c.phone ? ` · ${c.phone}` : ''}
@@ -59,6 +79,11 @@ export default async function CustomersPage() {
                     </Cell>
                     <Cell>
                       <Badge>{CUSTOMER_KINDS[c.kind]}</Badge>
+                      {!c.is_active && (
+                        <div className="mt-0.5">
+                          <Badge tone="amber">деактивований</Badge>
+                        </div>
+                      )}
                     </Cell>
                     <Cell>
                       <div className="text-xs">{PRICE_LEVELS[c.price_level]}</div>

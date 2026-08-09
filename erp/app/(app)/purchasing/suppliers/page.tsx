@@ -1,15 +1,21 @@
+import Link from 'next/link';
 import { createSupplier } from '@/app/actions/purchasing';
 import { recordSupplierPayment } from '@/app/actions/finance';
 import { ActionForm } from '@/components/action-form';
-import { Card, Cell, Empty, Field, inputClass, LinkButton, PageHeader, Row, Table } from '@/components/ui';
+import { Badge, Card, Cell, Empty, Field, inputClass, LinkButton, PageHeader, Row, Table } from '@/components/ui';
 import { query } from '@/lib/db';
 import { fmtDate, fmtMoney, PAY_METHODS } from '@/lib/format';
 import { requireRole } from '@/lib/session';
 
 export const dynamic = 'force-dynamic';
 
-export default async function SuppliersPage() {
+export default async function SuppliersPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ inactive?: string }>;
+}) {
   const session = await requireRole('warehouse');
+  const showInactive = (await searchParams).inactive === '1';
 
   const suppliers = await query<{
     id: string;
@@ -19,13 +25,14 @@ export default async function SuppliersPage() {
     phone: string | null;
     payment_terms_days: number;
     is_vat_payer: boolean;
+    is_active: boolean;
     orders: number;
     billed_gross: number;
     paid_amount: number;
     balance_due: number;
     last_order: string | null;
   }>(
-    `select s.id, s.name, s.edrpou, s.contact, s.phone, s.payment_terms_days, s.is_vat_payer,
+    `select s.id, s.name, s.edrpou, s.contact, s.phone, s.payment_terms_days, s.is_vat_payer, s.is_active,
             (select count(*) from purchase_orders p
               where p.supplier_id = s.id and p.legal_entity_id = $1 and p.status <> 'cancelled')::int as orders,
             (select max(p.ordered_on) from purchase_orders p
@@ -35,9 +42,9 @@ export default async function SuppliersPage() {
             coalesce(b.balance_due, 0)  as balance_due
        from suppliers s
        left join v_supplier_balance b on b.supplier_id = s.id and b.legal_entity_id = $1
-      where s.is_active
-      order by coalesce(b.balance_due, 0) desc, s.name`,
-    [session.eid],
+      where $2::bool or s.is_active
+      order by s.is_active desc, coalesce(b.balance_due, 0) desc, s.name`,
+    [session.eid, showInactive],
   );
 
   return (
@@ -45,7 +52,14 @@ export default async function SuppliersPage() {
       <PageHeader
         title="Постачальники"
         subtitle="Хто постачає сировину й на яких умовах"
-        action={<LinkButton href="/purchasing">← До закупівель</LinkButton>}
+        action={
+          <div className="flex gap-2">
+            <LinkButton href={showInactive ? '/purchasing/suppliers' : '/purchasing/suppliers?inactive=1'}>
+              {showInactive ? 'Лише активні' : 'Показати деактивованих'}
+            </LinkButton>
+            <LinkButton href="/purchasing">← До закупівель</LinkButton>
+          </div>
+        }
       />
 
       <div className="grid gap-4 lg:grid-cols-[1fr_320px]">
@@ -57,8 +71,14 @@ export default async function SuppliersPage() {
               {suppliers.map((s) => (
                 <Row key={s.id}>
                   <Cell>
-                    <div className="font-semibold">{s.name}</div>
+                    <Link
+                      href={`/purchasing/suppliers/${s.id}`}
+                      className="font-semibold text-emerald-800 hover:underline"
+                    >
+                      {s.name}
+                    </Link>
                     {s.edrpou && <div className="text-xs text-emerald-800/50">ЄДРПОУ {s.edrpou}</div>}
+                    {!s.is_active && <Badge tone="amber">деактивований</Badge>}
                   </Cell>
                   <Cell>
                     {s.contact ?? '—'}
@@ -106,7 +126,7 @@ export default async function SuppliersPage() {
                   <option value="" disabled>
                     Оберіть…
                   </option>
-                  {suppliers.map((s) => (
+                  {suppliers.filter((s) => s.is_active).map((s) => (
                     <option key={s.id} value={s.id}>
                       {s.name}
                       {s.balance_due > 0.01 ? ` — борг ${fmtMoney(s.balance_due)}` : ''}

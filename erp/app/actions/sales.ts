@@ -39,6 +39,86 @@ export async function createCustomer(_prev: ActionState, formData: FormData): Pr
   return { ok: 'Клієнта додано' };
 }
 
+/**
+ * Редагування клієнта. Рівень цін і умови оплати діють лише на майбутні
+ * замовлення: у виписаних документах ціна й ставка ПДВ зафіксовані в рядку,
+ * тож заднім числом нічого не переписується.
+ */
+export async function updateCustomer(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  await requireRole('sales');
+  const id = str(formData, 'customer_id');
+  const name = str(formData, 'name');
+
+  if (!id) return { error: 'Не вказано клієнта' };
+  if (!name) return { error: 'Вкажіть назву клієнта' };
+
+  try {
+    await transaction((c) =>
+      c.query(
+        `update customers set
+           name = $2, kind = $3, edrpou = $4, ipn = $5, is_vat_payer = $6,
+           contact = $7, phone = $8, price_level = $9,
+           payment_terms_days = $10, credit_limit = $11, note = $12
+         where id = $1`,
+        [
+          id,
+          name,
+          str(formData, 'kind') || 'network',
+          strOrNull(formData, 'edrpou'),
+          strOrNull(formData, 'ipn'),
+          formData.get('is_vat_payer') === 'on',
+          strOrNull(formData, 'contact'),
+          strOrNull(formData, 'phone'),
+          str(formData, 'price_level') || 'distributor',
+          num(formData, 'payment_terms_days'),
+          num(formData, 'credit_limit'),
+          strOrNull(formData, 'note'),
+        ],
+      ),
+    );
+  } catch (err) {
+    return { error: toMessage(err) };
+  }
+
+  revalidatePath('/sales/customers');
+  revalidatePath(`/sales/customers/${id}`);
+  return { ok: 'Збережено' };
+}
+
+/**
+ * Деактивація замість видалення. Клієнта з боргом сховати не можна: він зникне
+ * з дебіторки, а гроші лишаться неотриманими.
+ */
+export async function setCustomerActive(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  await requireRole('sales');
+  const id = str(formData, 'customer_id');
+  const active = str(formData, 'active') === 'true';
+
+  try {
+    await transaction(async (c) => {
+      if (!active) {
+        const { rows } = await c.query<{ balance_due: number }>(
+          'select coalesce(balance_due, 0) as balance_due from v_customer_balance where customer_id = $1',
+          [id],
+        );
+        if (Number(rows[0]?.balance_due ?? 0) > 0.01) {
+          throw new Error(
+            `Не можна деактивувати: за клієнтом борг ${Number(rows[0].balance_due).toFixed(2)} грн. ` +
+              'Спершу закрийте розрахунки.',
+          );
+        }
+      }
+      await c.query('update customers set is_active = $2 where id = $1', [id, active]);
+    });
+  } catch (err) {
+    return { error: toMessage(err) };
+  }
+
+  revalidatePath('/sales/customers');
+  revalidatePath(`/sales/customers/${id}`);
+  return { ok: active ? 'Клієнта активовано' : 'Клієнта деактивовано' };
+}
+
 export async function createSalesOrder(_prev: ActionState, formData: FormData): Promise<ActionState> {
   const session = await requireRole('sales');
   const customerId = str(formData, 'customer_id');

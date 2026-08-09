@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { createItem } from '@/app/actions/catalog';
 import { ActionForm } from '@/components/action-form';
-import { Badge, Card, Cell, Empty, Field, inputClass, PageHeader, Row, Table } from '@/components/ui';
+import { Badge, Card, Cell, Empty, Field, inputClass, LinkButton, PageHeader, Row, Table } from '@/components/ui';
 import { query } from '@/lib/db';
 import { fmtMoney, fmtQty, ITEM_KINDS, UNITS, unitLabel } from '@/lib/format';
 import { requireRole } from '@/lib/session';
@@ -11,10 +11,11 @@ export const dynamic = 'force-dynamic';
 export default async function CatalogPage({
   searchParams,
 }: {
-  searchParams: Promise<{ kind?: string }>;
+  searchParams: Promise<{ kind?: string; inactive?: string }>;
 }) {
   const session = await requireRole('production', 'sales', 'warehouse');
-  const { kind } = await searchParams;
+  const { kind, inactive } = await searchParams;
+  const showInactive = inactive === '1';
 
   const items = await query<{
     id: string;
@@ -28,24 +29,33 @@ export default async function CatalogPage({
     price_distributor: number | null;
     price_network: number | null;
     price_rrp: number | null;
+    is_active: boolean;
     qty: number;
   }>(
     `select i.id, i.sku, i.name, i.kind, i.unit, i.min_stock, i.shelf_life_days, i.pcs_per_box,
-            i.price_distributor, i.price_network, i.price_rrp, coalesce(s.qty, 0) as qty
+            i.price_distributor, i.price_network, i.price_rrp, i.is_active, coalesce(s.qty, 0) as qty
        from items i
        left join v_item_stock s on s.item_id = i.id and s.legal_entity_id = $2
-      where i.is_active and ($1::text is null or i.kind = $1)
-      order by i.kind, i.name`,
-    [kind ?? null, session.eid],
+      where ($3::bool or i.is_active) and ($1::text is null or i.kind = $1)
+      order by i.is_active desc, i.kind, i.name`,
+    [kind ?? null, session.eid, showInactive],
   );
 
   return (
     <>
-      <PageHeader title="Номенклатура" subtitle="Сировина, пакування й готова продукція з прайсом" />
+      <PageHeader
+        title="Номенклатура"
+        subtitle="Сировина, пакування й готова продукція з прайсом"
+        action={
+          <LinkButton href={showInactive ? `/catalog${kind ? `?kind=${kind}` : ''}` : `/catalog?${kind ? `kind=${kind}&` : ''}inactive=1`}>
+            {showInactive ? 'Лише активні' : 'Показати деактивовані'}
+          </LinkButton>
+        }
+      />
 
       <div className="mb-4 flex flex-wrap gap-2">
         <Link
-          href="/catalog"
+          href={showInactive ? '/catalog?inactive=1' : '/catalog'}
           className={`rounded-full px-4 py-2 text-sm font-semibold ${
             !kind ? 'bg-emerald-700 text-white' : 'border border-emerald-900/15 bg-white text-emerald-900'
           }`}
@@ -55,7 +65,7 @@ export default async function CatalogPage({
         {Object.entries(ITEM_KINDS).map(([key, label]) => (
           <Link
             key={key}
-            href={`/catalog?kind=${key}`}
+            href={`/catalog?kind=${key}${showInactive ? '&inactive=1' : ''}`}
             className={`rounded-full px-4 py-2 text-sm font-semibold ${
               kind === key
                 ? 'bg-emerald-700 text-white'
@@ -76,7 +86,7 @@ export default async function CatalogPage({
               {items.map((i) => (
                 <Row key={i.id}>
                   <Cell>
-                    <Link href={`/stock/${i.id}`} className="font-semibold text-emerald-800 hover:underline">
+                    <Link href={`/catalog/${i.id}`} className="font-semibold text-emerald-800 hover:underline">
                       {i.name}
                     </Link>
                     <div className="text-xs text-emerald-800/50">
@@ -87,6 +97,11 @@ export default async function CatalogPage({
                   </Cell>
                   <Cell>
                     <Badge tone={i.kind === 'finished' ? 'green' : 'gray'}>{ITEM_KINDS[i.kind]}</Badge>
+                    {!i.is_active && (
+                      <div className="mt-0.5">
+                        <Badge tone="amber">деактивована</Badge>
+                      </div>
+                    )}
                   </Cell>
                   <Cell align="right">{fmtQty(i.qty, unitLabel(i.unit))}</Cell>
                   <Cell align="right">

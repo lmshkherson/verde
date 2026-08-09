@@ -37,6 +37,81 @@ export async function createSupplier(_prev: ActionState, formData: FormData): Pr
   return { ok: 'Постачальника додано' };
 }
 
+/**
+ * Редагування постачальника. Статус платника ПДВ впливає лише на нові приходи:
+ * у вже оприбуткованих партіях собівартість і податковий кредит порахувалися
+ * за статусом на дату документа й переписуванню не підлягають.
+ */
+export async function updateSupplier(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  await requireRole('warehouse');
+  const id = str(formData, 'supplier_id');
+  const name = str(formData, 'name');
+
+  if (!id) return { error: 'Не вказано постачальника' };
+  if (!name) return { error: 'Вкажіть назву постачальника' };
+
+  try {
+    await transaction((c) =>
+      c.query(
+        `update suppliers set
+           name = $2, edrpou = $3, contact = $4, phone = $5,
+           payment_terms_days = $6, is_vat_payer = $7, note = $8
+         where id = $1`,
+        [
+          id,
+          name,
+          strOrNull(formData, 'edrpou'),
+          strOrNull(formData, 'contact'),
+          strOrNull(formData, 'phone'),
+          num(formData, 'payment_terms_days'),
+          formData.get('is_vat_payer') === 'on',
+          strOrNull(formData, 'note'),
+        ],
+      ),
+    );
+  } catch (err) {
+    return { error: toMessage(err) };
+  }
+
+  revalidatePath('/purchasing/suppliers');
+  revalidatePath(`/purchasing/suppliers/${id}`);
+  return { ok: 'Збережено' };
+}
+
+/**
+ * Деактивація замість видалення. Постачальника з непогашеною кредиторкою
+ * ховати не можна: борг зникне зі списку, а платити його доведеться.
+ */
+export async function setSupplierActive(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  await requireRole('warehouse');
+  const id = str(formData, 'supplier_id');
+  const active = str(formData, 'active') === 'true';
+
+  try {
+    await transaction(async (c) => {
+      if (!active) {
+        // Борг перевіряємо по всіх юрособах, а не лише по поточній.
+        const { rows } = await c.query<{ due: number }>(
+          'select coalesce(sum(balance_due), 0) as due from v_supplier_balance where supplier_id = $1',
+          [id],
+        );
+        if (Number(rows[0]?.due ?? 0) > 0.01) {
+          throw new Error(
+            `Не можна деактивувати: непогашена кредиторка ${Number(rows[0].due).toFixed(2)} грн.`,
+          );
+        }
+      }
+      await c.query('update suppliers set is_active = $2 where id = $1', [id, active]);
+    });
+  } catch (err) {
+    return { error: toMessage(err) };
+  }
+
+  revalidatePath('/purchasing/suppliers');
+  revalidatePath(`/purchasing/suppliers/${id}`);
+  return { ok: active ? 'Постачальника активовано' : 'Постачальника деактивовано' };
+}
+
 export async function createPurchaseOrder(_prev: ActionState, formData: FormData): Promise<ActionState> {
   const session = await requireRole('warehouse');
   const supplierId = str(formData, 'supplier_id');

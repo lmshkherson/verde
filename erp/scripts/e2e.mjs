@@ -693,7 +693,99 @@ try {
     `${declCarried} грн = ${declCredit} − ${declLiability}`,
   );
 
-  // ─── 13. Права доступу ─────────────────────────────────────────────────────
+  // ─── 13. Редагування довідників ────────────────────────────────────────────
+  console.log('\nДовідники: редагування й деактивація');
+
+  await owner.goto(`${BASE}/catalog`);
+  await owner.click('a:has-text("Батончик «Зарядись» Фісташка 25 г")');
+  await owner.waitForURL(/\/catalog\/[0-9a-f-]{36}/);
+  check('картка номенклатури відкривається', owner.url().includes('/catalog/'));
+
+  check(
+    'одиниця виміру заблокована, бо по позиції є рухи',
+    await owner.locator('select[name="unit"]').isDisabled(),
+  );
+
+  await owner.fill('input[name="min_stock"]', '950');
+  await owner.fill('input[name="note"]', 'Хіт продажів');
+  await owner.click('button:has-text("Зберегти")');
+  await owner.waitForTimeout(1200);
+  await owner.reload();
+  check(
+    'зміни в картці збереглися',
+    (await owner.locator('input[name="min_stock"]').inputValue()).startsWith('950') &&
+      (await owner.locator('input[name="note"]').inputValue()) === 'Хіт продажів',
+  );
+
+  await owner.click('button:has-text("Деактивувати")');
+  await owner.waitForTimeout(1200);
+  check(
+    'позицію із залишком деактивувати не дають',
+    (await owner.locator('text=Не можна деактивувати').count()) > 0,
+  );
+
+  // Нова позиція без жодного руху деактивується вільно.
+  await owner.goto(`${BASE}/catalog`);
+  await owner.fill('input[name="sku"]', 'VRD-TEST-OLD');
+  await owner.fill('input[name="name"]', 'Тестова позиція до архіву');
+  await selectByText(owner, 'select[name="kind"]', 'Сировина');
+  await selectByText(owner, 'select[name="unit"]', 'кг');
+  await owner.click('button:has-text("Додати")');
+  await owner.waitForTimeout(1200);
+
+  await owner.goto(`${BASE}/catalog`);
+  await owner.click('a:has-text("Тестова позиція до архіву")');
+  await owner.waitForURL(/\/catalog\/[0-9a-f-]{36}/);
+  check(
+    'у позиції без рухів тип змінюваний',
+    !(await owner.locator('select[name="kind"]').isDisabled()),
+  );
+  await owner.click('button:has-text("Деактивувати")');
+  await owner.waitForTimeout(1200);
+
+  await owner.goto(`${BASE}/catalog`);
+  check(
+    'деактивована позиція зникла зі списку',
+    (await owner.locator('a:has-text("Тестова позиція до архіву")').count()) === 0,
+  );
+  await owner.goto(`${BASE}/catalog?inactive=1`);
+  check(
+    'деактивована позиція видима під перемикачем',
+    (await owner.locator('a:has-text("Тестова позиція до архіву")').count()) > 0,
+  );
+
+  await owner.goto(`${BASE}/sales/customers`);
+  await owner.click('a:has-text("ТОВ «АТБ-Маркет»")');
+  await owner.waitForURL(/\/sales\/customers\/[0-9a-f-]{36}/);
+  await owner.fill('input[name="payment_terms_days"]', '60');
+  await owner.click('button:has-text("Зберегти")');
+  await owner.waitForTimeout(1200);
+  await owner.reload();
+  check(
+    'умови оплати клієнта збережено',
+    (await owner.locator('input[name="payment_terms_days"]').inputValue()) === '60',
+  );
+
+  await owner.click('button:has-text("Деактивувати")');
+  await owner.waitForTimeout(1200);
+  check(
+    'клієнта з боргом деактивувати не дають',
+    (await owner.locator('text=Не можна деактивувати').count()) > 0,
+  );
+
+  await owner.goto(`${BASE}/purchasing/suppliers`);
+  await owner.click('a:has-text("ТОВ «ПакЛайн Україна»")');
+  await owner.waitForURL(/\/purchasing\/suppliers\/[0-9a-f-]{36}/);
+  await owner.fill('input[name="contact"]', 'Марина Дудник (нова)');
+  await owner.click('button:has-text("Зберегти")');
+  await owner.waitForTimeout(1200);
+  await owner.reload();
+  check(
+    'контакт постачальника збережено',
+    (await owner.locator('input[name="contact"]').inputValue()) === 'Марина Дудник (нова)',
+  );
+
+  // ─── 14. Права доступу ─────────────────────────────────────────────────────
   console.log('\nПрава доступу');
   const denied = await warehouse.goto(`${BASE}/reports`);
   check('комірника не пускає у звіти', denied.url().includes('denied=1'));
