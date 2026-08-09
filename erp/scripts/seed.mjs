@@ -126,16 +126,25 @@ const RECIPES = [
 
 // Дві юрособи з різним податковим статусом — саме та конфігурація, у якій
 // одна партія має різну собівартість залежно від власника.
+//
+// Перша — справжня: реквізити взяті з виписки ЄДР і витягу з реєстру платників
+// ПДВ (форма 2-ВР № 2526574500757), бо саме вона друкується на накладних.
+// Друга — умовна, для перевірки продажів між своїми.
 const ENTITIES = [
   {
-    name: 'ТОВ «Верде Фудс»',
-    short: 'Верде Фудс',
-    edrpou: '44821037',
-    ipn: '448210326574',
-    prefix: 'ВФ',
+    name: 'ТОВАРИСТВО З ОБМЕЖЕНОЮ ВІДПОВІДАЛЬНІСТЮ «ВЕРДЕ СВІТ»',
+    short: 'Верде Світ',
+    edrpou: '45014741',
+    ipn: '450147426573',
+    prefix: 'ВС',
     tax: 'general',
     vat: true,
     isDefault: true,
+    address: 'Україна, 04060, м. Київ, вул. Щусєва, буд. 15, кв. 2',
+    phone: '+380675703737',
+    email: 'verde.svit@gmail.com',
+    director: 'Проніна Аліса Сергіївна',
+    directorPosition: 'Директор',
   },
   {
     name: 'ФОП Ковальчук О.М.',
@@ -146,6 +155,11 @@ const ENTITIES = [
     tax: 'single_tax',
     vat: false,
     isDefault: false,
+    address: 'Україна, 04070, м. Київ, вул. Набережно-Хрещатицька, буд. 3',
+    phone: '+380671234000',
+    email: 'rozdrib@v-verde.ua',
+    director: 'Ковальчук Олена Миколаївна',
+    directorPosition: 'Фізична особа-підприємець',
   },
 ];
 
@@ -158,15 +172,15 @@ const SUPPLIERS = [
   ['ТОВ «ПакЛайн Україна»', '39284710', 'Марина Дудник', '+380445556677', 21, true],
 ];
 
-// Останні два поля: ІПН платника ПДВ і чи є покупець платником.
+// Останні три поля: ІПН платника ПДВ, чи є покупець платником, юридична адреса.
 const CUSTOMERS = [
-  ['ТОВ «АТБ-Маркет»', 'network', '30487219', 'Ігор Панченко', '+380563334455', 'network', 45, 500000, '304872104871', true],
-  ['ТОВ «Фора»', 'network', '31859472', 'Наталія Гунько', '+380442223311', 'network', 30, 300000, '318594726543', true],
-  ['ТОВ «Здоров’я Дистрибʼюшн»', 'distributor', '40218374', 'Дмитро Сич', '+380671234567', 'distributor', 14, 200000, '402183712345', true],
-  ['Аптека «Бажаємо здоровʼя»', 'pharmacy', '39471028', 'Леся Ткач', '+380509876543', 'distributor', 7, 50000, '394710298765', true],
-  ['Мережа кав’ярень «Ранок»', 'horeca', '42917583', 'Богдан Мороз', '+380931112244', 'rrp', 0, 20000, null, false],
+  ['ТОВ «АТБ-Маркет»', 'network', '30487219', 'Ігор Панченко', '+380563334455', 'network', 45, 500000, '304872104871', true, '49000, м. Дніпро, вул. Курчатова, буд. 1Б'],
+  ['ТОВ «Фора»', 'network', '31859472', 'Наталія Гунько', '+380442223311', 'network', 30, 300000, '318594726543', true, '02090, м. Київ, вул. Празька, буд. 5'],
+  ['ТОВ «Здоров’я Дистрибʼюшн»', 'distributor', '40218374', 'Дмитро Сич', '+380671234567', 'distributor', 14, 200000, '402183712345', true, '01033, м. Київ, вул. Саксаганського, буд. 41'],
+  ['Аптека «Бажаємо здоровʼя»', 'pharmacy', '39471028', 'Леся Ткач', '+380509876543', 'distributor', 7, 50000, '394710298765', true, '79000, м. Львів, просп. Свободи, буд. 12'],
+  ['Мережа кав’ярень «Ранок»', 'horeca', '42917583', 'Богдан Мороз', '+380931112244', 'rrp', 0, 20000, null, false, '61000, м. Харків, вул. Сумська, буд. 25'],
   // Власна роздрібна юрособа — продажі їй є реалізацією між своїми.
-  ['ФОП Ковальчук О.М. (наша роздрібна)', 'distributor', '3184507621', 'Олена Ковальчук', '+380671234000', 'distributor', 0, 0, null, false],
+  ['ФОП Ковальчук О.М. (наша роздрібна)', 'distributor', '3184507621', 'Олена Ковальчук', '+380671234000', 'distributor', 0, 0, null, false, '04070, м. Київ, вул. Набережно-Хрещатицька, буд. 3'],
 ];
 
 const client = new pg.Client({
@@ -183,20 +197,28 @@ try {
     `update legal_entities
         set name = $1, short_name = $2, doc_prefix = $5,
             edrpou = $3, ipn = $4, tax_system = 'general', is_vat_payer = true
-      where short_name = 'VERDE'`,
+      where short_name = 'VERDE'
+        and not exists (select 1 from legal_entities where lower(short_name) = lower($2))`,
     [ENTITIES[0].name, ENTITIES[0].short, ENTITIES[0].edrpou, ENTITIES[0].ipn, ENTITIES[0].prefix],
   );
 
   for (const e of ENTITIES) {
     await client.query(
       `insert into legal_entities
-         (name, short_name, doc_prefix, edrpou, ipn, tax_system, is_vat_payer, is_default)
-       values ($1, $2, $3, $4, $5, $6, $7, $8)
+         (name, short_name, doc_prefix, edrpou, ipn, tax_system, is_vat_payer, is_default,
+          address, phone, email, director_name, director_position)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
        on conflict (lower(short_name)) do update
          set name = excluded.name, doc_prefix = excluded.doc_prefix,
              edrpou = excluded.edrpou, ipn = excluded.ipn,
-             tax_system = excluded.tax_system, is_vat_payer = excluded.is_vat_payer`,
-      [e.name, e.short, e.prefix, e.edrpou, e.ipn, e.tax, e.vat, e.isDefault],
+             tax_system = excluded.tax_system, is_vat_payer = excluded.is_vat_payer,
+             address = excluded.address, phone = excluded.phone, email = excluded.email,
+             director_name = excluded.director_name,
+             director_position = excluded.director_position`,
+      [
+        e.name, e.short, e.prefix, e.edrpou, e.ipn, e.tax, e.vat, e.isDefault,
+        e.address, e.phone, e.email, e.director, e.directorPosition,
+      ],
     );
   }
 
@@ -277,21 +299,21 @@ try {
     }
   }
 
-  for (const [name, kind, edrpou, contact, phone, level, terms, limit, ipn, isVat] of CUSTOMERS) {
+  for (const [name, kind, edrpou, contact, phone, level, terms, limit, ipn, isVat, address] of CUSTOMERS) {
     const { rows } = await client.query('select id from customers where name = $1', [name]);
     if (rows.length === 0) {
       await client.query(
         `insert into customers
-           (name, kind, edrpou, contact, phone, price_level, payment_terms_days, credit_limit, ipn, is_vat_payer)
-         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
-        [name, kind, edrpou, contact, phone, level, terms, limit, ipn, isVat],
+           (name, kind, edrpou, contact, phone, price_level, payment_terms_days, credit_limit,
+            ipn, is_vat_payer, address)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+        [name, kind, edrpou, contact, phone, level, terms, limit, ipn, isVat, address],
       );
     } else {
-      await client.query('update customers set ipn = $2, is_vat_payer = $3 where id = $1', [
-        rows[0].id,
-        ipn,
-        isVat,
-      ]);
+      await client.query(
+        'update customers set ipn = $2, is_vat_payer = $3, address = $4 where id = $1',
+        [rows[0].id, ipn, isVat, address],
+      );
     }
   }
 

@@ -1,4 +1,9 @@
-import { createLegalEntity, linkCustomerToEntity, setNormalCapacity } from '@/app/actions/entities';
+import {
+  createLegalEntity,
+  linkCustomerToEntity,
+  setNormalCapacity,
+  updateEntityRequisites,
+} from '@/app/actions/entities';
 import { ActionForm } from '@/components/action-form';
 import { Badge, Card, Cell, Empty, Field, inputClass, PageHeader, Row, Table } from '@/components/ui';
 import { query, queryOne } from '@/lib/db';
@@ -21,10 +26,20 @@ export default async function EntitiesPage() {
       tax_system: string;
       is_vat_payer: boolean;
       overhead_policy: string;
+      address: string | null;
+      phone: string | null;
+      email: string | null;
+      bank_name: string | null;
+      bank_account: string | null;
+      director_name: string | null;
+      director_position: string;
+      accountant_name: string | null;
       stock_value: number;
       vat_payable: number;
     }>(`
       select e.id, e.name, e.short_name, e.doc_prefix, e.edrpou, e.ipn, e.tax_system, e.is_vat_payer, e.overhead_policy,
+             e.address, e.phone, e.email, e.bank_name, e.bank_account,
+             e.director_name, e.director_position, e.accountant_name,
              coalesce(st.value, 0)   as stock_value,
              coalesce(vat.payable, 0) as vat_payable
         from legal_entities e
@@ -109,6 +124,69 @@ export default async function EntitiesPage() {
               партія може частково належати різним юрособам — і мати в них різну собівартість, бо
               вхідний ПДВ у платника йде в податковий кредит, а в єдинника — у витрати.
             </p>
+          </Card>
+
+          <Card title="Реквізити для друкованих форм">
+            <p className="mb-3 text-sm text-emerald-800/70">
+              Ці поля не впливають на жодну суму — вони потрапляють у шапку й підписи
+              видаткової накладної. Порожня адреса чи прізвище директора помітні одразу:
+              бланк виходить із прогалиною.
+            </p>
+            {entities.map((e) => (
+              <details key={e.id} className="mb-2 rounded-xl border border-emerald-900/10 p-3" open={e.id === session.eid}>
+                <summary className="cursor-pointer text-sm font-semibold text-emerald-900">
+                  {e.short_name}
+                  {!e.address && <span className="ml-2 text-amber-600">адреса не заповнена</span>}
+                </summary>
+                <div className="mt-3">
+                  <ActionForm action={updateEntityRequisites} submitLabel="Зберегти реквізити">
+                    <input type="hidden" name="entity_id" value={e.id} />
+                    <Field label="Юридична адреса">
+                      <input name="address" defaultValue={e.address ?? ''} className={inputClass} />
+                    </Field>
+                    <div className="grid grid-cols-2 gap-3">
+                      <Field label="Телефон">
+                        <input name="phone" defaultValue={e.phone ?? ''} className={inputClass} />
+                      </Field>
+                      <Field label="Email">
+                        <input name="email" defaultValue={e.email ?? ''} className={inputClass} />
+                      </Field>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <Field label="Банк">
+                        <input name="bank_name" defaultValue={e.bank_name ?? ''} className={inputClass} />
+                      </Field>
+                      <Field label="IBAN">
+                        <input name="bank_account" defaultValue={e.bank_account ?? ''} className={inputClass} />
+                      </Field>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <Field label="Посада підписанта">
+                        <input
+                          name="director_position"
+                          defaultValue={e.director_position}
+                          className={inputClass}
+                        />
+                      </Field>
+                      <Field label="Прізвище та ініціали">
+                        <input
+                          name="director_name"
+                          defaultValue={e.director_name ?? ''}
+                          className={inputClass}
+                        />
+                      </Field>
+                    </div>
+                    <Field label="Головний бухгалтер" hint="якщо в бланку потрібен другий підпис">
+                      <input
+                        name="accountant_name"
+                        defaultValue={e.accountant_name ?? ''}
+                        className={inputClass}
+                      />
+                    </Field>
+                  </ActionForm>
+                </div>
+              </details>
+            ))}
           </Card>
 
           <Card title="Клієнти, які є нашими юрособами">
@@ -205,10 +283,10 @@ export default async function EntitiesPage() {
           <Card title="Нова юрособа">
           <ActionForm action={createLegalEntity} submitLabel="Додати юрособу">
             <Field label="Повна назва">
-              <input name="name" required className={inputClass} placeholder="ТОВ «Верде Фудс»" />
+              <input name="name" required className={inputClass} placeholder="ТОВ «Верде Світ»" />
             </Field>
             <Field label="Коротка назва">
-              <input name="short_name" required className={inputClass} placeholder="Верде Фудс" />
+              <input name="short_name" required className={inputClass} placeholder="Верде Світ" />
             </Field>
             <Field label="Префікс документів" hint="Свій для кожної: ВФ-ЗАМ-2026-0001">
               <input name="doc_prefix" required maxLength={5} className={inputClass} placeholder="ВФ" />

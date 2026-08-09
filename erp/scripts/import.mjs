@@ -5,9 +5,9 @@
  *   node scripts/import.mjs items      номенклатура.csv
  *   node scripts/import.mjs customers  клієнти.csv
  *   node scripts/import.mjs suppliers  постачальники.csv
- *   node scripts/import.mjs employees  працівники.csv --entity "Верде Фудс"
- *   node scripts/import.mjs stock      залишки.csv     --entity "Верде Фудс"
- *   node scripts/import.mjs balances   сальдо.csv      --entity "Верде Фудс"
+ *   node scripts/import.mjs employees  працівники.csv --entity "Верде Світ"
+ *   node scripts/import.mjs stock      залишки.csv     --entity "Верде Світ"
+ *   node scripts/import.mjs balances   сальдо.csv      --entity "Верде Світ"
  *
  * Додайте --dry-run, щоб побачити, що буде зроблено, нічого не змінюючи.
  * Усі імпорти ідемпотентні за ключем: повторний запуск оновлює, а не дублює.

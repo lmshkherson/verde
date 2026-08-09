@@ -3,7 +3,7 @@
  * Наскрізна перевірка через справжній інтерфейс, дві юрособи з різним податковим
  * статусом:
  *
- *   ТОВ «Верде Фудс» (платник ПДВ) — закуповує сировину, виробляє, продає мережі
+ *   ТОВ «Верде Світ» (платник ПДВ) — закуповує сировину, виробляє, продає мережі
  *   ФОП «Верде Роздріб» (єдиний податок) — купує в ТОВ і продає в роздріб
  *
  * Головне, що доводить сценарій: вхідний ПДВ по-різному лягає в собівартість,
@@ -105,7 +105,7 @@ async function createPurchase(page, supplier, lines, pricesIncludeVat = true) {
 
 try {
   // ─── 1. ТОВ на ПДВ: закупівля у платника і в неплатника ────────────────────
-  console.log('\nТОВ «Верде Фудс» — закупівля сировини');
+  console.log('\nТОВ «Верде Світ» — закупівля сировини');
   const warehouse = await session('petro@v-verde.ua');
 
   await createPurchase(warehouse, 'Сухофрукт Трейд', [
@@ -142,7 +142,7 @@ try {
   );
 
   // ─── 2. Виробництво в ТОВ ──────────────────────────────────────────────────
-  console.log('\nТОВ «Верде Фудс» — виробництво');
+  console.log('\nТОВ «Верде Світ» — виробництво');
   const production = await session('iryna@v-verde.ua');
 
   await production.goto(`${BASE}/production`);
@@ -179,7 +179,7 @@ try {
   );
 
   // ─── 3. Продаж мережі з ПДВ ────────────────────────────────────────────────
-  console.log('\nТОВ «Верде Фудс» — продаж мережі');
+  console.log('\nТОВ «Верде Світ» — продаж мережі');
   const sales = await session('taras@v-verde.ua');
 
   await sales.goto(`${BASE}/sales`);
@@ -204,6 +204,8 @@ try {
   await sales.waitForTimeout(600);
   await sales.reload();
   await sales.fill('input[name="ttn_number"]', '59000123456789');
+  await sales.fill('input[name="proxy_number"]', 'АА-104');
+  await sales.fill('input[name="proxy_person"]', 'Панченко І.В.');
   await sales.click('button:has-text("Провести відвантаження")');
   await sales.waitForTimeout(1600);
   await sales.reload();
@@ -214,6 +216,38 @@ try {
     'маржа рахується від бази без ПДВ',
     marginText.includes('без ПДВ'),
     marginText.replace(/\s+/g, ' ').trim(),
+  );
+
+  // ─── 3а. Друкована видаткова накладна ──────────────────────────────────────
+  console.log('\nДрукована видаткова накладна');
+  await sales.click('a:has-text("Видаткова")');
+  await sales.waitForURL(/\/shipments\/[0-9a-f-]{36}\/print/);
+  const blank = (await sales.locator('body').innerText()).replace(/[\s ]+/g, ' ');
+
+  check(
+    'у шапці реальні реквізити продавця з ЄДР',
+    blank.includes('ВЕРДЕ СВІТ') && blank.includes('45014741'),
+  );
+  check('ІПН платника ПДВ із витягу', blank.includes('450147426573'));
+  check(
+    'адреса продавця з виписки',
+    blank.includes('Щусєва'),
+    'Україна, 04060, м. Київ, вул. Щусєва, буд. 15, кв. 2',
+  );
+  check('реквізити покупця', blank.includes('АТБ-Маркет') && blank.includes('30487219'));
+  check('підстава — замовлення й ТТН', blank.includes('59000123456789'));
+  check(
+    'сума прописом сходиться з підсумком',
+    blank.includes('Двадцять дві тисячі вісімсот сорок вісім гривень 00 копійок'),
+    `${640 * 29.75 * 1.2} грн`,
+  );
+  check('ПДВ виділено окремим рядком', blank.includes('3 808,00'), '22 848 − 19 040');
+  check('довіреність потрапила у бланк', blank.includes('АА-104') && blank.includes('Панченко І.В.'));
+  check('підписант — директор із ЄДР', blank.includes('Проніна Аліса Сергіївна'));
+  check(
+    'меню й кнопки в друк не йдуть',
+    (await sales.locator('.no-print').count()) > 0,
+    'приховуються правилом @media print',
   );
 
   // ─── 4. Реалізація власній юрособі ─────────────────────────────────────────
@@ -286,7 +320,7 @@ try {
 
   // ─── 7. Реєстр ПДВ у власника ──────────────────────────────────────────────
   console.log('\nВласник — реєстр ПДВ');
-  await switchEntity(owner, 'Верде Фудс');
+  await switchEntity(owner, 'Верде Світ');
   await owner.goto(`${BASE}/reports`);
 
   const vatRow = await owner.locator('table:below(:text("ПДВ за періодами")) tr').nth(1).innerText();
@@ -303,7 +337,7 @@ try {
   check(
     'обидві юрособи видно у власника',
     (await owner.locator('text=Верде Роздріб').count()) > 0 &&
-      (await owner.locator('text=Верде Фудс').count()) > 0,
+      (await owner.locator('text=Верде Світ').count()) > 0,
   );
 
   // ─── 8. Кредиторка: борг постачальнику з ПДВ ───────────────────────────────

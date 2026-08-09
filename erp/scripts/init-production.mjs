@@ -6,7 +6,7 @@
  *   ADMIN_EMAIL=olena@v-verde.ua \
  *   ADMIN_NAME="Олена Ковальчук" \
  *   ADMIN_PASSWORD='...' \
- *   ENTITY_NAME='ТОВ «Верде Фудс»' ENTITY_SHORT='Верде Фудс' ENTITY_PREFIX=ВФ \
+ *   ENTITY_NAME='ТОВ «Верде Світ»' ENTITY_SHORT='Верде Світ' ENTITY_PREFIX=ВФ \
  *   ENTITY_EDRPOU=44821037 ENTITY_IPN=448210326574 ENTITY_VAT=true \
  *   node scripts/init-production.mjs
  *

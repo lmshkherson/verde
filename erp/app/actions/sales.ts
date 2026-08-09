@@ -58,7 +58,7 @@ export async function updateCustomer(_prev: ActionState, formData: FormData): Pr
         `update customers set
            name = $2, kind = $3, edrpou = $4, ipn = $5, is_vat_payer = $6,
            contact = $7, phone = $8, price_level = $9,
-           payment_terms_days = $10, credit_limit = $11, note = $12
+           payment_terms_days = $10, credit_limit = $11, note = $12, address = $13
          where id = $1`,
         [
           id,
@@ -73,6 +73,7 @@ export async function updateCustomer(_prev: ActionState, formData: FormData): Pr
           num(formData, 'payment_terms_days'),
           num(formData, 'credit_limit'),
           strOrNull(formData, 'note'),
+          strOrNull(formData, 'address'),
         ],
       ),
     );
@@ -323,14 +324,19 @@ export async function shipSalesOrder(_prev: ActionState, formData: FormData): Pr
       const number = await nextDocNumber(c, order.legal_entity_id, 'ВІД');
 
       const { rows: shipmentRows } = await c.query<{ id: string }>(
-        `insert into shipments (number, so_id, shipped_on, ttn_number, carrier, created_by)
-         values ($1, $2, $3, $4, $5, $6) returning id`,
+        `insert into shipments
+           (number, so_id, shipped_on, ttn_number, carrier,
+            proxy_number, proxy_date, proxy_person, created_by)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9) returning id`,
         [
           number,
           soId,
           shippedOn,
           strOrNull(formData, 'ttn_number'),
           strOrNull(formData, 'carrier'),
+          strOrNull(formData, 'proxy_number'),
+          strOrNull(formData, 'proxy_date'),
+          strOrNull(formData, 'proxy_person'),
           session.uid,
         ],
       );

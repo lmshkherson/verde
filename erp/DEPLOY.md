@@ -52,19 +52,27 @@ npm run db:migrate
 ADMIN_EMAIL='olena@v-verde.ua' \
 ADMIN_NAME='Олена Ковальчук' \
 ADMIN_PASSWORD='якийсь-довгий-унікальний-пароль' \
-ENTITY_NAME='ТОВ «Верде Фудс»' \
-ENTITY_SHORT='Верде Фудс' \
-ENTITY_PREFIX='ВФ' \
-ENTITY_EDRPOU='44821037' \
-ENTITY_IPN='448210326574' \
+ENTITY_NAME='ТОВАРИСТВО З ОБМЕЖЕНОЮ ВІДПОВІДАЛЬНІСТЮ «ВЕРДЕ СВІТ»' \
+ENTITY_SHORT='Верде Світ' \
+ENTITY_PREFIX='ВС' \
+ENTITY_EDRPOU='45014741' \
+ENTITY_IPN='450147426573' \
 ENTITY_VAT=true \
 npm run db:init
 ```
+
+Реквізити тут справжні — з виписки ЄДР і витягу з реєстру платників ПДВ
+(форма 2-ВР). `ENTITY_NAME` пишіть саме так, як у виписці: ця назва друкується
+в шапці накладних.
 
 Пароль коротший за 12 символів скрипт не прийме.
 
 Другу юрособу (ФОП) додасте потім в інтерфейсі на сторінці «Юрособи» — там же
 задається префікс документів, він має бути свій.
+
+Одразу після цього зайдіть на **Юрособи → Реквізити для друкованих форм** і
+заповніть адресу, телефон, банк та підписанта. В обліку вони ні на що не
+впливають, але без них бланк накладної друкується з прогалинами.
 
 ---
 
@@ -80,9 +88,9 @@ UTF-8. Крапка з комою як роздільник і кома в чи�
 npm run db:import -- items      db/templates/номенклатура.csv
 npm run db:import -- suppliers  db/templates/постачальники.csv
 npm run db:import -- customers  db/templates/клієнти.csv
-npm run db:import -- employees  db/templates/працівники.csv --entity 'Верде Фудс'
-npm run db:import -- stock      db/templates/залишки.csv     --entity 'Верде Фудс'
-npm run db:import -- balances   db/templates/сальдо.csv      --entity 'Верде Фудс'
+npm run db:import -- employees  db/templates/працівники.csv --entity 'Верде Світ'
+npm run db:import -- stock      db/templates/залишки.csv     --entity 'Верде Світ'
+npm run db:import -- balances   db/templates/сальдо.csv      --entity 'Верде Світ'
 ```
 
 Перед справжнім запуском додайте `--dry-run` — покаже, скільки рядків
@@ -191,5 +199,5 @@ pg_restore -d "$DATABASE_URL" --clean --if-exists verde-2026-08-09.dump
 ## Поки що робиться поза системою
 
 - реєстрація податкових накладних у ЄРПН і подача декларацій — через M.E.Doc або «Вчасно», статус у системі відмічається вручну;
-- друковані ТТН і видаткові накладні;
+- друковані ТТН (видаткова накладна вже друкується з картки відвантаження);
 - повернення від клієнта й розрахунок коригування.

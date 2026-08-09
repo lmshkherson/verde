@@ -275,6 +275,17 @@ export default async function SalesOrderPage({ params }: { params: Promise<{ id:
                   <input name="carrier" className={inputClass} placeholder="Нова пошта" />
                 </Field>
               </div>
+              <div className="grid gap-3 sm:grid-cols-3">
+                <Field label="Довіреність №" hint="друкується у видатковій накладній">
+                  <input name="proxy_number" className={inputClass} />
+                </Field>
+                <Field label="Дата довіреності">
+                  <input name="proxy_date" type="date" className={inputClass} />
+                </Field>
+                <Field label="Отримувач за довіреністю">
+                  <input name="proxy_person" className={inputClass} placeholder="Панченко І.В." />
+                </Field>
+              </div>
               <p className="text-xs text-emerald-800/60">
                 Партії підбираються за FEFO: клієнту поїде те, у чого раніше закінчується термін.
               </p>
@@ -287,7 +298,7 @@ export default async function SalesOrderPage({ params }: { params: Promise<{ id:
             {shipments.length === 0 ? (
               <Empty>Ще не відвантажували</Empty>
             ) : (
-              <Table head={['Документ', 'Дата', 'ТТН']}>
+              <Table head={['Документ', 'Дата', 'ТТН', 'Друк']}>
                 {shipments.map((s) => (
                   <Row key={s.id}>
                     <Cell>
@@ -303,6 +314,14 @@ export default async function SalesOrderPage({ params }: { params: Promise<{ id:
                     <Cell>
                       {s.ttn_number ?? '—'}
                       {s.carrier && <div className="text-xs text-emerald-800/50">{s.carrier}</div>}
+                    </Cell>
+                    <Cell>
+                      <Link
+                        href={`/shipments/${s.id}/print`}
+                        className="font-semibold text-emerald-700 hover:underline"
+                      >
+                        Видаткова
+                      </Link>
                     </Cell>
                   </Row>
                 ))}

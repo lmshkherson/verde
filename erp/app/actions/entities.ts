@@ -130,3 +130,45 @@ export async function linkCustomerToEntity(_prev: ActionState, formData: FormDat
   revalidatePath('/sales/customers');
   return { ok: entityId ? 'Клієнта позначено як власну юрособу' : "Зв'язок знято" };
 }
+
+/**
+ * Реквізити для друкованих форм: адреса, банк, підписанти. В обліку вони не
+ * беруть участі — жодна сума від них не залежить, тому й перевірок тут майже
+ * немає. Але без них бланк накладної виходить порожнім у шапці.
+ */
+export async function updateEntityRequisites(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  await requireRole(); // лише власник
+  const id = str(formData, 'entity_id');
+  if (!id) return { error: 'Не вказано юрособу' };
+
+  try {
+    await transaction((c) =>
+      c.query(
+        `update legal_entities set
+           address = $2, phone = $3, email = $4,
+           bank_name = $5, bank_account = $6,
+           director_name = $7, director_position = $8, accountant_name = $9
+         where id = $1`,
+        [
+          id,
+          strOrNull(formData, 'address'),
+          strOrNull(formData, 'phone'),
+          strOrNull(formData, 'email'),
+          strOrNull(formData, 'bank_name'),
+          strOrNull(formData, 'bank_account'),
+          strOrNull(formData, 'director_name'),
+          str(formData, 'director_position') || 'Директор',
+          strOrNull(formData, 'accountant_name'),
+        ],
+      ),
+    );
+  } catch (err) {
+    return { error: toMessage(err) };
+  }
+
+  revalidatePath('/entities');
+  return { ok: 'Реквізити збережено' };
+}

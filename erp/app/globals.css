@@ -29,4 +29,20 @@ textarea {
   .no-print {
     display: none !important;
   }
+
+  /* Бланк друкується на білому й на весь аркуш: фон інтерфейсу й відступи
+     головного контейнера на папері лише з'їдають поле. */
+  @page {
+    size: A4;
+    margin: 12mm;
+  }
+
+  body {
+    background: #fff;
+  }
+
+  main {
+    max-width: none !important;
+    padding: 0 !important;
+  }
 }

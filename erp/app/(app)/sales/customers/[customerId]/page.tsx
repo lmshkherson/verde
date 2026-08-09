@@ -29,6 +29,7 @@ export default async function CustomerEditPage({
     price_level: string;
     payment_terms_days: number;
     credit_limit: number;
+    address: string | null;
     note: string | null;
     is_active: boolean;
     legal_entity_id: string | null;
@@ -190,6 +191,10 @@ export default async function CustomerEditPage({
                   />
                 </Field>
               </div>
+
+              <Field label="Юридична адреса" hint="друкується у видатковій накладній">
+                <input name="address" defaultValue={customer.address ?? ''} className={inputClass} />
+              </Field>
 
               <Field label="Примітка">
                 <input name="note" defaultValue={customer.note ?? ''} className={inputClass} />
