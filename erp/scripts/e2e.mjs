@@ -1253,6 +1253,69 @@ try {
     journalText.includes('Сторно податкового кредиту'),
   );
 
+  // ─── 13c. Простежуваність і відкликання ────────────────────────────────────
+  // Найцінніше з усього сценарію: за партією фініків знайти клієнтів, яким
+  // поїхали батончики, зроблені саме з неї.
+  console.log('\nПростежуваність партій');
+  await owner.goto(`${BASE}/traceability?q=Фініки`);
+  await owner.click('a[href^="/traceability/"]');
+  await owner.waitForURL(/\/traceability\/[0-9a-f-]{36}/);
+
+  const trace = (await owner.locator('body').innerText()).replace(/[\s ]+/g, ' ');
+  check(
+    'крок назад показує постачальника партії',
+    trace.includes('Сухофрукт Трейд') && trace.includes('ВС-ЗАК'),
+  );
+  check(
+    'крок вперед доходить до готової продукції',
+    trace.includes('Батончик «Зарядись» Фісташка 25 г'),
+    'фініки → варка → батончик',
+  );
+  check(
+    'видно клієнтів, яким це поїхало',
+    trace.includes('АТБ-Маркет') && trace.includes('Ковальчук'),
+    'мережа й власна роздрібна',
+  );
+  const affectedCustomers = await stat(owner, 'Клієнтів зачеплено');
+  check('порахувало зачеплених клієнтів', affectedCustomers >= 2, `${affectedCustomers}`);
+
+  // Оголошуємо відкликання — перелік має скопіюватись у чек-лист.
+  await selectByText(owner, 'select[name="reason"]', 'Забруднення');
+  await owner.fill('input[name="note"]', 'Стороннє тіло у сировині');
+  await owner.click('button:has-text("Оголосити відкликання")');
+  await owner.waitForURL(/\/recalls\/[0-9a-f-]{36}/);
+
+  const recallLines = await stat(owner, 'Повідомлено');
+  check('чек-лист зібрано з відвантажень', recallLines === 0, 'нікого ще не обдзвонили');
+  const inMarket = await stat(owner, 'Лишилося в ринку');
+  check('уся відвантажена кількість рахується як «в ринку»', inMarket > 0, `${inMarket}`);
+
+  await owner.click('button:has-text("Оголосити")');
+  await owner.waitForTimeout(1200);
+  await owner.reload();
+  check('відкликання оголошено', (await owner.locator('text=Оголошено').count()) > 0);
+
+  // Відмічаємо обдзвін і часткове вилучення по першому рядку.
+  await owner.locator('form:has(input[name="recovered_qty"])').first().locator('input[name="recovered_qty"]').fill('100');
+  await owner.locator('form:has(input[name="recovered_qty"])').first().locator('input[name="notified"]').check();
+  await owner.locator('form:has(input[name="recovered_qty"])').first().locator('button[type="submit"]').click();
+  await owner.waitForTimeout(1300);
+  await owner.reload();
+  check('обдзвін відмічено', (await stat(owner, 'Повідомлено')) >= 1);
+  check('вилучене зменшило залишок у ринку', (await stat(owner, 'Лишилося в ринку')) < inMarket);
+
+  // Вилучити більше, ніж відвантажено, система дати не має.
+  await owner.locator('form:has(input[name="recovered_qty"])').first().locator('input[name="recovered_qty"]').fill('99999');
+  await owner.locator('form:has(input[name="recovered_qty"])').first().locator('button[type="submit"]').click();
+  await owner.waitForTimeout(1300);
+  check(
+    'вилучити більше відвантаженого не дають',
+    (await owner.locator('text=Вилучено більше, ніж відвантажено').count()) > 0,
+  );
+
+  await owner.goto(`${BASE}/recalls`);
+  check('відкликання видно в журналі', (await owner.locator('text=ВС-ВІДКЛ').count()) > 0);
+
   // ─── 14. Права доступу ─────────────────────────────────────────────────────
   console.log('\nПрава доступу');
   const denied = await warehouse.goto(`${BASE}/reports`);

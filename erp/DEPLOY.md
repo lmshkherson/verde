@@ -130,7 +130,7 @@ npm run db:import -- balances   db/templates/сальдо.csv      --entity 'В�
 Відкрийте `https://ваш-домен/api/health`. Має бути:
 
 ```json
-{ "status": "ok", "database": "connected", "migrations": 23, "warnings": [] }
+{ "status": "ok", "database": "connected", "migrations": 24, "warnings": [] }
 ```
 
 Якщо у `warnings` є демо-акаунти — деактивуйте їх:
