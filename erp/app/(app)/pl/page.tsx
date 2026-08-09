@@ -67,10 +67,11 @@ export default async function ProfitAndLossPage({
       cogs: number;
       gross_profit: number;
       write_offs: number;
+      production_costs: number;
       opex: number;
       net_result: number;
     }>(
-      `select revenue_net, cogs, gross_profit, write_offs, opex, net_result
+      `select revenue_net, cogs, gross_profit, write_offs, production_costs, opex, net_result
          from v_pl_monthly
         where legal_entity_id = $1 and period = $2::date`,
       [session.eid, from],
@@ -137,6 +138,7 @@ export default async function ProfitAndLossPage({
     cogs: 0,
     gross_profit: 0,
     write_offs: 0,
+    production_costs: 0,
     opex: 0,
     net_result: 0,
   };
@@ -144,12 +146,10 @@ export default async function ProfitAndLossPage({
 
   // Витрати цеху не сидять у вартості партії, тож для ціноутворення показуємо їх
   // рознесеними на випуск — інакше легко недооцінити реальну вартість продукту.
-  const shopOpex = opex
-    .filter((o) => PRODUCTION_EXPENSE_CATEGORIES.includes(o.category))
-    .reduce((sum, o) => sum + o.amount, 0);
-  const otherOpex = opex
-    .filter((o) => !PRODUCTION_EXPENSE_CATEGORIES.includes(o.category))
-    .reduce((sum, o) => sum + o.amount, 0);
+  // Виробничі витрати беремо з в'юхи: вона вже враховує і зарплату цеху,
+  // і амортизацію виробничого обладнання, а не лише ручні витрати.
+  const shopOpex = p.production_costs;
+  const otherOpex = p.opex;
 
   const producedQty = output?.produced_qty ?? 0;
   const materialPerUnit = producedQty > 0 ? (output?.material_cost ?? 0) / producedQty : 0;
@@ -213,7 +213,7 @@ export default async function ProfitAndLossPage({
               label="Виробничі витрати періоду"
               value={shopOpex}
               kind="minus"
-              hint="зарплата й енергія цеху — не входять у вартість партії"
+              hint="зарплата, енергія та амортизація цеху — не входять у вартість партії"
             />
             <PlRow label="Списання й втрати" value={p.write_offs} kind="minus" />
             <PlRow label="Інші операційні витрати" value={otherOpex} kind="minus" hint="без ПДВ" />

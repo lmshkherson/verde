@@ -382,13 +382,6 @@ try {
   const beforeShop = await stat(owner, 'Фінансовий результат');
   const grossBefore = await stat(owner, 'Валовий прибуток');
 
-  await owner.selectOption('select[name="category"]', 'production_salary');
-  await owner.fill('input[name="amount_net"]', '18000');
-  await owner.fill('input[name="vat_amount"]', '0');
-  await owner.fill('input[name="description"]', 'Зарплата цеху за місяць');
-  await owner.click('button:has-text("Записати витрату")');
-  await owner.waitForTimeout(1300);
-
   await owner.selectOption('select[name="category"]', 'production_energy');
   await owner.fill('input[name="amount_net"]', '6000');
   await owner.fill('input[name="vat_amount"]', '1200');
@@ -406,8 +399,8 @@ try {
     `${grossAfter} грн`,
   );
   check(
-    'витрати цеху зменшили результат на 24 000 без ПДВ',
-    near(afterShop, beforeShop - 24000, 1),
+    'енергія цеху зменшила результат на 6 000 без ПДВ',
+    near(afterShop, beforeShop - 6000, 1),
     `${afterShop} грн`,
   );
 
@@ -418,16 +411,89 @@ try {
     .innerText();
   check(
     'у звіті вони стоять окремим рядком',
-    plText.includes('24') && plText.includes('не входять у вартість партії'),
+    plText.includes('не входять у вартість партії'),
     plText.replace(/\s+/g, ' ').slice(0, 110),
   );
 
+  // ─── 10b. Зарплата з податками ─────────────────────────────────────────────
+  console.log('\nЗарплата: ПДФО, військовий збір, ЄСВ');
+  await owner.goto(`${BASE}/payroll`);
+
+  for (const [name, dept, salary] of [
+    ['Оператор лінії Ткаченко І.', 'production', '20000'],
+    ['Пакувальниця Литвин О.', 'production', '20000'],
+    ['Бухгалтер Радченко Н.', 'admin', '30000'],
+  ]) {
+    await owner.fill('input[name="full_name"]', name);
+    await owner.selectOption('select[name="department"]', dept);
+    await owner.fill('input[name="monthly_salary"]', salary);
+    await owner.click('button:has-text("Додати")');
+    await owner.waitForTimeout(900);
+  }
+
+  await owner.click('button:has-text("Сформувати за місяць")');
+  await owner.waitForTimeout(1500);
+  await owner.reload();
+
+  const gross = await stat(owner, 'Нараховано');
+  const net = await stat(owner, 'До виплати');
+  const taxes = await stat(owner, 'Податки');
+  const payrollCost = await stat(owner, 'Загальна вартість');
+
+  check('нараховано 70 000 (40 000 цех + 30 000 адмін)', near(gross, 70000, 1), `${gross} грн`);
+  check(
+    'утримання й ЄСВ: 12 600 + 3 500 + 15 400',
+    near(taxes, 70000 * 0.18 + 70000 * 0.05 + 70000 * 0.22, 1),
+    `${taxes} грн`,
+  );
+  check('на руки 53 900', near(net, 70000 - 12600 - 3500, 1), `${net} грн`);
+  check('вартість для роботодавця 85 400', near(payrollCost, 85400, 1), `${payrollCost} грн`);
+
+  await owner.click('button:has-text("Провести")');
+  await owner.waitForTimeout(1200);
+  await owner.reload();
+  await owner.click('button:has-text("Виплатити")');
+  await owner.waitForTimeout(1200);
+  await owner.reload();
+  check('зарплату виплачено', (await owner.locator('text=Виплачено').count()) > 0);
+
+  // ─── 10c. Основні засоби з різними строками ────────────────────────────────
+  console.log('\nОсновні засоби: різні строки у двох книгах');
+  await owner.goto(`${BASE}/assets`);
+  await owner.fill('input[name="name"]', 'Сервер і облікова система');
+  await owner.selectOption('select[name="department"]', 'admin');
+  await owner.fill('input[name="cost"]', '240000');
+  await owner.fill('input[name="useful_life_months"]', '60');
+  await owner.fill('input[name="useful_life_mgmt"]', '120');
+  await owner.click('button:has-text("Додати")');
+  await owner.waitForTimeout(1200);
+
+  await owner.click('button:has-text("Нарахувати за місяць")');
+  await owner.waitForTimeout(1500);
+  await owner.reload();
+
+  const depreciation = await stat(owner, 'Амортизація місяця');
+  check(
+    'амортизація в бухобліку 4 000 при строку 60 міс.',
+    near(depreciation, 4000, 1),
+    `${depreciation} грн`,
+  );
+  const depHint = (await owner.locator('[data-stat="Амортизація місяця"]').innerText())
+    .replace(/[\s\u00a0]+/g, ' ');
+  check(
+    'в управлінському обліку вона інша — строк 120 міс.',
+    depHint.includes('в управлінському 2 000,00'),
+    depHint,
+  );
+
   // Повна вартість одиниці: сировина + цех, рознесений на випуск.
+  await owner.goto(`${BASE}/pl`);
+  const shopTotal = 6000 + 48800; // енергія + зарплата цеху з ЄСВ
   const fullCostRow = await rowCells(owner, 'Повна вартість одиниці');
   const fullCost = money(fullCostRow[1]);
   check(
     'управлінська повна вартість = сировина + цех/випуск',
-    near(fullCost, factoryCost + 24000 / 980, 0.05),
+    near(fullCost, factoryCost + shopTotal / 980, 0.05),
     `${fullCost} грн/шт проти ${factoryCost} в обліку`,
   );
 
@@ -447,12 +513,15 @@ try {
   );
 
   // Управлінська книга має дати рівно той результат, що й звіт P&L.
+  await owner.goto(`${BASE}/pl`);
+  const plResult = await stat(owner, 'Фінансовий результат');
+
   await owner.goto(`${BASE}/accounting?book=management`);
   const bookResult = await stat(owner, 'Результат на 791');
   check(
     'результат на 791 в управлінській книзі збігається з P&L',
-    near(bookResult, resultAfter - 24000, 1),
-    `${bookResult} грн проти ${resultAfter - 24000} у звіті`,
+    near(bookResult, plResult, 1),
+    `${bookResult} грн проти ${plResult} у звіті`,
   );
 
   await owner.goto(`${BASE}/accounting/difference`);
@@ -465,11 +534,35 @@ try {
     accResult > mgmtResult,
     `${accResult} проти ${mgmtResult} грн`,
   );
-  // 40 нерозпроданих одиниць із 980 несуть на собі 40/980 витрат цеху.
+  // Розбіжність складається з двох джерел: цех, що осів у 40 непроданих одиницях,
+  // мінус вища амортизація в бухобліку через коротший строк.
+  const shopInStock = (54800 * 40) / 980;
+  const depreciationGap = 4000 - 2000;
   check(
-    'розбіжність = вартість цеху в непроданих 40 шт',
-    near(gap, (24000 * 40) / 980, 1),
-    `${gap} грн`,
+    'розбіжність = цех у залишках мінус різниця амортизації',
+    near(gap, shopInStock - depreciationGap, 1),
+    `${gap} грн = ${Math.round(shopInStock)} − ${depreciationGap}`,
+  );
+
+  // ─── 11b. Баланс і звіт про фінансові результати ───────────────────────────
+  console.log('\nФінансова звітність');
+  for (const bookKey of ['accounting', 'management']) {
+    await owner.goto(`${BASE}/accounting/statements?book=${bookKey}`);
+    const assetTotal = await stat(owner, 'Актив');
+    const liabilityTotal = await stat(owner, 'Пасив');
+    check(
+      `баланс сходиться (${bookKey === 'accounting' ? 'бухгалтерський' : 'управлінський'})`,
+      near(assetTotal, liabilityTotal, 0.05),
+      `актив ${assetTotal} = пасив ${liabilityTotal}`,
+    );
+  }
+
+  await owner.goto(`${BASE}/accounting/statements?book=management`);
+  const statementResult = await stat(owner, 'Результат періоду');
+  check(
+    'прибуток у Ф2 збігається з результатом на 791',
+    near(statementResult, bookResult, 1),
+    `${statementResult} грн`,
   );
 
   const divergentRows = await owner.locator('table').last().locator('tbody tr').count();

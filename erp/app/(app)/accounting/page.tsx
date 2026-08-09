@@ -83,6 +83,9 @@ export default async function AccountingPage({
         action={
           <div className="flex gap-2">
             <LinkButton href={`/accounting/postings?period=${current}&book=${book}`}>Проводки</LinkButton>
+            <LinkButton href={`/accounting/statements?period=${current}&book=${book}`}>
+              Звітність
+            </LinkButton>
             <LinkButton href={`/accounting/difference?period=${current}`} variant="primary">
               Розбіжності
             </LinkButton>

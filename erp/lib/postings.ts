@@ -43,6 +43,15 @@ function expenseAccount(category: string): string {
 
 const PRODUCTION_CATEGORIES = ['production_salary', 'production_energy'];
 
+/**
+ * Рахунок витрат за підрозділом. Для цеху він різний у двох книгах: бухгалтерія
+ * веде його через виробництво, управлінський облік — одразу у витрати періоду.
+ */
+function departmentAccount(department: string, book: 'accounting' | 'management'): string {
+  if (department === 'production') return book === 'accounting' ? '23' : '91';
+  return department === 'sales' ? '93' : '92';
+}
+
 async function addBatch(
   client: PoolClient,
   entityId: string,
@@ -90,6 +99,8 @@ export async function regeneratePostings(
   );
 
   let count = 0;
+  // Витрати цеху збираються з кількох джерел і потім розносяться на випуск.
+  let shopCost = 0;
   const range = [entityId, period];
 
   // ─── Прихід запасів від постачальника ────────────────────────────────────
@@ -253,7 +264,6 @@ export async function regeneratePostings(
         and spent_on >= $2::date and spent_on < ($2::date + interval '1 month')`,
     range,
   );
-  let shopCost = 0;
   for (const e of expenses) {
     if (PRODUCTION_CATEGORIES.includes(e.category)) {
       shopCost += e.amount_net;
@@ -283,6 +293,106 @@ export async function regeneratePostings(
     count += await addBatch(client, entityId, 'write_off', null, w.day, 'Списання', [
       { debit: '947', credit: inventoryAccount(w.kind), amount: w.amount },
     ]);
+  }
+
+  // ─── Зарплата: нарахування, утримання, ЄСВ, виплата ──────────────────────
+  const { rows: payroll } = await client.query<{
+    run_id: string;
+    status: string;
+    paid_on: string | null;
+    period: string;
+    department: string;
+    gross: number;
+    pdfo: number;
+    military: number;
+    esv: number;
+    net: number;
+  }>(
+    `select r.id as run_id, r.status, r.paid_on, r.period, l.department,
+            sum(l.gross) as gross, sum(l.pdfo) as pdfo, sum(l.military) as military,
+            sum(l.esv) as esv, sum(l.net) as net
+       from payroll_runs r join payroll_lines l on l.run_id = r.id
+      where r.legal_entity_id = $1 and r.status <> 'draft' and r.period = $2::date
+      group by r.id, r.status, r.paid_on, r.period, l.department`,
+    range,
+  );
+
+  const monthEnd = new Date(new Date(period).getFullYear(), new Date(period).getMonth() + 1, 0)
+    .toISOString()
+    .slice(0, 10);
+
+  for (const p of payroll) {
+    const entries: Entry[] = [];
+    if (p.department === 'production') {
+      entries.push(
+        { debit: '23', credit: '661', amount: p.gross, book: 'accounting', note: 'Зарплата цеху у виробництво' },
+        { debit: '91', credit: '661', amount: p.gross, book: 'management', note: 'Зарплата цеху у витрати періоду' },
+        { debit: '23', credit: '651', amount: p.esv, book: 'accounting', note: 'ЄСВ цеху' },
+        { debit: '91', credit: '651', amount: p.esv, book: 'management', note: 'ЄСВ цеху' },
+      );
+      shopCost += Number(p.gross) + Number(p.esv);
+    } else {
+      const account = departmentAccount(p.department, 'accounting');
+      entries.push(
+        { debit: account, credit: '661', amount: p.gross, note: 'Нарахування зарплати' },
+        { debit: account, credit: '651', amount: p.esv, note: 'ЄСВ роботодавця' },
+      );
+    }
+
+    entries.push(
+      { debit: '661', credit: '6412', amount: p.pdfo, note: 'ПДФО' },
+      { debit: '661', credit: '6414', amount: p.military, note: 'Військовий збір' },
+    );
+    if (p.status === 'paid') {
+      entries.push({ debit: '661', credit: '311', amount: p.net, note: 'Виплата на картки' });
+    }
+
+    count += await addBatch(client, entityId, 'payroll', p.run_id, monthEnd, 'Зарплата за місяць', entries);
+  }
+
+  // ─── Придбання основних засобів ──────────────────────────────────────────
+  const { rows: acquisitions } = await client.query<{ id: string; acquired_on: string; cost: number; name: string }>(
+    `select id, acquired_on, cost, name from fixed_assets
+      where legal_entity_id = $1
+        and acquired_on >= $2::date and acquired_on < ($2::date + interval '1 month')`,
+    range,
+  );
+  for (const a of acquisitions) {
+    count += await addBatch(client, entityId, 'asset_acquisition', a.id, a.acquired_on, `Придбано ${a.name}`, [
+      { debit: '104', credit: '631', amount: a.cost },
+    ]);
+  }
+
+  // ─── Амортизація. Різні строки дають різні суми у двох книгах ────────────
+  const { rows: depreciation } = await client.query<{
+    run_id: string;
+    department: string;
+    accounting: number;
+    management: number;
+  }>(
+    `select r.id as run_id, l.department,
+            sum(l.amount_accounting) as accounting, sum(l.amount_management) as management
+       from depreciation_runs r join depreciation_lines l on l.run_id = r.id
+      where r.legal_entity_id = $1 and r.period = $2::date
+      group by r.id, l.department`,
+    range,
+  );
+  for (const d of depreciation) {
+    const accAccount = departmentAccount(d.department, 'accounting');
+    const mgmtAccount = departmentAccount(d.department, 'management');
+    const sameAccount = accAccount === mgmtAccount;
+    const sameAmount = Math.abs(Number(d.accounting) - Number(d.management)) < 0.005;
+
+    const entries: Entry[] =
+      sameAccount && sameAmount
+        ? [{ debit: accAccount, credit: '131', amount: d.accounting, note: 'Амортизація' }]
+        : [
+            { debit: accAccount, credit: '131', amount: d.accounting, book: 'accounting', note: 'Амортизація' },
+            { debit: mgmtAccount, credit: '131', amount: d.management, book: 'management', note: 'Амортизація' },
+          ];
+
+    if (d.department === 'production') shopCost += Number(d.accounting);
+    count += await addBatch(client, entityId, 'depreciation', d.run_id, monthEnd, 'Амортизація за місяць', entries);
   }
 
   // ─── Розподіл цеху на випуск: лише в бухгалтерській книзі ────────────────
