@@ -202,9 +202,10 @@ try {
 
   for (const [email, name, role] of USERS) {
     await client.query(
-      `insert into app_users (email, full_name, role, password_hash)
-       values ($1, $2, $3, $4)
-       on conflict (lower(email)) do update set full_name = excluded.full_name, role = excluded.role`,
+      `insert into app_users (email, full_name, role, password_hash, is_demo)
+       values ($1, $2, $3, $4, true)
+       on conflict (lower(email)) do update
+         set full_name = excluded.full_name, role = excluded.role, is_demo = true`,
       [email, name, role, await hashPassword(DEMO_PASSWORD)],
     );
   }

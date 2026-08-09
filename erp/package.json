@@ -10,7 +10,9 @@
     "db:migrate": "node --env-file-if-exists=.env.local scripts/migrate.mjs",
     "db:seed": "node --env-file-if-exists=.env.local scripts/seed.mjs",
     "db:setup": "npm run db:migrate && npm run db:seed",
-    "e2e": "node --env-file-if-exists=.env.local scripts/e2e.mjs"
+    "e2e": "node --env-file-if-exists=.env.local scripts/e2e.mjs",
+    "db:init": "node --env-file-if-exists=.env.local scripts/init-production.mjs",
+    "db:import": "node --env-file-if-exists=.env.local scripts/import.mjs"
   },
   "dependencies": {
     "next": "15.5.23",

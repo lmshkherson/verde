@@ -32,9 +32,20 @@ export const ROLE_LABELS: Record<Role, string> = {
   warehouse: 'Комірник',
 };
 
+/** Значення, з якими проєкт не має потрапити в бойове середовище. */
+const WEAK_SECRETS = ['dev', 'dev-secret', 'change-me', 'secret', 'test'];
+
 function secret(): string {
   const s = process.env.SESSION_SECRET;
   if (!s) throw new Error('SESSION_SECRET не заданий');
+
+  // Ключ підписує сесії: слабкий ключ означає, що будь-хто може підробити вхід
+  // під власником. У бойовому середовищі це не попередження, а зупинка.
+  if (process.env.NODE_ENV === 'production' && (s.length < 32 || WEAK_SECRETS.includes(s))) {
+    throw new Error(
+      'SESSION_SECRET заслабкий для бойового середовища. Згенеруйте: openssl rand -base64 32',
+    );
+  }
   return s;
 }
 
