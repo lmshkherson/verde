@@ -568,7 +568,64 @@ try {
   const divergentRows = await owner.locator('table').last().locator('tbody tr').count();
   check('видно проводки, що є лише в одній книзі', divergentRows >= 2, `${divergentRows} рядків`);
 
-  // ─── 12. Права доступу ─────────────────────────────────────────────────────
+  // ─── 12. Податкові накладні й декларація з ПДВ ─────────────────────────────
+  console.log('\nПодаткові накладні й декларація');
+  await owner.goto(`${BASE}/vat`);
+  await owner.click('button:has-text("Виписати накладні")');
+  await owner.waitForTimeout(2000);
+  await owner.reload();
+
+  const invoiceCount = await stat(owner, 'Накладних за період');
+  const invoiceVat = await stat(owner, 'ПДВ у накладних');
+  check(
+    'накладні виписано на обидва відвантаження',
+    near(invoiceCount, 2, 0.1),
+    `${invoiceCount} шт`,
+  );
+  check(
+    'ПДВ у накладних дорівнює податковому зобов’язанню',
+    near(invoiceVat, 640 * 29.75 * 0.2 + 300 * 21.5 * 0.2, 1),
+    `${invoiceVat} грн`,
+  );
+
+  const invoiceTable = await owner.locator('table').first().innerText();
+  check(
+    'покупцю-неплатнику проставлено умовний ІПН',
+    invoiceTable.includes('100000000000'),
+    'ФОП «Верде Роздріб» не платник ПДВ',
+  );
+
+  // Повторний запуск не має створити дублів — на відвантаження вже є накладна.
+  await owner.click('button:has-text("Виписати накладні")');
+  await owner.waitForTimeout(1600);
+  await owner.reload();
+  check(
+    'повторний запуск не дублює накладні',
+    near(await stat(owner, 'Накладних за період'), 2, 0.1),
+  );
+
+  await owner.click('button:has-text("Підготувати за місяць")');
+  await owner.waitForTimeout(1800);
+  await owner.reload();
+
+  const declaration = (await owner.locator('text=Податкові зобов’язання').first().locator('../..').innerText())
+    .replace(/[\s\u00a0]+/g, ' ');
+  const declLiability = money(declaration.split('Податкові зобов’язання')[1]);
+  const declCredit = money(declaration.split('Податковий кредит')[1]);
+  const declCarried = money(declaration.split('наступний період')[1]);
+
+  check(
+    'кредит перевищує зобов’язання, тож сплачувати нічого',
+    declCredit > declLiability,
+    `кредит ${declCredit} проти зобов’язання ${declLiability}`,
+  );
+  check(
+    'від’ємне значення перенесено повністю',
+    near(declCarried, declCredit - declLiability, 1),
+    `${declCarried} грн = ${declCredit} − ${declLiability}`,
+  );
+
+  // ─── 13. Права доступу ─────────────────────────────────────────────────────
   console.log('\nПрава доступу');
   const denied = await warehouse.goto(`${BASE}/reports`);
   check('комірника не пускає у звіти', denied.url().includes('denied=1'));

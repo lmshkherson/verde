@@ -158,14 +158,15 @@ const SUPPLIERS = [
   ['ТОВ «ПакЛайн Україна»', '39284710', 'Марина Дудник', '+380445556677', 21, true],
 ];
 
+// Останні два поля: ІПН платника ПДВ і чи є покупець платником.
 const CUSTOMERS = [
-  ['ТОВ «АТБ-Маркет»', 'network', '30487219', 'Ігор Панченко', '+380563334455', 'network', 45, 500000],
-  ['ТОВ «Фора»', 'network', '31859472', 'Наталія Гунько', '+380442223311', 'network', 30, 300000],
-  ['ТОВ «Здоров’я Дистрибʼюшн»', 'distributor', '40218374', 'Дмитро Сич', '+380671234567', 'distributor', 14, 200000],
-  ['Аптека «Бажаємо здоровʼя»', 'pharmacy', '39471028', 'Леся Ткач', '+380509876543', 'distributor', 7, 50000],
-  ['Мережа кав’ярень «Ранок»', 'horeca', '42917583', 'Богдан Мороз', '+380931112244', 'rrp', 0, 20000],
+  ['ТОВ «АТБ-Маркет»', 'network', '30487219', 'Ігор Панченко', '+380563334455', 'network', 45, 500000, '304872104871', true],
+  ['ТОВ «Фора»', 'network', '31859472', 'Наталія Гунько', '+380442223311', 'network', 30, 300000, '318594726543', true],
+  ['ТОВ «Здоров’я Дистрибʼюшн»', 'distributor', '40218374', 'Дмитро Сич', '+380671234567', 'distributor', 14, 200000, '402183712345', true],
+  ['Аптека «Бажаємо здоровʼя»', 'pharmacy', '39471028', 'Леся Ткач', '+380509876543', 'distributor', 7, 50000, '394710298765', true],
+  ['Мережа кав’ярень «Ранок»', 'horeca', '42917583', 'Богдан Мороз', '+380931112244', 'rrp', 0, 20000, null, false],
   // Власна роздрібна юрособа — продажі їй є реалізацією між своїми.
-  ['ФОП Ковальчук О.М. (наша роздрібна)', 'distributor', '3184507621', 'Олена Ковальчук', '+380671234000', 'distributor', 0, 0],
+  ['ФОП Ковальчук О.М. (наша роздрібна)', 'distributor', '3184507621', 'Олена Ковальчук', '+380671234000', 'distributor', 0, 0, null, false],
 ];
 
 const client = new pg.Client({
@@ -275,16 +276,30 @@ try {
     }
   }
 
-  for (const [name, kind, edrpou, contact, phone, level, terms, limit] of CUSTOMERS) {
+  for (const [name, kind, edrpou, contact, phone, level, terms, limit, ipn, isVat] of CUSTOMERS) {
     const { rows } = await client.query('select id from customers where name = $1', [name]);
     if (rows.length === 0) {
       await client.query(
-        `insert into customers (name, kind, edrpou, contact, phone, price_level, payment_terms_days, credit_limit)
-         values ($1, $2, $3, $4, $5, $6, $7, $8)`,
-        [name, kind, edrpou, contact, phone, level, terms, limit],
+        `insert into customers
+           (name, kind, edrpou, contact, phone, price_level, payment_terms_days, credit_limit, ipn, is_vat_payer)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+        [name, kind, edrpou, contact, phone, level, terms, limit, ipn, isVat],
       );
+    } else {
+      await client.query('update customers set ipn = $2, is_vat_payer = $3 where id = $1', [
+        rows[0].id,
+        ipn,
+        isVat,
+      ]);
     }
   }
+
+  // Коди для податкової накладної. Значення робочі, але їх треба звірити
+  // з довідниками — помилковий код є підставою не прийняти накладну.
+  await client.query(
+    `update items set uktzed = coalesce(uktzed, '1806 90 90 00'), uom_code = coalesce(uom_code, '2009')
+      where kind = 'finished'`,
+  );
 
   // Клієнт «наша роздрібна» вказує на юрособу — це вмикає реалізацію між своїми.
   await client.query(
