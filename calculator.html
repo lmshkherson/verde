@@ -78,6 +78,15 @@
     padding:.62rem .2rem .62rem .8rem;min-width:0;
   }
   .ctrl .unit{font-size:.75rem;font-weight:700;opacity:.5;padding:0 .8rem 0 .3rem;white-space:nowrap}
+  .ctrl select{
+    width:100%;border:0;background:transparent;outline:none;cursor:pointer;
+    font-family:'Montserrat',sans-serif;font-weight:700;font-size:.88rem;color:var(--ink);
+    padding:.62rem 1.6rem .62rem .8rem;min-width:0;appearance:none;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+    background-image:linear-gradient(45deg,transparent 50%,var(--green-deep) 50%),linear-gradient(135deg,var(--green-deep) 50%,transparent 50%);
+    background-position:calc(100% - 15px) 55%,calc(100% - 10px) 55%;
+    background-size:5px 5px,5px 5px;background-repeat:no-repeat;
+  }
 
   /* ---------- RESULTS ---------- */
   .sticky{position:sticky;top:88px}
@@ -194,20 +203,41 @@
   <div>
 
     <div class="card">
+      <h2><span class="dot"></span>0. Товар і канал</h2>
+      <p class="hint">Вибери позицію — ціна та РРЦ підставляться з прайсу. Далі їх можна правити вручну під конкретні перемовини.</p>
+      <div class="grid2">
+        <div class="field">
+          <label>Позиція з прайсу</label>
+          <div class="ctrl"><select id="sku"></select></div>
+        </div>
+        <div class="field">
+          <label>Канал продажу</label>
+          <div class="ctrl"><select id="channel">
+            <option value="dist">Дистриб'ютор</option>
+            <option value="retail">Мережа напряму / роздріб</option>
+          </select></div>
+        </div>
+      </div>
+      <div class="warnbox" id="skuNote"></div>
+    </div>
+
+    <div class="card">
       <h2><span class="dot"></span>1. Ціна та собівартість</h2>
-      <p class="hint">Усі суми — за одиницю продукції, <b>без ПДВ</b>.</p>
+      <p class="hint">Усі суми — за одиницю продукції, <b>без ПДВ</b>. Собівартості у прайсі немає:
+        введи свою — вона запам'ятається для обраної позиції й підставиться наступного разу.
+        Значення нижче — <b>заглушка</b>, заміни її на реальну.</p>
       <div class="grid3">
         <div class="field">
           <label>Відпускна ціна</label>
-          <div class="ctrl"><input id="price" inputmode="decimal" value="40"><span class="unit">грн</span></div>
+          <div class="ctrl"><input id="price" inputmode="decimal" value="21.5"><span class="unit">грн</span></div>
         </div>
         <div class="field">
           <label>Собівартість</label>
-          <div class="ctrl"><input id="cogs" inputmode="decimal" value="24"><span class="unit">грн</span></div>
+          <div class="ctrl"><input id="cogs" inputmode="decimal" value="12"><span class="unit">грн</span></div>
         </div>
         <div class="field">
           <label>Наша логістика</label>
-          <div class="ctrl"><input id="ownLog" inputmode="decimal" value="1.5"><span class="unit">грн/од</span></div>
+          <div class="ctrl"><input id="ownLog" inputmode="decimal" value="1"><span class="unit">грн/од</span></div>
         </div>
       </div>
     </div>
@@ -297,8 +327,8 @@
           <div class="ctrl"><input id="minMargin" inputmode="decimal" value="20"><span class="unit">%</span></div>
         </div>
         <div class="field">
-          <label>Націнка мережі на полиці</label>
-          <div class="ctrl"><input id="netMarkup" inputmode="decimal" value="35"><span class="unit">%</span></div>
+          <label>РРЦ — ціна полиці з ПДВ</label>
+          <div class="ctrl"><input id="rrp" inputmode="decimal" value="50"><span class="unit">грн</span></div>
         </div>
       </div>
     </div>
@@ -380,13 +410,41 @@
 </footer>
 
 <script>
+/* ---------------- прайс-лист ----------------
+   dist   — ціна дистриб'ютора без ПДВ
+   retail — ціна в мережу / роздріб без ПДВ
+   rrp    — рекомендована ціна полиці з ПДВ
+   Джерело — аркуш «Специфікація». Оновлювати разом із прайсом: правити тільки тут.
+   PRICE_DATE — необов'язкова мітка версії прайсу, показується в підказці.
+--------------------------------------------- */
+const PRICE_DATE = '';
+const PRICELIST = [
+  {g:'Набори цукерок', n:'Набір цукерок Бестселерів 3 смаки VERDE 86 г.',            dist:87.5, retail:115.5,  rrp:199},
+  {g:'Набори цукерок', n:'Набір цукерок вишня-марципан VERDE 85 г.',                 dist:87.5, retail:115.5,  rrp:199},
+  {g:'Набори цукерок', n:'Набір цукерок з колагеном шоко-мигдаль, 5 шт. 75 г.',      dist:93,   retail:123.75, rrp:249},
+  {g:'Набори цукерок', n:'Набір цукерок з колагеном Мікс 3 смаки, 5 шт. 75 г.',      dist:93,   retail:123.75, rrp:249},
+  {g:'Батончики Зарядись', n:'Батончик Зарядись, магній-кокос, 25 г',                dist:21.5, retail:27,     rrp:50},
+  {g:'Батончики Зарядись', n:'Батончик Зарядись, омега-3-фісташка, 30 г',            dist:21.5, retail:27,     rrp:50},
+  {g:'Батончики Зарядись', n:'Батончик Зарядись, вітамін D3-мигдаль, 30 г',          dist:21.5, retail:27,     rrp:50},
+  {g:'Батончики Зарядись', n:'Батончик Зарядись, вітамін В12-фундук, 30 г',          dist:21.5, retail:27,     rrp:50},
+  {g:'Батончики Зарядись', n:'Батончик Зарядись, гуарана-арахіс, 30 г',              dist:21.5, retail:27,     rrp:50},
+  {g:'Батончики з колагеном', n:'Батончик з колагеном кокос, 35 г.',                 dist:30.5, retail:40.75,  rrp:79},
+  {g:'Батончики з колагеном', n:'Батончик з колагеном фісташка, 30 г.',              dist:30.5, retail:40.75,  rrp:79},
+  {g:'Набори батончиків', n:'Набір батончиків з гуараною, арахісом та білим шоколадом, 150 г',      dist:null, retail:113, rrp:199},
+  {g:'Набори батончиків', n:'Набір батончиків з вітаміном D3, мигдалем та білим шоколадом, 150 г',  dist:null, retail:113, rrp:199},
+  {g:'Набори батончиків', n:'Набір батончиків з вітаміном В₁₂, фундуком та чорним шоколадом, 150 г',dist:null, retail:113, rrp:199},
+  {g:'Набори батончиків', n:'Набір батончиків з магнієм, кокосом та білим шоколадом, 125 г',        dist:null, retail:113, rrp:199},
+  {g:'Набори батончиків', n:'Набір батончиків з омега-3, фісташкою та білим шоколадом, 150 г',      dist:null, retail:113, rrp:199},
+  {g:'Набори батончиків', n:'Набір батончиків Мікс 5 смаків з вітамінами, 145 г',                   dist:null, retail:113, rrp:199}
+];
+
 /* ---------------- helpers ---------------- */
-const IDS = ['price','cogs','ownLog','bRetro','bMkt','bLog','bPromo','bOther',
+const IDS = ['sku','channel','price','cogs','ownLog','bRetro','bMkt','bLog','bPromo','bOther',
              'fListing','fPromo','fOther','volume','deferDays','moneyRate','vat',
-             'targetMargin','minMargin','netMarkup'];
-const DEFAULTS = {price:40,cogs:24,ownLog:1.5,bRetro:4,bMkt:3,bLog:3,bPromo:0,bOther:0,
+             'targetMargin','minMargin','rrp'];
+const DEFAULTS = {sku:'4',channel:'dist',price:21.5,cogs:12,ownLog:1,bRetro:4,bMkt:3,bLog:3,bPromo:0,bOther:0,
              fListing:15000,fPromo:0,fOther:0,volume:10000,deferDays:21,moneyRate:20,vat:20,
-             targetMargin:30,minMargin:20,netMarkup:35};
+             targetMargin:30,minMargin:20,rrp:50};
 
 const el = id => document.getElementById(id);
 const num = id => {
@@ -469,15 +527,17 @@ function model(){
     return kMax/((1+vat)*r)*365;
   })();
 
-  // полиця
+  // полиця: РРЦ задана прайсом, тож націнку мережі виводимо з неї, а не навпаки
   const priceWithVat = P*(1+vat);
-  const shelf = priceWithVat*(1 + num('netMarkup')/100);
+  const rrp = num('rrp');
+  const netMarkup = priceWithVat > 0 ? (rrp/priceWithVat - 1)*100 : 0;
+  const netMargin  = rrp > 0 ? (rrp - priceWithVat)/rrp*100 : 0;
 
   return {P,cogs,ownLog,costTotal,bonuses,Bpct,B,k,vol,fixTotal,Fu,vat,
           bonusMoney,deferMoney,NN,profit,margin,markupOnCost,
           priceTarget,priceMin,priceBreakeven,
           maxBonusTarget,maxBonusMin,maxBonusBE,maxDefer,
-          priceWithVat,shelf,
+          priceWithVat,rrp,netMarkup,netMargin,
           targetMargin:num('targetMargin'), minMargin:num('minMargin')};
 }
 
@@ -491,6 +551,7 @@ function verdictOf(m){
 function render(){
   const m = model();
   el('bSum').value = new Intl.NumberFormat('uk-UA',{maximumFractionDigits:2}).format(m.Bpct);
+  el('skuNote').innerHTML = skuNoteHtml();
 
   /* --- вердикт --- */
   const v = verdictOf(m);
@@ -554,8 +615,10 @@ function render(){
 
   /* --- полиця та період --- */
   rows = '';
-  R('Ціна для мережі з ПДВ', money(m.priceWithVat) + ' ₴');
-  R('Полична ціна з ПДВ (націнка ' + pct(num('netMarkup')) + ')', money(m.shelf) + ' ₴');
+  R('Наша ціна з ПДВ', money(m.priceWithVat) + ' ₴');
+  R('РРЦ — ціна полиці з ПДВ', money(m.rrp) + ' ₴');
+  R('Націнка мережі до РРЦ', pct(m.netMarkup), m.netMarkup > 0 ? '' : 'neg');
+  R('Маржа мережі від РРЦ', pct(m.netMargin), m.netMargin > 0 ? '' : 'neg');
   T('Обсяг періоду', money0(m.vol) + ' од.');
   R('Валова виручка по прайсу', money0(m.P*m.vol) + ' ₴');
   R('Бонуси мережі за період', '− ' + money0(m.bonusMoney*m.vol) + ' ₴', 'neg');
@@ -614,8 +677,10 @@ function summaryText(){
   const v = verdictOf(m);
   const label = {ok:'ПІДХОДИТЬ', warn:'НА МЕЖІ', bad:'НЕ ПІДХОДИТЬ'}[v];
   const name = el('dealName').value.trim();
+  const chan = el('channel').value === 'dist' ? "дистриб'ютор" : 'мережа напряму';
   return [
     'VERDE — прорахунок умови' + (name ? ': ' + name : ''),
+    'Канал: ' + chan,
     '',
     'Відпускна ціна (без ПДВ): ' + money(m.P) + ' грн',
     'Собівартість + логістика: ' + money(m.costTotal) + ' грн',
@@ -627,6 +692,8 @@ function summaryText(){
     'Чиста виручка (net-net): ' + money(m.NN) + ' грн',
     'Прибуток: ' + money(m.profit) + ' грн/од · маржа ' + pct(m.margin),
     'Прибуток за період: ' + money0(m.profit*m.vol) + ' грн',
+    '',
+    'РРЦ: ' + money(m.rrp) + ' грн з ПДВ · націнка мережі ' + pct(m.netMarkup),
     '',
     'Мінімальна ціна (' + pct(m.minMargin) + '): ' + (m.priceMin === null ? '—' : money(m.priceMin) + ' грн'),
     'Цільова ціна (' + pct(m.targetMargin) + '): ' + (m.priceTarget === null ? '—' : money(m.priceTarget) + ' грн'),
@@ -659,6 +726,71 @@ function resetAll(){
   render();
 }
 
+/* ---------------- прайс: список і підстановка ---------------- */
+function buildSkuList(){
+  const sel = el('sku');
+  let html = '<option value="">— обрати позицію —</option>';
+  let group = null;
+  PRICELIST.forEach((p,i) => {
+    if(p.g !== group){ if(group) html += '</optgroup>'; html += '<optgroup label="' + p.g + '">'; group = p.g; }
+    html += '<option value="' + i + '">' + escapeHtml(p.n) + '</option>';
+  });
+  sel.innerHTML = html + '</optgroup>';
+}
+
+function currentSku(){
+  const i = el('sku').value;
+  return i === '' ? null : PRICELIST[+i];
+}
+
+function listPriceOf(p){ return el('channel').value === 'dist' ? p.dist : p.retail; }
+
+// підставляє ціну, РРЦ і збережену собівартість обраної позиції
+function applySku(){
+  const p = currentSku();
+  if(!p){ render(); return; }
+
+  const listPrice = listPriceOf(p);
+  if(listPrice !== null) el('price').value = String(listPrice);
+  el('rrp').value = String(p.rrp);
+
+  const saved = getCogs()[p.n];
+  if(saved !== undefined) el('cogs').value = String(saved);
+
+  if(!el('dealName').value.trim()) el('dealName').value = p.n;
+  render();
+}
+
+// підказка під селектом; перераховується в render(), щоб ловити ручні правки ціни
+function skuNoteHtml(){
+  const p = currentSku();
+  if(!p) return '';
+  const listPrice = listPriceOf(p);
+  if(listPrice === null){
+    return 'Для цієї позиції у прайсі <b>немає ціни дистриб\'ютора</b> — постав відпускну ціну вручну ' +
+           'або рахуй як «мережа напряму» (' + money(p.retail) + ' ₴ без ПДВ).';
+  }
+  let s = 'З прайсу' + (PRICE_DATE ? ' (' + PRICE_DATE + ')' : '') + ': <b>' + money(listPrice) + ' ₴</b> без ПДВ · ' +
+          money(listPrice*(1 + num('vat')/100)) + ' ₴ з ПДВ · РРЦ ' + money(p.rrp) + ' ₴.';
+  const cur = num('price');
+  if(Math.abs(cur - listPrice) > 0.005){
+    const d = (cur - listPrice)/listPrice*100;
+    s += ' Зараз у полі ' + money(cur) + ' ₴ — це ' + (d > 0 ? '+' : '−') + pct(Math.abs(d)) + ' до прайсу.';
+  }
+  return s;
+}
+
+/* собівартості немає у прайсі, тож запам'ятовуємо введену — по позиції, локально */
+const COGS_KEY = 'verde_calc_cogs';
+function getCogs(){ try{ return JSON.parse(localStorage.getItem(COGS_KEY) || '{}'); }catch(e){ return {}; } }
+function rememberCogs(){
+  const p = currentSku();
+  if(!p) return;
+  const c = getCogs();
+  c[p.n] = el('cogs').value;
+  try{ localStorage.setItem(COGS_KEY, JSON.stringify(c)); }catch(e){}
+}
+
 /* ---------------- storage ---------------- */
 const LAST_KEY = 'verde_calc_last';
 const DEALS_KEY = 'verde_calc_deals';
@@ -671,8 +803,9 @@ function saveLast(){ try{ localStorage.setItem(LAST_KEY, JSON.stringify(readStat
 function loadLast(){
   try{
     const s = JSON.parse(localStorage.getItem(LAST_KEY) || 'null');
-    if(s) writeState(s);
+    if(s){ writeState(s); return true; }
   }catch(e){}
+  return false;
 }
 
 function getDeals(){ try{ return JSON.parse(localStorage.getItem(DEALS_KEY) || '[]'); }catch(e){ return []; } }
@@ -747,8 +880,12 @@ function escapeHtml(s){
 }
 
 /* ---------------- init ---------------- */
-loadLast();
+buildSkuList();
+if(!loadLast()) writeState(DEFAULTS);   // перший запуск — стартуємо з позиції за замовчуванням
 IDS.forEach(id => el(id).addEventListener('input', render));
+el('sku').addEventListener('change', applySku);
+el('channel').addEventListener('change', applySku);
+el('cogs').addEventListener('input', rememberCogs);
 render();
 </script>
 
