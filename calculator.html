@@ -206,6 +206,21 @@
   <div>
 
     <div class="card">
+      <h2><span class="dot"></span>Клієнт</h2>
+      <p class="hint">Кожен прорахунок зберігається під обраним клієнтом. Так видно всі умови по мережі в одному місці
+        і можна порівняти позиції між собою.</p>
+      <div class="field">
+        <label>Мережа / клієнт</label>
+        <div class="ctrl"><select id="client"></select></div>
+      </div>
+      <div class="btns">
+        <button class="solid" onclick="addClient()">+ Додати клієнта</button>
+        <button onclick="renameClient()">Перейменувати</button>
+        <button class="ghost" onclick="deleteClient()">Видалити</button>
+      </div>
+    </div>
+
+    <div class="card">
       <h2><span class="dot"></span>0. Товар і канал</h2>
       <p class="hint">Вибери позицію — ціна та РРЦ підставляться з прайсу. Далі їх можна правити вручну під конкретні перемовини.</p>
       <div class="grid2">
@@ -238,8 +253,17 @@
           <div class="ctrl"><input id="basePrice" inputmode="decimal" value="21.5"><span class="unit">грн</span></div>
         </div>
         <div class="field">
-          <label>Наша логістика (якщо веземо самі)</label>
+          <label>Наша логістика</label>
           <div class="ctrl"><input id="ownLog" inputmode="decimal" value="0"><span class="unit">грн/од</span></div>
+        </div>
+      </div>
+      <div class="grid2" style="margin-top:.85rem">
+        <div class="field">
+          <label>Доставка</label>
+          <div class="ctrl"><select id="delivery">
+            <option value="rc">На РЦ клієнта — логістика не наша</option>
+            <option value="tt">РЦ немає, веземо на точки — логістика наша</option>
+          </select></div>
         </div>
       </div>
     </div>
@@ -323,7 +347,7 @@
       <div class="grid3">
         <div class="field">
           <label>Цільовий запас над базою</label>
-          <div class="ctrl"><input id="targetGap" inputmode="decimal" value="10"><span class="unit">%</span></div>
+          <div class="ctrl"><input id="targetGap" inputmode="decimal" value="5"><span class="unit">%</span></div>
         </div>
         <div class="field">
           <label>Мінімально допустимий запас</label>
@@ -345,18 +369,21 @@
     </div>
 
     <div class="card">
-      <h2><span class="dot"></span>Збережені прорахунки</h2>
+      <h2><span class="dot"></span>Збережені прорахунки <span id="dealsFor"></span></h2>
       <div class="grid2" style="margin-bottom:.9rem">
         <div class="field">
-          <label>Назва (мережа / клієнт / SKU)</label>
-          <div class="ctrl"><input id="dealName" placeholder="Напр.: Сільпо — Зарядись 40 г"></div>
+          <label>Назва прорахунку (зазвичай — позиція)</label>
+          <div class="ctrl"><input id="dealName" placeholder="Напр.: Зарядись магній-кокос, 25 г"></div>
         </div>
         <div class="field" style="display:flex;align-items:flex-end">
           <button class="solid" style="width:100%" onclick="saveDeal()">Зберегти поточний</button>
         </div>
       </div>
+      <div class="btns" style="margin-top:0;margin-bottom:.9rem">
+        <button class="ghost mini-btn" id="scopeBtn" onclick="toggleScope()">Показати всіх клієнтів</button>
+      </div>
       <div class="tbl-wrap"><table id="dealsTable"></table></div>
-      <div class="empty" id="dealsEmpty">Ще нічого не збережено. Прорахуй умову і натисни «Зберегти поточний» — так зручно порівнювати мережі між собою.</div>
+      <div class="empty" id="dealsEmpty">Ще нічого не збережено. Прорахуй умову і натисни «Зберегти поточний» — так зручно порівнювати позиції всередині мережі.</div>
     </div>
 
   </div>
@@ -434,21 +461,22 @@ const PRICELIST = [
   {g:'Батончики Зарядись', n:'Батончик Зарядись, гуарана-арахіс, 30 г',              dist:21.5, retail:27,     rrp:50},
   {g:'Батончики з колагеном', n:'Батончик з колагеном кокос, 35 г.',                 dist:30.5, retail:40.75,  rrp:79},
   {g:'Батончики з колагеном', n:'Батончик з колагеном фісташка, 30 г.',              dist:30.5, retail:40.75,  rrp:79},
-  {g:'Набори батончиків', n:'Набір батончиків з гуараною, арахісом та білим шоколадом, 150 г',      dist:null, retail:113, rrp:199},
-  {g:'Набори батончиків', n:'Набір батончиків з вітаміном D3, мигдалем та білим шоколадом, 150 г',  dist:null, retail:113, rrp:199},
-  {g:'Набори батончиків', n:'Набір батончиків з вітаміном В₁₂, фундуком та чорним шоколадом, 150 г',dist:null, retail:113, rrp:199},
-  {g:'Набори батончиків', n:'Набір батончиків з магнієм, кокосом та білим шоколадом, 125 г',        dist:null, retail:113, rrp:199},
-  {g:'Набори батончиків', n:'Набір батончиків з омега-3, фісташкою та білим шоколадом, 150 г',      dist:null, retail:113, rrp:199},
-  {g:'Набори батончиків', n:'Набір батончиків Мікс 5 смаків з вітамінами, 145 г',                   dist:null, retail:113, rrp:199}
+  {g:'Набори батончиків', n:'Набір батончиків з гуараною, арахісом та білим шоколадом, 150 г',      dist:107.5, retail:113, rrp:199},
+  {g:'Набори батончиків', n:'Набір батончиків з вітаміном D3, мигдалем та білим шоколадом, 150 г',  dist:107.5, retail:113, rrp:199},
+  {g:'Набори батончиків', n:'Набір батончиків з вітаміном В₁₂, фундуком та чорним шоколадом, 150 г',dist:107.5, retail:113, rrp:199},
+  {g:'Набори батончиків', n:'Набір батончиків з магнієм, кокосом та білим шоколадом, 125 г',        dist:107.5, retail:113, rrp:199},
+  {g:'Набори батончиків', n:'Набір батончиків з омега-3, фісташкою та білим шоколадом, 150 г',      dist:107.5, retail:113, rrp:199},
+  {g:'Набори батончиків', n:'Набір батончиків Мікс 5 смаків з вітамінами, 145 г',                   dist:107.5, retail:113, rrp:199}
 ];
 
 /* ---------------- helpers ---------------- */
-const IDS = ['sku','channel','price','basePrice','ownLog','bRetro','bMkt','bLog','bPromo','bOther',
+const IDS = ['client','sku','channel','delivery','price','basePrice','ownLog','bRetro','bMkt','bLog','bPromo','bOther',
              'fListing','fPromo','fOther','volume','deferDays','moneyRate','vat',
              'targetGap','minGap','rrp'];
-const DEFAULTS = {sku:'4',channel:'retail',price:27,basePrice:21.5,ownLog:0,bRetro:4,bMkt:3,bLog:3,bPromo:0,bOther:0,
+const DEFAULTS = {client:'',sku:'4',channel:'retail',delivery:'rc',price:27,basePrice:21.5,ownLog:0,
+             bRetro:4,bMkt:3,bLog:3,bPromo:0,bOther:0,
              fListing:15000,fPromo:0,fOther:0,volume:10000,deferDays:21,moneyRate:20,vat:20,
-             targetGap:10,minGap:0,rrp:50};
+             targetGap:5,minGap:0,rrp:50};
 
 const el = id => document.getElementById(id);
 const num = id => {
@@ -474,7 +502,10 @@ const pct = x => isFinite(x)
 ---------------------------------------------- */
 function model(){
   const P = num('price');
-  const base = num('basePrice'), ownLog = num('ownLog');
+  const base = num('basePrice');
+  // логістика лягає на нас лише коли у клієнта немає РЦ і ми розвозимо по точках
+  const ownDelivery = el('delivery').value === 'tt';
+  const ownLog = ownDelivery ? num('ownLog') : 0;
   const bonuses = [
     {key:'Ретро-бонус',    p:num('bRetro'), color:'#0E7A33'},
     {key:'Маркетинговий',  p:num('bMkt'),   color:'#1DB954'},
@@ -531,7 +562,7 @@ function model(){
   const netMarkup = priceWithVat > 0 ? (rrp/priceWithVat - 1)*100 : 0;
   const netMargin  = rrp > 0 ? (rrp - priceWithVat)/rrp*100 : 0;
 
-  return {P,base,ownLog,bonuses,Bpct,B,k,vol,fixTotal,Fu,vat,
+  return {P,base,ownLog,ownDelivery,bonuses,Bpct,B,k,vol,fixTotal,Fu,vat,
           bonusMoney,deferMoney,NN,gap,gapPct,erosion,belowBase,
           priceTarget,priceMin,priceFloor,
           maxBonusTarget,maxBonusMin,maxBonusFloor,maxDefer,
@@ -551,6 +582,10 @@ function render(){
   const m = model();
   el('bSum').value = new Intl.NumberFormat('uk-UA',{maximumFractionDigits:2}).format(m.Bpct);
   el('skuNote').innerHTML = skuNoteHtml();
+
+  // логістика редагується лише коли веземо самі
+  el('ownLog').disabled = !m.ownDelivery;
+  el('ownLog').parentElement.style.opacity = m.ownDelivery ? '1' : '.45';
 
   /* --- вердикт --- */
   const v = verdictOf(m);
@@ -699,7 +734,8 @@ function summaryText(){
   const sign = x => (x >= 0 ? '+' : '−');
   return [
     'VERDE — прорахунок умови' + (name ? ': ' + name : ''),
-    'Канал: ' + chan,
+    'Клієнт: ' + clientName(el('client').value),
+    'Канал: ' + chan + ' · доставка: ' + (m.ownDelivery ? 'на точки, логістика наша' : 'на РЦ клієнта'),
     '',
     'Відпускна ціна (без ПДВ): ' + money(m.P) + ' грн',
     'Дистриб\'юторська ціна (база): ' + money(m.base) + ' грн',
@@ -802,6 +838,70 @@ function skuNoteHtml(){
   return s;
 }
 
+/* ---------------- клієнти ---------------- */
+const CLIENTS_KEY = 'verde_calc_clients';
+
+function getClients(){ try{ return JSON.parse(localStorage.getItem(CLIENTS_KEY) || '[]'); }catch(e){ return []; } }
+function setClients(a){ try{ localStorage.setItem(CLIENTS_KEY, JSON.stringify(a)); }catch(e){} }
+function clientName(id){
+  if(!id) return 'Без клієнта';
+  const c = getClients().find(c => c.id === id);
+  return c ? c.name : 'Видалений клієнт';
+}
+function newId(){ return 'c' + (getClients().reduce((m,c)=>Math.max(m, +(c.id||'c0').slice(1) || 0), 0) + 1); }
+
+function renderClientList(){
+  const sel = el('client'), keep = sel.value;
+  const list = getClients();
+  sel.innerHTML = '<option value="">— оберіть клієнта —</option>' +
+    list.map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('');
+  sel.value = list.some(c => c.id === keep) ? keep : '';
+}
+
+function addClient(){
+  const n = (prompt('Назва мережі або клієнта:') || '').trim();
+  if(!n) return;
+  const list = getClients();
+  if(list.some(c => c.name.toLowerCase() === n.toLowerCase())){
+    alert('Такий клієнт уже є.');
+    el('client').value = list.find(c => c.name.toLowerCase() === n.toLowerCase()).id;
+    render(); return;
+  }
+  const id = newId();
+  list.push({id, name:n});
+  setClients(list);
+  renderClientList();
+  el('client').value = id;
+  render();
+}
+
+function renameClient(){
+  const id = el('client').value;
+  if(!id){ alert('Спочатку обери клієнта.'); return; }
+  const list = getClients();
+  const c = list.find(c => c.id === id);
+  const n = (prompt('Нова назва:', c.name) || '').trim();
+  if(!n || n === c.name) return;
+  c.name = n;
+  setClients(list);
+  renderClientList();
+  el('client').value = id;
+  render();
+}
+
+function deleteClient(){
+  const id = el('client').value;
+  if(!id){ alert('Спочатку обери клієнта.'); return; }
+  const name = clientName(id);
+  const mine = getDeals().filter(d => d.clientId === id);
+  if(!confirm('Видалити «' + name + '»' + (mine.length ? ' разом із прорахунками (' + mine.length + ' шт.)' : '') + '?')) return;
+  setClients(getClients().filter(c => c.id !== id));
+  setDeals(getDeals().filter(d => d.clientId !== id));
+  renderClientList();
+  el('client').value = '';
+  render();
+}
+
 /* ---------------- storage ---------------- */
 const LAST_KEY = 'verde_calc_last';
 const DEALS_KEY = 'verde_calc_deals';
@@ -823,13 +923,21 @@ function getDeals(){ try{ return JSON.parse(localStorage.getItem(DEALS_KEY) || '
 function setDeals(d){ try{ localStorage.setItem(DEALS_KEY, JSON.stringify(d)); }catch(e){} }
 
 function saveDeal(){
+  const clientId = el('client').value;
+  if(!clientId){
+    if(!confirm('Клієнта не обрано. Додати нового зараз?')) return;
+    addClient();
+    if(!el('client').value) return;
+    return saveDeal();
+  }
   const name = el('dealName').value.trim();
-  if(!name){ alert('Спочатку вкажи назву — мережу, клієнта або SKU.'); el('dealName').focus(); return; }
+  if(!name){ alert('Вкажи назву прорахунку — зазвичай це позиція.'); el('dealName').focus(); return; }
+
   const deals = getDeals();
-  const rec = {name, state:readState(), ts:Date.now()};
-  const i = deals.findIndex(d => d.name === name);
+  const rec = {clientId, name, state:readState(), ts:Date.now()};
+  const i = deals.findIndex(d => d.clientId === clientId && d.name === name);
   if(i >= 0){
-    if(!confirm('«' + name + '» уже збережено. Перезаписати?')) return;
+    if(!confirm('«' + name + '» для клієнта «' + clientName(clientId) + '» уже збережено. Перезаписати?')) return;
     deals[i] = rec;
   } else deals.push(rec);
   setDeals(deals);
@@ -851,19 +959,37 @@ function deleteDeal(i){
   deals.splice(i,1); setDeals(deals); renderDeals();
 }
 
+let showAllClients = false;
+function toggleScope(){
+  showAllClients = !showAllClients;
+  el('scopeBtn').textContent = showAllClients ? 'Тільки поточний клієнт' : 'Показати всіх клієнтів';
+  renderDeals();
+}
+
 function renderDeals(){
-  const deals = getDeals();
+  const clientId = el('client').value;
+  const all = getDeals().map((d,i) => ({d, i}));
+  const list = showAllClients ? all : all.filter(x => x.d.clientId === clientId);
+
+  el('dealsFor').textContent = showAllClients ? '· усі клієнти'
+                             : (clientId ? '· ' + clientName(clientId) : '');
   const table = el('dealsTable');
-  el('dealsEmpty').style.display = deals.length ? 'none' : 'block';
-  if(!deals.length){ table.innerHTML = ''; return; }
+  const empty = el('dealsEmpty');
+  empty.style.display = list.length ? 'none' : 'block';
+  empty.textContent = all.length && !list.length
+    ? (clientId ? 'Для «' + clientName(clientId) + '» ще немає прорахунків. Натисни «Показати всіх клієнтів», щоб побачити решту.'
+                : 'Обери клієнта, щоб побачити його прорахунки, або натисни «Показати всіх клієнтів».')
+    : 'Ще нічого не збережено. Прорахуй умову і натисни «Зберегти поточний» — так зручно порівнювати позиції всередині мережі.';
+  if(!list.length){ table.innerHTML = ''; return; }
 
   const saved = readState();          // поточний стан, щоб повернути після прорахунку
-  const rows = deals.map((d,i) => {
+  const rows = list.map(({d, i}) => {
     writeState(d.state);
     const m = model();
     const v = verdictOf(m);
     const pillTxt = m.belowBase ? '🚩 Нижче бази' : {ok:'Підходить', warn:'На межі', bad:'Ні'}[v];
     return `<tr>
+      ${showAllClients ? `<td>${escapeHtml(clientName(d.clientId))}</td>` : ''}
       <td>${escapeHtml(d.name)}</td>
       <td>${money(m.P)}</td>
       <td>${money(m.base)}</td>
@@ -882,6 +1008,7 @@ function renderDeals(){
   writeState(saved);
 
   table.innerHTML = `<thead><tr>
+      ${showAllClients ? '<th>Клієнт</th>' : ''}
       <th>Назва</th><th>Ціна</th><th>База</th><th>Бонуси</th><th>Відтерм.</th>
       <th>Чиста ціна</th><th>Запас</th><th>Запас / період</th><th>Рішення</th><th></th>
     </tr></thead><tbody>${rows}</tbody>`;
@@ -893,10 +1020,12 @@ function escapeHtml(s){
 
 /* ---------------- init ---------------- */
 buildSkuList();
+renderClientList();
 if(!loadLast()) writeState(DEFAULTS);   // перший запуск — стартуємо з позиції за замовчуванням
 IDS.forEach(id => el(id).addEventListener('input', render));
 el('sku').addEventListener('change', applySku);
 el('channel').addEventListener('change', applySku);
+['client','delivery'].forEach(id => el(id).addEventListener('change', render));
 render();
 </script>
 
