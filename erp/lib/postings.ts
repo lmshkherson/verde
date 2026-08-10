@@ -113,13 +113,16 @@ export async function regeneratePostings(
     amount: number;
     number: string | null;
   }>(
+    // Прихід заходить двома дверима — приймання за заявкою й самостійне
+    // надходження — але це одна господарська операція з однією проводкою.
     `select m.doc_id, m.moved_at::date as day, i.kind, sum(m.qty * m.unit_cost) as amount,
-            max(p.number) as number
+            coalesce(max(p.number), max(r.number)) as number
        from stock_moves m
        join items i on i.id = m.item_id
-       left join purchase_orders p on p.id = m.doc_id
+       left join purchase_orders p on p.id = m.doc_id and m.doc_type = 'purchase_order'
+       left join receipts r on r.id = m.doc_id and m.doc_type = 'receipt'
       where m.legal_entity_id = $1 and m.move_type = 'purchase_receipt'
-        and m.doc_type = 'purchase_order'
+        and m.doc_type in ('purchase_order', 'receipt')
         and m.moved_at >= $2::date and m.moved_at < ($2::date + interval '1 month')
       group by m.doc_id, m.moved_at::date, i.kind`,
     range,

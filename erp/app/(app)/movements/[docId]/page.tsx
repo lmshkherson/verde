@@ -25,6 +25,11 @@ async function resolveDocument(docId: string) {
       href: (id) => `/purchasing/${id}`,
     },
     {
+      kind: 'Надходження',
+      sql: `select number as title, received_on as date from receipts where id = $1`,
+      href: (id) => `/receipts/${id}`,
+    },
+    {
       kind: 'Виробниче замовлення',
       sql: `select number as title, coalesce(finished_at::date, planned_for) as date from production_orders where id = $1`,
       href: (id) => `/production/${id}`,

@@ -182,7 +182,7 @@ npm run db:migrate && npm run db:init && next build
 Відкрийте `https://ваш-домен/api/health`. Має бути:
 
 ```json
-{ "status": "ok", "database": "connected", "migrations": 29, "warnings": [] }
+{ "status": "ok", "database": "connected", "migrations": 30, "warnings": [] }
 ```
 
 Якщо у `warnings` є демо-акаунти — деактивуйте їх:

@@ -14,6 +14,7 @@ const BOOK_LABELS: Record<string, string> = {
 
 const DOC_LABELS: Record<string, string> = {
   purchase_receipt: 'Прихід від постачальника',
+  receipt: 'Надходження',
   internal_purchase: 'Придбання у власної юрособи',
   vat_credit: 'Податковий кредит',
   supplier_payment: 'Оплата постачальнику',

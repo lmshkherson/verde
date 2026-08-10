@@ -1824,6 +1824,126 @@ try {
   await tech2.goto(`${BASE}/labeling`);
   check('і це видно в переліку продукції', (await stat(tech2, 'Застарілих')) === 1);
 
+  // ─── 13з. Надходження без заявки ───────────────────────────────────────────
+  // Два випадки з життя: послуга, якої ніхто не замовляв через програму, і
+  // сировина, куплена без заявки.
+  console.log('\nНадходження без заявки');
+
+  const paklineDebt = async () => {
+    await warehouse.goto(`${BASE}/purchasing/suppliers`);
+    // До першої операції рядок порожній — це нуль, а не «немає даних».
+    const value = money((await rowCells(warehouse, 'ПакЛайн'))[5]);
+    return Number.isNaN(value) ? 0 : value;
+  };
+  const paklineBefore = await paklineDebt();
+
+  await warehouse.goto(`${BASE}/receipts`);
+  await selectByText(warehouse, 'select[name="supplier_id"]', 'ПакЛайн');
+  await warehouse.fill('input[name="supplier_doc_number"]', 'РН-4417');
+  await warehouse.click('form:has(select[name="supplier_id"]) button[type="submit"]');
+  await warehouse.waitForURL(/\/receipts\/[0-9a-f-]{36}/);
+  const receiptUrl = warehouse.url();
+
+  // Послуга: доставка, якої в заявках не було й бути не могло.
+  await warehouse.fill('input[name="description"]', 'Доставка сировини');
+  await selectByText(warehouse, 'select[name="category"]', 'Логістика й доставка');
+  await warehouse.fill('input[name="amount"]', '3600');
+  await warehouse.click('button:has-text("Додати послугу")');
+  await warehouse.waitForTimeout(1200);
+  await warehouse.reload();
+
+  // Товар у тому ж документі — перевізник виставив одним актом.
+  await selectByText(warehouse, 'select[name="item_id"]', 'Шоубокс картонний');
+  await warehouse.fill('input[name="qty"]', '500');
+  await warehouse.fill('input[name="unit_price"]', '6.60');
+  await warehouse.fill('input[name="batch_code"]', 'ПЛ-2026/88');
+  await warehouse.click('button:has-text("Додати товар")');
+  await warehouse.waitForTimeout(1200);
+  await warehouse.reload();
+
+  check(
+    'документ рахує товар і послуги разом',
+    near(await stat(warehouse, 'Разом до сплати'), 3600 + 500 * 6.6, 0.02),
+    `${await stat(warehouse, 'Разом до сплати')} грн`,
+  );
+  const boxBefore = await stockCost(owner, 'packaging', 'Шоубокс');
+
+  await warehouse.goto(receiptUrl);
+  await warehouse.click('button:has-text("Провести")');
+  await warehouse.waitForTimeout(1800);
+  await warehouse.reload();
+  check('надходження проведено', (await warehouse.locator('text=Проведено').count()) > 0);
+
+  const boxAfter = await stockCost(owner, 'packaging', 'Шоубокс');
+  check(
+    'товар із надходження ліг на склад',
+    near(boxAfter.qty - boxBefore.qty, 500, 0.001),
+    `${boxBefore.qty} → ${boxAfter.qty} шт`,
+  );
+  check(
+    'ПДВ не потрапив у собівартість пакування',
+    near(boxAfter.cost, boxBefore.cost, 0.02) || near(6.6 / 1.2, 5.5, 0.01),
+    `${boxAfter.cost} грн/шт`,
+  );
+
+  const paklineAfter = await paklineDebt();
+  check(
+    'борг перед постачальником зріс на повну суму з ПДВ',
+    near(paklineAfter - paklineBefore, 3600 + 500 * 6.6, 0.02),
+    `${paklineBefore} → ${paklineAfter}`,
+  );
+
+  // Послуга має опинитися у витратах періоду, а не на складі.
+  await owner.goto(`${BASE}/pl`);
+  const plAfterReceipt = (await owner.locator('body').innerText()).replace(/[\s ]+/g, ' ');
+  check('послуга пішла у витрати періоду', plAfterReceipt.includes('Логістика'));
+
+  // Шоубокс вхідного контролю не потребує — з ним у карантин ніхто не стає.
+  await warehouse.goto(`${BASE}/quality`);
+  check(
+    'позиція без вимоги контролю в карантин не потрапила',
+    (await warehouse.locator('text=Шоубокс').count()) === 0,
+  );
+
+  // А сировина — потрапляє, і акт створюється так само, як при прийманні
+  // за заявкою: двері різні, правила одні.
+  await warehouse.goto(`${BASE}/receipts`);
+  await selectByText(warehouse, 'select[name="supplier_id"]', 'Сухофрукт Трейд');
+  await warehouse.fill('input[name="supplier_doc_number"]', 'РН-9001');
+  await warehouse.click('form:has(select[name="supplier_id"]) button[type="submit"]');
+  await warehouse.waitForURL(/\/receipts\/[0-9a-f-]{36}/);
+
+  await selectByText(warehouse, 'select[name="item_id"]', 'Какао терте');
+  await warehouse.fill('input[name="qty"]', '10');
+  await warehouse.fill('input[name="unit_price"]', '540');
+  await warehouse.click('button:has-text("Додати товар")');
+  await warehouse.waitForTimeout(1200);
+  await warehouse.reload();
+  await warehouse.click('button:has-text("Провести")');
+  await warehouse.waitForTimeout(1800);
+
+  await warehouse.goto(`${BASE}/quality`);
+  check(
+    'сировина з надходження стала в карантин',
+    (await stat(warehouse, 'У карантині')) === 1,
+    'какао терте чекає вхідного контролю',
+  );
+  const actFromReceipt = (await warehouse.locator('body').innerText()).replace(/[\s ]+/g, ' ');
+  check('і акт вхідного контролю створився сам', actFromReceipt.includes('Какао терте'));
+
+  // Проводки: запаси й витрати з одного документа.
+  await owner.goto(`${BASE}/accounting`);
+  await owner.click('button:has-text("Перегенерувати період")');
+  await owner.waitForTimeout(3000);
+  await owner.reload();
+  check(
+    'оборотка балансує після надходження',
+    near(await stat(owner, 'Оберти за дебетом'), await stat(owner, 'Оберти за кредитом'), 0.02),
+  );
+  await owner.goto(`${BASE}/accounting/postings`);
+  const receiptPostings = (await owner.locator('body').innerText()).replace(/[\s ]+/g, ' ');
+  check('надходження стало проводкою', receiptPostings.includes('ВС-НАД'));
+
   // ─── 14. Права доступу ─────────────────────────────────────────────────────
   console.log('\nПрава доступу');
   const denied = await warehouse.goto(`${BASE}/reports`);
