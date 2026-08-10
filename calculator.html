@@ -1,0 +1,756 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VERDE — Калькулятор дистрибуції</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Montserrat:ital,wght@0,400;0,600;0,700;0,800;0,900;1,800&family=Manrope:wght@400;500;600;700&display=swap');
+
+  :root{
+    --yellow:#FFE600;
+    --yellow-soft:#FFF27A;
+    --green:#1DB954;
+    --green-neon:#2AE85F;
+    --green-deep:#0E7A33;
+    --green-dark:#0B3D1E;
+    --ink:#0B1F12;
+    --cream:#FFFDF0;
+    --white:#ffffff;
+    --red:#D92B2B;
+    --amber:#E5A100;
+    --line:rgba(11,61,30,.12);
+    --shadow:0 18px 50px -20px rgba(11,61,30,.45);
+  }
+
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{
+    font-family:'Manrope',system-ui,sans-serif;
+    color:var(--ink);
+    background:var(--cream);
+    line-height:1.5;
+  }
+  .display{font-family:'Montserrat',sans-serif;font-weight:900;line-height:.98;letter-spacing:-.02em}
+  .wrap{width:min(1240px,94vw);margin-inline:auto}
+
+  /* ---------- NAV ---------- */
+  header{position:sticky;top:0;z-index:50;background:rgba(255,253,240,.9);backdrop-filter:blur(12px);border-bottom:1px solid var(--line)}
+  nav{display:flex;align-items:center;justify-content:space-between;height:68px;gap:1rem}
+  .logo{font-family:'Montserrat',sans-serif;font-weight:900;font-size:1.5rem;letter-spacing:.04em;color:var(--green-deep);display:flex;align-items:center;gap:.15rem;text-decoration:none}
+  .bolt{display:inline-block;color:var(--yellow);filter:drop-shadow(0 1px 0 var(--green-deep));transform:translateY(2px)}
+  .nav-cta{background:var(--ink);color:var(--yellow);text-decoration:none;font-weight:700;font-size:.9rem;padding:.6rem 1.3rem;border-radius:100px;transition:.25s;white-space:nowrap}
+  .nav-cta:hover{background:var(--green-deep)}
+
+  /* ---------- HERO ---------- */
+  .hero{background:var(--yellow);padding:2.4rem 0 2.2rem}
+  .tag{
+    display:inline-flex;align-items:center;gap:.5rem;
+    font-family:'Montserrat',sans-serif;font-weight:800;
+    font-size:.68rem;letter-spacing:.16em;text-transform:uppercase;
+    padding:.45rem .95rem;border-radius:100px;margin-bottom:1rem;
+    background:var(--ink);color:var(--yellow);
+  }
+  .hero h1{font-size:clamp(1.9rem,4.4vw,3.2rem);color:var(--green-deep)}
+  .hero h1 span{color:var(--ink)}
+  .hero p{margin-top:.8rem;max-width:62ch;font-weight:500;color:#1c3a26}
+
+  /* ---------- LAYOUT ---------- */
+  main{padding:2rem 0 4rem}
+  .layout{display:grid;grid-template-columns:1.25fr .95fr;gap:1.6rem;align-items:start}
+  .layout > *{min-width:0}   /* дозволяє колонці стискатись — інакше широка таблиця розтягує сторінку */
+  @media(max-width:980px){.layout{grid-template-columns:1fr}}
+
+  .card{background:var(--white);border:1px solid var(--line);border-radius:20px;padding:1.4rem 1.4rem 1.5rem;margin-bottom:1.2rem}
+  .card h2{font-family:'Montserrat',sans-serif;font-weight:800;font-size:1.02rem;letter-spacing:.02em;display:flex;align-items:center;gap:.55rem;margin-bottom:1.1rem}
+  .card h2 .dot{width:10px;height:10px;border-radius:50%;background:var(--green-neon);flex:none}
+  .hint{font-size:.78rem;opacity:.6;margin-top:-.6rem;margin-bottom:1rem;line-height:1.45}
+
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:.85rem}
+  .grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:.85rem}
+  @media(max-width:560px){.grid2,.grid3{grid-template-columns:1fr}}
+
+  .field label{display:block;font-size:.78rem;font-weight:600;opacity:.75;margin-bottom:.3rem}
+  .ctrl{display:flex;align-items:center;background:var(--cream);border:1.5px solid var(--line);border-radius:12px;transition:.18s}
+  .ctrl:focus-within{border-color:var(--green);background:#fff}
+  .ctrl input{
+    width:100%;border:0;background:transparent;outline:none;
+    font-family:'Montserrat',sans-serif;font-weight:700;font-size:1rem;color:var(--ink);
+    padding:.62rem .2rem .62rem .8rem;min-width:0;
+  }
+  .ctrl .unit{font-size:.75rem;font-weight:700;opacity:.5;padding:0 .8rem 0 .3rem;white-space:nowrap}
+
+  /* ---------- RESULTS ---------- */
+  .sticky{position:sticky;top:88px}
+  @media(max-width:980px){.sticky{position:static}}
+
+  .verdict{border-radius:20px;padding:1.3rem 1.4rem;color:#fff;margin-bottom:1.2rem;box-shadow:var(--shadow)}
+  .verdict.ok{background:linear-gradient(150deg,var(--green),var(--green-deep))}
+  .verdict.warn{background:linear-gradient(150deg,#F5C242,#B87B00)}
+  .verdict.bad{background:linear-gradient(150deg,#E4533F,#A81717)}
+  .verdict .vtag{font-family:'Montserrat',sans-serif;font-weight:800;font-size:.7rem;letter-spacing:.18em;text-transform:uppercase;opacity:.85}
+  .verdict .vtitle{font-family:'Montserrat',sans-serif;font-weight:900;font-size:1.55rem;line-height:1.1;margin:.35rem 0 .5rem}
+  .verdict .vtext{font-size:.88rem;opacity:.95}
+  .vnums{display:grid;grid-template-columns:1fr 1fr;gap:.7rem;margin-top:1.1rem}
+  .vnum{background:rgba(255,255,255,.16);border-radius:12px;padding:.6rem .75rem}
+  .vnum .k{font-size:.68rem;text-transform:uppercase;letter-spacing:.08em;opacity:.85;font-weight:700}
+  .vnum .v{font-family:'Montserrat',sans-serif;font-weight:900;font-size:1.25rem;margin-top:.1rem}
+
+  .rows{display:flex;flex-direction:column}
+  .row{display:flex;justify-content:space-between;align-items:baseline;gap:1rem;padding:.55rem 0;border-bottom:1px dashed var(--line);font-size:.9rem}
+  .row:last-child{border-bottom:0}
+  .row .k{opacity:.72}
+  .row .v{font-family:'Montserrat',sans-serif;font-weight:800;white-space:nowrap}
+  .row.total{border-top:2px solid var(--ink);border-bottom:0;margin-top:.4rem;padding-top:.7rem}
+  .row.total .k{opacity:1;font-weight:700}
+  .row.total .v{font-size:1.15rem}
+  .row .v.neg{color:var(--red)}
+  .row .v.pos{color:var(--green-deep)}
+  .sub{padding-left:.9rem;font-size:.85rem}
+  .sub .k{opacity:.55}
+
+  /* ---------- BAR ---------- */
+  .bar{display:flex;height:34px;border-radius:10px;overflow:hidden;border:1px solid var(--line);background:var(--cream)}
+  .bar div{transition:width .25s ease}
+  .legend{display:grid;grid-template-columns:1fr 1fr;gap:.35rem .9rem;margin-top:.9rem;font-size:.8rem}
+  .lg{display:flex;align-items:center;gap:.45rem}
+  .lg i{width:10px;height:10px;border-radius:3px;flex:none}
+  .lg b{margin-left:auto;font-family:'Montserrat',sans-serif;font-weight:800}
+  @media(max-width:560px){.legend{grid-template-columns:1fr}}
+
+  /* ---------- BUTTONS ---------- */
+  .btns{display:flex;gap:.6rem;flex-wrap:wrap;margin-top:1rem}
+  button{
+    font-family:'Montserrat',sans-serif;font-weight:800;font-size:.82rem;cursor:pointer;
+    border-radius:100px;padding:.7rem 1.15rem;border:2px solid var(--green-deep);
+    background:transparent;color:var(--green-deep);transition:.2s;
+  }
+  button:hover{background:var(--green-deep);color:#fff}
+  button.solid{background:var(--green-deep);color:#fff}
+  button.solid:hover{background:var(--ink);border-color:var(--ink)}
+  button.ghost{border-color:var(--line);color:var(--ink);opacity:.8}
+  button.ghost:hover{background:var(--ink);border-color:var(--ink);color:var(--yellow);opacity:1}
+
+  /* ---------- TABLE ---------- */
+  .tbl-wrap{overflow-x:auto}
+  table{width:100%;border-collapse:collapse;font-size:.85rem;min-width:640px}
+  th,td{text-align:right;padding:.6rem .6rem;border-bottom:1px solid var(--line);white-space:nowrap}
+  th:first-child,td:first-child{text-align:left}
+  th{font-family:'Montserrat',sans-serif;font-weight:800;font-size:.7rem;text-transform:uppercase;letter-spacing:.07em;opacity:.6}
+  td b{font-family:'Montserrat',sans-serif;font-weight:800}
+  .pill{display:inline-block;font-size:.7rem;font-weight:800;padding:.2rem .6rem;border-radius:100px;color:#fff}
+  .pill.ok{background:var(--green-deep)}
+  .pill.warn{background:var(--amber)}
+  .pill.bad{background:var(--red)}
+  .mini-btn{border-width:1.5px;padding:.32rem .7rem;font-size:.72rem}
+  .empty{opacity:.55;font-size:.85rem;padding:.6rem 0}
+
+  .warnbox{background:#FFF6D6;border:1.5px solid #E5C64A;border-radius:12px;padding:.7rem .9rem;font-size:.82rem;margin-top:.9rem}
+  .warnbox:empty{display:none}
+
+  /* ---------- MOBILE STICKY SUMMARY ---------- */
+  .mbar{display:none}
+  @media(max-width:980px){
+    .mbar{
+      display:flex;align-items:center;gap:.9rem;
+      position:fixed;left:0;right:0;bottom:0;z-index:60;
+      padding:.7rem clamp(.8rem,4vw,1.2rem);color:#fff;
+      box-shadow:0 -10px 30px -12px rgba(11,31,18,.55);
+    }
+    .mbar.ok{background:var(--green-deep)}
+    .mbar.warn{background:#B87B00}
+    .mbar.bad{background:#A81717}
+    .mbar .mk{font-size:.66rem;text-transform:uppercase;letter-spacing:.09em;font-weight:700;opacity:.85}
+    .mbar .mv{font-family:'Montserrat',sans-serif;font-weight:900;font-size:1.15rem;line-height:1.1}
+    .mbar .mstate{margin-left:auto;text-align:right;font-family:'Montserrat',sans-serif;font-weight:800;font-size:.82rem}
+    body{padding-bottom:76px}
+    footer{margin-bottom:0}
+  }
+
+  footer{background:var(--green-dark);color:#cfe9d8;padding:2rem 0;font-size:.85rem;text-align:center}
+  footer b{color:var(--yellow)}
+</style>
+</head>
+<body>
+
+<header>
+  <nav class="wrap">
+    <a href="index.html" class="logo">VERDE<span class="bolt">⚡</span></a>
+    <a href="index.html" class="nav-cta">← На головну</a>
+  </nav>
+</header>
+
+<section class="hero">
+  <div class="wrap">
+    <span class="tag">Внутрішній інструмент · не для клієнта</span>
+    <h1 class="display">Калькулятор <span>дистрибуції</span></h1>
+    <p>Порахуй, скільки реально залишається з відпускної ціни після ретро-бонусу, маркетингу, логістики, лістингу та відтермінування — і чи проходить угода за нашими цільовими показниками.</p>
+  </div>
+</section>
+
+<main class="wrap">
+<div class="layout">
+
+  <!-- ============ INPUTS ============ -->
+  <div>
+
+    <div class="card">
+      <h2><span class="dot"></span>1. Ціна та собівартість</h2>
+      <p class="hint">Усі суми — за одиницю продукції, <b>без ПДВ</b>.</p>
+      <div class="grid3">
+        <div class="field">
+          <label>Відпускна ціна</label>
+          <div class="ctrl"><input id="price" inputmode="decimal" value="40"><span class="unit">грн</span></div>
+        </div>
+        <div class="field">
+          <label>Собівартість</label>
+          <div class="ctrl"><input id="cogs" inputmode="decimal" value="24"><span class="unit">грн</span></div>
+        </div>
+        <div class="field">
+          <label>Наша логістика</label>
+          <div class="ctrl"><input id="ownLog" inputmode="decimal" value="1.5"><span class="unit">грн/од</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2><span class="dot"></span>2. Бонуси мережі (% від відпускної ціни)</h2>
+      <div class="grid3">
+        <div class="field">
+          <label>Ретро-бонус</label>
+          <div class="ctrl"><input id="bRetro" inputmode="decimal" value="4"><span class="unit">%</span></div>
+        </div>
+        <div class="field">
+          <label>Маркетинговий</label>
+          <div class="ctrl"><input id="bMkt" inputmode="decimal" value="3"><span class="unit">%</span></div>
+        </div>
+        <div class="field">
+          <label>Логістичний</label>
+          <div class="ctrl"><input id="bLog" inputmode="decimal" value="3"><span class="unit">%</span></div>
+        </div>
+        <div class="field">
+          <label>Промо / акційна знижка</label>
+          <div class="ctrl"><input id="bPromo" inputmode="decimal" value="0"><span class="unit">%</span></div>
+        </div>
+        <div class="field">
+          <label>Інші бонуси</label>
+          <div class="ctrl"><input id="bOther" inputmode="decimal" value="0"><span class="unit">%</span></div>
+        </div>
+        <div class="field">
+          <label>Разом бонусів</label>
+          <div class="ctrl"><input id="bSum" value="—" readonly tabindex="-1"><span class="unit">%</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2><span class="dot"></span>3. Разові та періодичні витрати</h2>
+      <p class="hint">Лістинг і промо-бюджет розносяться на плановий обсяг періоду — так видно їх вагу в кожній одиниці.</p>
+      <div class="grid2">
+        <div class="field">
+          <label>Лістинг (вхід у мережу)</label>
+          <div class="ctrl"><input id="fListing" inputmode="decimal" value="15000"><span class="unit">грн</span></div>
+        </div>
+        <div class="field">
+          <label>Промо-бюджет, POS, мерч</label>
+          <div class="ctrl"><input id="fPromo" inputmode="decimal" value="0"><span class="unit">грн</span></div>
+        </div>
+        <div class="field">
+          <label>Інші витрати періоду</label>
+          <div class="ctrl"><input id="fOther" inputmode="decimal" value="0"><span class="unit">грн</span></div>
+        </div>
+        <div class="field">
+          <label>Плановий обсяг за період</label>
+          <div class="ctrl"><input id="volume" inputmode="decimal" value="10000"><span class="unit">од</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2><span class="dot"></span>4. Відтермінування та ПДВ</h2>
+      <p class="hint">Вартість грошей рахується від суми дебіторки з ПДВ за фактичну кількість днів відстрочки.</p>
+      <div class="grid3">
+        <div class="field">
+          <label>Відтермінування</label>
+          <div class="ctrl"><input id="deferDays" inputmode="decimal" value="21"><span class="unit">днів</span></div>
+        </div>
+        <div class="field">
+          <label>Вартість грошей</label>
+          <div class="ctrl"><input id="moneyRate" inputmode="decimal" value="20"><span class="unit">% річних</span></div>
+        </div>
+        <div class="field">
+          <label>ПДВ</label>
+          <div class="ctrl"><input id="vat" inputmode="decimal" value="20"><span class="unit">%</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2><span class="dot"></span>5. Наші цільові показники</h2>
+      <p class="hint">Маржа рахується від чистої виручки (net-net) — тобто від грошей, які реально залишаються після всіх бонусів і витрат.</p>
+      <div class="grid3">
+        <div class="field">
+          <label>Цільова маржа</label>
+          <div class="ctrl"><input id="targetMargin" inputmode="decimal" value="30"><span class="unit">%</span></div>
+        </div>
+        <div class="field">
+          <label>Мінімально допустима</label>
+          <div class="ctrl"><input id="minMargin" inputmode="decimal" value="20"><span class="unit">%</span></div>
+        </div>
+        <div class="field">
+          <label>Націнка мережі на полиці</label>
+          <div class="ctrl"><input id="netMarkup" inputmode="decimal" value="35"><span class="unit">%</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2><span class="dot"></span>Структура відпускної ціни</h2>
+      <div class="bar" id="bar"></div>
+      <div class="legend" id="legend"></div>
+      <div class="warnbox" id="barWarn"></div>
+    </div>
+
+    <div class="card">
+      <h2><span class="dot"></span>Збережені прорахунки</h2>
+      <div class="grid2" style="margin-bottom:.9rem">
+        <div class="field">
+          <label>Назва (мережа / клієнт / SKU)</label>
+          <div class="ctrl"><input id="dealName" placeholder="Напр.: Сільпо — Зарядись 40 г"></div>
+        </div>
+        <div class="field" style="display:flex;align-items:flex-end">
+          <button class="solid" style="width:100%" onclick="saveDeal()">Зберегти поточний</button>
+        </div>
+      </div>
+      <div class="tbl-wrap"><table id="dealsTable"></table></div>
+      <div class="empty" id="dealsEmpty">Ще нічого не збережено. Прорахуй умову і натисни «Зберегти поточний» — так зручно порівнювати мережі між собою.</div>
+    </div>
+
+  </div>
+
+  <!-- ============ RESULTS ============ -->
+  <div class="sticky">
+
+    <div class="verdict ok" id="verdict">
+      <div class="vtag" id="vTag">Рішення</div>
+      <div class="vtitle display" id="vTitle">—</div>
+      <div class="vtext" id="vText">—</div>
+      <div class="vnums">
+        <div class="vnum"><div class="k">Маржа</div><div class="v" id="vMargin">—</div></div>
+        <div class="vnum"><div class="k">Прибуток / од</div><div class="v" id="vProfit">—</div></div>
+        <div class="vnum"><div class="k">Net-net ціна</div><div class="v" id="vNet">—</div></div>
+        <div class="vnum"><div class="k">Прибуток за період</div><div class="v" id="vTotal">—</div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2><span class="dot"></span>Розрахунок на одиницю</h2>
+      <div class="rows" id="unitRows"></div>
+    </div>
+
+    <div class="card">
+      <h2><span class="dot"></span>Межі торгу</h2>
+      <div class="rows" id="limitRows"></div>
+      <div class="btns">
+        <button onclick="applyMinPrice()">Підставити мінімальну ціну</button>
+        <button onclick="applyTargetPrice()">Підставити цільову ціну</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2><span class="dot"></span>Полиця та обсяг періоду</h2>
+      <div class="rows" id="periodRows"></div>
+      <div class="btns">
+        <button class="solid" onclick="copySummary()" id="copyBtn">Скопіювати підсумок</button>
+        <button class="ghost" onclick="resetAll()">Скинути</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+</main>
+
+<div class="mbar ok" id="mbar">
+  <div><div class="mk">Маржа</div><div class="mv" id="mMargin">—</div></div>
+  <div><div class="mk">Прибуток / од</div><div class="mv" id="mProfit">—</div></div>
+  <div class="mstate" id="mState">—</div>
+</div>
+
+<footer>
+  <div class="wrap">VERDE ⚡ калькулятор дистрибуції · розрахунки без ПДВ, полична ціна — з ПДВ · <b>v-verde.ua</b></div>
+</footer>
+
+<script>
+/* ---------------- helpers ---------------- */
+const IDS = ['price','cogs','ownLog','bRetro','bMkt','bLog','bPromo','bOther',
+             'fListing','fPromo','fOther','volume','deferDays','moneyRate','vat',
+             'targetMargin','minMargin','netMarkup'];
+const DEFAULTS = {price:40,cogs:24,ownLog:1.5,bRetro:4,bMkt:3,bLog:3,bPromo:0,bOther:0,
+             fListing:15000,fPromo:0,fOther:0,volume:10000,deferDays:21,moneyRate:20,vat:20,
+             targetMargin:30,minMargin:20,netMarkup:35};
+
+const el = id => document.getElementById(id);
+const num = id => {
+  const raw = String(el(id).value).replace(/\s/g,'').replace(',','.');
+  const n = parseFloat(raw);
+  return isFinite(n) ? n : 0;
+};
+const money = x => new Intl.NumberFormat('uk-UA',{minimumFractionDigits:2,maximumFractionDigits:2}).format(x);
+const money0 = x => new Intl.NumberFormat('uk-UA',{maximumFractionDigits:0}).format(x);
+const pct = x => isFinite(x)
+  ? new Intl.NumberFormat('uk-UA',{minimumFractionDigits:1,maximumFractionDigits:1}).format(x) + ' %'
+  : '—';
+
+/* ---------------- core model ----------------
+   P   — відпускна ціна без ПДВ
+   B   — сума бонусів, частка від P
+   k   — вартість відтермінування, частка від P: (1+ПДВ) * ставка * дні/365
+   Fu  — фіксовані витрати періоду на одиницю
+   NN  — net-net: P*(1 - B - k) - Fu
+   Прибуток = NN - собівартість - власна логістика
+   Маржа = Прибуток / NN
+---------------------------------------------- */
+function model(){
+  const P = num('price');
+  const cogs = num('cogs'), ownLog = num('ownLog');
+  const bonuses = [
+    {key:'Ретро-бонус',    p:num('bRetro'), color:'#0E7A33'},
+    {key:'Маркетинговий',  p:num('bMkt'),   color:'#1DB954'},
+    {key:'Логістичний',    p:num('bLog'),   color:'#2AE85F'},
+    {key:'Промо-знижка',   p:num('bPromo'), color:'#7ED99A'},
+    {key:'Інші бонуси',    p:num('bOther'), color:'#B5E8C6'}
+  ];
+  const Bpct = bonuses.reduce((s,b)=>s+b.p,0);
+  const B = Bpct/100;
+
+  const vol = num('volume');
+  const fixTotal = num('fListing') + num('fPromo') + num('fOther');
+  const Fu = vol > 0 ? fixTotal/vol : 0;
+
+  const vat = num('vat')/100;
+  const k = (1+vat) * (num('moneyRate')/100) * (num('deferDays')/365);
+
+  const bonusMoney = P*B;
+  const deferMoney = P*k;
+  const NN = P*(1 - B - k) - Fu;
+  const costTotal = cogs + ownLog;
+  const profit = NN - costTotal;
+  // при NN <= 0 частка не має сенсу (мінус на мінус дав би «гарну» маржу) — угода свідомо провальна
+  const margin = NN > 0 ? profit/NN*100 : -Infinity;
+  const markupOnCost = costTotal !== 0 ? profit/costTotal*100 : 0;
+
+  // зворотній розрахунок: P = (costTotal/(1-m) + Fu) / (1 - B - k)
+  const denom = 1 - B - k;
+  const priceFor = m => {
+    if(denom <= 0) return null;
+    if(m >= 1) return null;
+    return (costTotal/(1-m) + Fu)/denom;
+  };
+  const tM = num('targetMargin')/100, mM = num('minMargin')/100;
+  const priceTarget = priceFor(tM);
+  const priceMin = priceFor(mM);
+  const priceBreakeven = priceFor(0);
+
+  // максимально допустимі бонуси при поточній ціні: B = 1 - k - (NNreq + Fu)/P
+  const maxBonusFor = m => {
+    if(P <= 0 || m >= 1) return null;
+    const NNreq = costTotal/(1-m);
+    return (1 - k - (NNreq + Fu)/P) * 100;
+  };
+  const maxBonusTarget = maxBonusFor(tM);
+  const maxBonusMin = maxBonusFor(mM);
+  const maxBonusBE = maxBonusFor(0);
+
+  // максимальне відтермінування при поточних бонусах і ціні (маржа = мінімальна)
+  const maxDefer = (()=>{
+    const r = num('moneyRate')/100;
+    if(P <= 0 || r <= 0 || mM >= 1) return null;
+    const NNreq = costTotal/(1-mM);
+    const kMax = 1 - B - (NNreq + Fu)/P;
+    return kMax/((1+vat)*r)*365;
+  })();
+
+  // полиця
+  const priceWithVat = P*(1+vat);
+  const shelf = priceWithVat*(1 + num('netMarkup')/100);
+
+  return {P,cogs,ownLog,costTotal,bonuses,Bpct,B,k,vol,fixTotal,Fu,vat,
+          bonusMoney,deferMoney,NN,profit,margin,markupOnCost,
+          priceTarget,priceMin,priceBreakeven,
+          maxBonusTarget,maxBonusMin,maxBonusBE,maxDefer,
+          priceWithVat,shelf,
+          targetMargin:num('targetMargin'), minMargin:num('minMargin')};
+}
+
+/* ---------------- render ---------------- */
+function verdictOf(m){
+  if(m.margin >= m.targetMargin) return 'ok';
+  if(m.margin >= m.minMargin) return 'warn';
+  return 'bad';
+}
+
+function render(){
+  const m = model();
+  el('bSum').value = new Intl.NumberFormat('uk-UA',{maximumFractionDigits:2}).format(m.Bpct);
+
+  /* --- вердикт --- */
+  const v = verdictOf(m);
+  const vBox = el('verdict');
+  vBox.className = 'verdict ' + v;
+  const titles = {ok:'Підходить ✅', warn:'На межі — торгуємось ⚠️', bad:'Не підходить ❌'};
+  const texts = {
+    ok: 'Умова проходить за цільовою маржею. Можна фіксувати відпускну ціну.',
+    bad: 'Маржа нижча за мінімально допустиму. Треба піднімати ціну, різати бонуси або скорочувати відтермінування.',
+    warn:'Маржа між мінімальною і цільовою. Погоджувати лише з керівником або торгуватись за умови.'
+  };
+  let extra = '';
+  if(m.NN <= 0) extra = ' Бонуси, лістинг і відтермінування «з\'їдають» усю відпускну ціну — чиста виручка від\'ємна ще до собівартості.';
+  else if(m.profit < 0) extra = ' Угода збиткова — кожна продана одиниця забирає гроші.';
+  if(m.vol <= 0) extra += ' Вкажи плановий обсяг, інакше лістинг не рознесено на одиницю.';
+  el('vTag').textContent = 'Рішення · ціль ' + pct(m.targetMargin) + ' / мін ' + pct(m.minMargin);
+  el('vTitle').textContent = titles[v];
+  el('vText').textContent = texts[v] + extra;
+  el('vMargin').textContent = pct(m.margin);
+  el('vProfit').textContent = money(m.profit) + ' ₴';
+  el('vNet').textContent = money(m.NN) + ' ₴';
+  el('vTotal').textContent = money0(m.profit*m.vol) + ' ₴';
+
+  el('mbar').className = 'mbar ' + v;
+  el('mMargin').textContent = pct(m.margin);
+  el('mProfit').textContent = money(m.profit) + ' ₴';
+  el('mState').textContent = {ok:'Підходить ✅', warn:'На межі ⚠️', bad:'Не підходить ❌'}[v];
+
+  /* --- розрахунок на одиницю --- */
+  let rows = '';
+  const R = (k,val,cls,sub) => rows +=
+    `<div class="row${sub?' sub':''}"><div class="k">${k}</div><div class="v${cls?' '+cls:''}">${val}</div></div>`;
+  const T = (k,val,cls) => rows +=
+    `<div class="row total"><div class="k">${k}</div><div class="v${cls?' '+cls:''}">${val}</div></div>`;
+
+  R('Відпускна ціна (без ПДВ)', money(m.P) + ' ₴');
+  m.bonuses.forEach(b => { if(b.p) R(b.key + ' (' + pct(b.p) + ')', '− ' + money(m.P*b.p/100) + ' ₴', 'neg', true); });
+  if(m.Bpct) R('Разом бонуси (' + pct(m.Bpct) + ')', '− ' + money(m.bonusMoney) + ' ₴', 'neg');
+  if(m.Fu) R('Лістинг і фікс. витрати на од.', '− ' + money(m.Fu) + ' ₴', 'neg');
+  if(m.deferMoney) R('Відтермінування ' + money0(num('deferDays')) + ' дн.', '− ' + money(m.deferMoney) + ' ₴', 'neg');
+  T('Чиста виручка (net-net)', money(m.NN) + ' ₴');
+  R('Собівартість', '− ' + money(m.cogs) + ' ₴', 'neg');
+  if(m.ownLog) R('Наша логістика', '− ' + money(m.ownLog) + ' ₴', 'neg');
+  T('Прибуток на одиницю', money(m.profit) + ' ₴', m.profit >= 0 ? 'pos' : 'neg');
+  R('Маржа від чистої виручки', pct(m.margin), m.margin >= m.minMargin ? 'pos' : 'neg');
+  R('Націнка на собівартість', pct(m.markupOnCost));
+  R('Реальна знижка від прайсу', pct(m.P > 0 ? (m.P - m.NN)/m.P*100 : 0));
+  el('unitRows').innerHTML = rows;
+
+  /* --- межі торгу --- */
+  rows = '';
+  const na = '—';
+  R('Мінімальна ціна (маржа ' + pct(m.minMargin) + ')', m.priceMin === null ? na : money(m.priceMin) + ' ₴', m.priceMin !== null && m.P >= m.priceMin ? 'pos' : 'neg');
+  R('Цільова ціна (маржа ' + pct(m.targetMargin) + ')', m.priceTarget === null ? na : money(m.priceTarget) + ' ₴');
+  R('Ціна в нуль (беззбитковість)', m.priceBreakeven === null ? na : money(m.priceBreakeven) + ' ₴');
+  R('Макс. бонуси для цільової маржі', m.maxBonusTarget === null ? na : pct(m.maxBonusTarget));
+  R('Макс. бонуси для мін. маржі', m.maxBonusMin === null ? na : pct(m.maxBonusMin), m.maxBonusMin !== null && m.Bpct <= m.maxBonusMin ? 'pos' : 'neg');
+  R('Макс. бонуси в нуль', m.maxBonusBE === null ? na : pct(m.maxBonusBE));
+  R('Макс. відтермінування (мін. маржа)', m.maxDefer === null ? na : money0(Math.max(0,m.maxDefer)) + ' дн.', m.maxDefer !== null && num('deferDays') <= m.maxDefer ? 'pos' : 'neg');
+  el('limitRows').innerHTML = rows;
+
+  /* --- полиця та період --- */
+  rows = '';
+  R('Ціна для мережі з ПДВ', money(m.priceWithVat) + ' ₴');
+  R('Полична ціна з ПДВ (націнка ' + pct(num('netMarkup')) + ')', money(m.shelf) + ' ₴');
+  T('Обсяг періоду', money0(m.vol) + ' од.');
+  R('Валова виручка по прайсу', money0(m.P*m.vol) + ' ₴');
+  R('Бонуси мережі за період', '− ' + money0(m.bonusMoney*m.vol) + ' ₴', 'neg');
+  R('Фіксовані витрати періоду', '− ' + money0(m.fixTotal) + ' ₴', 'neg');
+  R('Вартість відтермінування', '− ' + money0(m.deferMoney*m.vol) + ' ₴', 'neg');
+  R('Чиста виручка за період', money0(m.NN*m.vol) + ' ₴');
+  T('Прибуток за період', money0(m.profit*m.vol) + ' ₴', m.profit >= 0 ? 'pos' : 'neg');
+  if(m.profit > 0 && m.fixTotal > 0){
+    const payback = m.fixTotal/(m.profit + m.Fu);
+    R('Обсяг для окупності лістингу', money0(payback) + ' од.');
+  }
+  el('periodRows').innerHTML = rows;
+
+  renderBar(m);
+  saveLast();
+  renderDeals();
+}
+
+function renderBar(m){
+  const parts = [
+    {name:'Собівартість', val:m.cogs, color:'#0B1F12'},
+    {name:'Наша логістика', val:m.ownLog, color:'#3A5C46'},
+    ...m.bonuses.filter(b=>b.p>0).map(b=>({name:b.key, val:m.P*b.p/100, color:b.color})),
+    {name:'Лістинг і фікс. витрати', val:m.Fu, color:'#B8860B'},
+    {name:'Відтермінування', val:m.deferMoney, color:'#E5A100'},
+    {name:'Прибуток', val:Math.max(m.profit,0), color:'#FFE600'}
+  ].filter(p=>p.val > 0.0001);
+
+  const sum = parts.reduce((s,p)=>s+p.val,0) || 1;
+  el('bar').innerHTML = parts.map(p =>
+    `<div style="width:${p.val/sum*100}%;background:${p.color}" title="${p.name}: ${money(p.val)} ₴"></div>`).join('');
+  el('legend').innerHTML = parts.map(p =>
+    `<div class="lg"><i style="background:${p.color}"></i>${p.name}<b>${money(p.val)} ₴</b></div>`).join('');
+
+  el('barWarn').innerHTML = m.profit < 0
+    ? `Витрати перевищують відпускну ціну на <b>${money(-m.profit)} ₴</b> за одиницю — прибутку в структурі немає.`
+    : '';
+}
+
+/* ---------------- actions ---------------- */
+function applyMinPrice(){
+  const m = model();
+  if(m.priceMin === null){ alert('Неможливо: бонуси і відтермінування «з\'їдають» усю ціну.'); return; }
+  el('price').value = m.priceMin.toFixed(2);
+  render();
+}
+function applyTargetPrice(){
+  const m = model();
+  if(m.priceTarget === null){ alert('Неможливо: бонуси і відтермінування «з\'їдають» усю ціну.'); return; }
+  el('price').value = m.priceTarget.toFixed(2);
+  render();
+}
+
+function summaryText(){
+  const m = model();
+  const v = verdictOf(m);
+  const label = {ok:'ПІДХОДИТЬ', warn:'НА МЕЖІ', bad:'НЕ ПІДХОДИТЬ'}[v];
+  const name = el('dealName').value.trim();
+  return [
+    'VERDE — прорахунок умови' + (name ? ': ' + name : ''),
+    '',
+    'Відпускна ціна (без ПДВ): ' + money(m.P) + ' грн',
+    'Собівартість + логістика: ' + money(m.costTotal) + ' грн',
+    'Бонуси: ' + pct(m.Bpct) + ' (' + money(m.bonusMoney) + ' грн/од)',
+    '  ' + m.bonuses.filter(b=>b.p).map(b=>b.key + ' ' + pct(b.p)).join(', '),
+    'Лістинг і фікс. витрати: ' + money0(m.fixTotal) + ' грн на ' + money0(m.vol) + ' од = ' + money(m.Fu) + ' грн/од',
+    'Відтермінування: ' + money0(num('deferDays')) + ' дн = ' + money(m.deferMoney) + ' грн/од',
+    '',
+    'Чиста виручка (net-net): ' + money(m.NN) + ' грн',
+    'Прибуток: ' + money(m.profit) + ' грн/од · маржа ' + pct(m.margin),
+    'Прибуток за період: ' + money0(m.profit*m.vol) + ' грн',
+    '',
+    'Мінімальна ціна (' + pct(m.minMargin) + '): ' + (m.priceMin === null ? '—' : money(m.priceMin) + ' грн'),
+    'Цільова ціна (' + pct(m.targetMargin) + '): ' + (m.priceTarget === null ? '—' : money(m.priceTarget) + ' грн'),
+    'Макс. бонуси при цій ціні: ' + (m.maxBonusMin === null ? '—' : pct(m.maxBonusMin)),
+    '',
+    'РІШЕННЯ: ' + label + ' (ціль ' + pct(m.targetMargin) + ', мінімум ' + pct(m.minMargin) + ')'
+  ].join('\n');
+}
+
+function copySummary(){
+  const txt = summaryText();
+  const done = () => { const b = el('copyBtn'); const t = b.textContent;
+    b.textContent = 'Скопійовано ✓'; setTimeout(()=>b.textContent = t, 1800); };
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(txt).then(done, ()=>fallbackCopy(txt,done));
+  } else fallbackCopy(txt, done);
+}
+function fallbackCopy(txt, done){
+  const ta = document.createElement('textarea');
+  ta.value = txt; ta.style.position='fixed'; ta.style.opacity='0';
+  document.body.appendChild(ta); ta.select();
+  try{ document.execCommand('copy'); done(); }catch(e){ prompt('Скопіюй вручну:', txt); }
+  document.body.removeChild(ta);
+}
+
+function resetAll(){
+  if(!confirm('Скинути всі поля до типових значень?')) return;
+  IDS.forEach(id => el(id).value = DEFAULTS[id]);
+  el('dealName').value = '';
+  render();
+}
+
+/* ---------------- storage ---------------- */
+const LAST_KEY = 'verde_calc_last';
+const DEALS_KEY = 'verde_calc_deals';
+
+function readState(){ const s = {}; IDS.forEach(id => s[id] = el(id).value); return s; }
+// присвоюємо лише за реальної зміни — інакше таблиця порівняння збивала б курсор у полі, де друкують
+function writeState(s){ IDS.forEach(id => { if(s[id] !== undefined && el(id).value !== s[id]) el(id).value = s[id]; }); }
+
+function saveLast(){ try{ localStorage.setItem(LAST_KEY, JSON.stringify(readState())); }catch(e){} }
+function loadLast(){
+  try{
+    const s = JSON.parse(localStorage.getItem(LAST_KEY) || 'null');
+    if(s) writeState(s);
+  }catch(e){}
+}
+
+function getDeals(){ try{ return JSON.parse(localStorage.getItem(DEALS_KEY) || '[]'); }catch(e){ return []; } }
+function setDeals(d){ try{ localStorage.setItem(DEALS_KEY, JSON.stringify(d)); }catch(e){} }
+
+function saveDeal(){
+  const name = el('dealName').value.trim();
+  if(!name){ alert('Спочатку вкажи назву — мережу, клієнта або SKU.'); el('dealName').focus(); return; }
+  const deals = getDeals();
+  const rec = {name, state:readState(), ts:Date.now()};
+  const i = deals.findIndex(d => d.name === name);
+  if(i >= 0){
+    if(!confirm('«' + name + '» уже збережено. Перезаписати?')) return;
+    deals[i] = rec;
+  } else deals.push(rec);
+  setDeals(deals);
+  renderDeals();
+}
+
+function loadDeal(i){
+  const d = getDeals()[i];
+  if(!d) return;
+  writeState(d.state);
+  el('dealName').value = d.name;
+  render();
+  window.scrollTo({top:0, behavior:'smooth'});
+}
+function deleteDeal(i){
+  const deals = getDeals();
+  if(!deals[i]) return;
+  if(!confirm('Видалити «' + deals[i].name + '»?')) return;
+  deals.splice(i,1); setDeals(deals); renderDeals();
+}
+
+function renderDeals(){
+  const deals = getDeals();
+  const table = el('dealsTable');
+  el('dealsEmpty').style.display = deals.length ? 'none' : 'block';
+  if(!deals.length){ table.innerHTML = ''; return; }
+
+  const saved = readState();          // поточний стан, щоб повернути після прорахунку
+  const rows = deals.map((d,i) => {
+    writeState(d.state);
+    const m = model();
+    const v = verdictOf(m);
+    const pillTxt = {ok:'Підходить', warn:'На межі', bad:'Ні'}[v];
+    return `<tr>
+      <td>${escapeHtml(d.name)}</td>
+      <td>${money(m.P)}</td>
+      <td>${pct(m.Bpct)}</td>
+      <td>${money0(num('deferDays'))} дн</td>
+      <td>${money(m.NN)}</td>
+      <td><b>${pct(m.margin)}</b></td>
+      <td>${money0(m.profit*m.vol)}</td>
+      <td><span class="pill ${v}">${pillTxt}</span></td>
+      <td>
+        <button class="mini-btn" onclick="loadDeal(${i})">Відкрити</button>
+        <button class="mini-btn ghost" onclick="deleteDeal(${i})">×</button>
+      </td>
+    </tr>`;
+  }).join('');
+  writeState(saved);
+
+  table.innerHTML = `<thead><tr>
+      <th>Назва</th><th>Ціна</th><th>Бонуси</th><th>Відтерм.</th>
+      <th>Net-net</th><th>Маржа</th><th>Прибуток / період</th><th>Рішення</th><th></th>
+    </tr></thead><tbody>${rows}</tbody>`;
+}
+
+function escapeHtml(s){
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+/* ---------------- init ---------------- */
+loadLast();
+IDS.forEach(id => el(id).addEventListener('input', render));
+render();
+</script>
+
+</body>
+</html>
