@@ -38,8 +38,8 @@
   nav{display:flex;align-items:center;justify-content:space-between;height:68px;gap:1rem}
   .logo{font-family:'Montserrat',sans-serif;font-weight:900;font-size:1.5rem;letter-spacing:.04em;color:var(--green-deep);display:flex;align-items:center;gap:.15rem;text-decoration:none}
   .bolt{display:inline-block;color:var(--yellow);filter:drop-shadow(0 1px 0 var(--green-deep));transform:translateY(2px)}
-  .nav-cta{background:var(--ink);color:var(--yellow);text-decoration:none;font-weight:700;font-size:.9rem;padding:.6rem 1.3rem;border-radius:100px;transition:.25s;white-space:nowrap}
-  .nav-cta:hover{background:var(--green-deep)}
+  .nav-note{font-family:'Montserrat',sans-serif;font-weight:700;font-size:.78rem;letter-spacing:.12em;text-transform:uppercase;opacity:.45;white-space:nowrap}
+  @media(max-width:560px){.nav-note{display:none}}
 
   /* ---------- HERO ---------- */
   .hero{background:var(--yellow);padding:2.4rem 0 2.2rem}
@@ -174,8 +174,8 @@
 
 <header>
   <nav class="wrap">
-    <a href="index.html" class="logo">VERDE<span class="bolt">⚡</span></a>
-    <a href="index.html" class="nav-cta">← На головну</a>
+    <div class="logo">VERDE<span class="bolt">⚡</span></div>
+    <div class="nav-note">Калькулятор дистрибуції</div>
   </nav>
 </header>
 
