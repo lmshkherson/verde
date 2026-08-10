@@ -27,6 +27,7 @@ const ALL_ITEMS: (NavItem & { section: Section })[] = [
   { section: 'reports', href: '/reports', label: 'Звіти', short: 'Звіти', icon: '📈' },
   { section: 'reports', href: '/integrations', label: 'Обмін документами', short: 'Обмін', icon: '🔁' },
   { section: 'reports', href: '/entities', label: 'Юрособи', short: 'Юрособи', icon: '🏛️' },
+  { section: 'reports', href: '/users', label: 'Користувачі', short: 'Люди', icon: '🔑' },
 ];
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {

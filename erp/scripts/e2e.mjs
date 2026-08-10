@@ -2096,6 +2096,17 @@ try {
     (await owner.locator('tr', { hasText: 'Лікарняний' }).count()) === 0,
   );
 
+  // Відновлюємо лікарняний і формуємо відомість заново: з неї далі
+  // друкується розрахунковий листок, і він має містити всі складові.
+  await owner.selectOption('select[name="kind"]', 'sick');
+  await owner.fill('input[name="date_from"]', `${nextPeriod}-10`);
+  await owner.fill('input[name="date_to"]', `${nextPeriod}-17`);
+  await owner.click('button:has-text("Оформити")');
+  await owner.waitForTimeout(1400);
+  await owner.goto(`${BASE}/payroll?period=${nextPeriod}`);
+  await owner.click('button:has-text("Сформувати за місяць")');
+  await owner.waitForTimeout(1600);
+
   // ─── 13к. Довідник складів ─────────────────────────────────────────────────
   console.log('\nСклади');
 
@@ -2134,6 +2145,120 @@ try {
     'склад із залишком деактивувати не дають',
     (await warehouse.locator('text=перемістіть його').count()) > 0,
   );
+
+  // ─── 13л. Користувачі й розрахунковий листок ───────────────────────────────
+  console.log('\nКористувачі');
+
+  await owner.goto(`${BASE}/users`);
+  check('видно попередження про демо-акаунти', (await owner.locator('text=демо-акаунтів').count()) > 0);
+
+  // Закороткий пароль не проходить.
+  await owner.fill('form:has(input[name="email"]) input[name="email"]', 'nova@v-verde.ua');
+  await owner.fill('form:has(input[name="email"]) input[name="full_name"]', 'Новенька Комірниця');
+  await owner.fill('form:has(input[name="email"]) input[name="password"]', 'short');
+  await owner.click('button:has-text("Створити")');
+  await owner.waitForTimeout(1100);
+  check('закороткий пароль відхилено', (await owner.locator('text=закороткий').count()) > 0);
+
+  // React очищує форму після сабміту, навіть невдалого — заповнюємо все знову.
+  await owner.fill('form:has(input[name="email"]) input[name="email"]', 'nova@v-verde.ua');
+  await owner.fill('form:has(input[name="email"]) input[name="full_name"]', 'Новенька Комірниця');
+  await owner.fill('form:has(input[name="email"]) input[name="password"]', 'duzhe-dovgyi-parol-2026');
+  await owner.click('button:has-text("Створити")');
+  await owner.waitForTimeout(1300);
+  await owner.reload();
+  check('користувача створено', (await owner.locator('text=Новенька Комірниця').count()) > 0);
+
+  // Новий користувач входить і бачить лише своє.
+  const newcomer = await browser.newContext({ locale: 'uk-UA', viewport: { width: 1400, height: 900 } });
+  const newbie = await newcomer.newPage();
+  await newbie.goto(`${BASE}/login`);
+  await newbie.fill('input[name="email"]', 'nova@v-verde.ua');
+  await newbie.fill('input[name="password"]', 'duzhe-dovgyi-parol-2026');
+  await newbie.click('button[type="submit"]');
+  await newbie.waitForURL(`${BASE}/`);
+  check('новий користувач увійшов', true);
+  const deniedUsers = await newbie.goto(`${BASE}/users`);
+  check('комірника не пускає до користувачів', deniedUsers.url().includes('denied=1'));
+
+  // Зміна власного пароля: спершу з хибним поточним, потім зі справжнім.
+  await newbie.goto(`${BASE}/account`);
+  await newbie.fill('input[name="current_password"]', 'ne-toi-parol-zovsim');
+  await newbie.fill('input[name="new_password"]', 'shche-dovshyi-parol-2026');
+  await newbie.click('button:has-text("Змінити пароль")');
+  await newbie.waitForTimeout(1100);
+  check('хибний поточний пароль відхилено', (await newbie.locator('text=не підходить').count()) > 0);
+
+  await newbie.fill('input[name="current_password"]', 'duzhe-dovgyi-parol-2026');
+  await newbie.fill('input[name="new_password"]', 'shche-dovshyi-parol-2026');
+  await newbie.click('button:has-text("Змінити пароль")');
+  await newbie.waitForTimeout(1200);
+  check('пароль змінено', (await newbie.locator('text=Пароль змінено').count()) > 0);
+
+  // Старий пароль більше не працює, новий — працює.
+  const relog = await (await browser.newContext({ locale: 'uk-UA' })).newPage();
+  await relog.goto(`${BASE}/login`);
+  await relog.fill('input[name="email"]', 'nova@v-verde.ua');
+  await relog.fill('input[name="password"]', 'duzhe-dovgyi-parol-2026');
+  await relog.click('button[type="submit"]');
+  await relog.waitForTimeout(1100);
+  check('старий пароль більше не діє', relog.url().includes('/login'));
+  // Після невдалого входу форма очищується — заповнюємо обидва поля знову.
+  await relog.fill('input[name="email"]', 'nova@v-verde.ua');
+  await relog.fill('input[name="password"]', 'shche-dovshyi-parol-2026');
+  await relog.click('button[type="submit"]');
+  await relog.waitForURL(`${BASE}/`);
+  check('новий пароль діє', true);
+
+  // Єдиного власника деактивувати не можна.
+  await owner.goto(`${BASE}/users`);
+  // Олена — власник і залогінена, кнопки деактивації для себе немає.
+  check(
+    'кнопки деактивації для себе немає',
+    (await owner
+      .locator('div.rounded-xl', { hasText: 'Олена Ковальчук' })
+      .locator('button:has-text("Деактивувати")')
+      .count()) === 0,
+  );
+
+  // Деактивуємо новеньку — вхід має закритися.
+  await owner
+    .locator('div.rounded-xl', { hasText: 'Новенька Комірниця' })
+    .locator('button:has-text("Деактивувати")')
+    .click();
+  await owner.waitForTimeout(1300);
+  const relog2 = await (await browser.newContext({ locale: 'uk-UA' })).newPage();
+  await relog2.goto(`${BASE}/login`);
+  await relog2.fill('input[name="email"]', 'nova@v-verde.ua');
+  await relog2.fill('input[name="password"]', 'shche-dovshyi-parol-2026');
+  await relog2.click('button[type="submit"]');
+  await relog2.waitForTimeout(1100);
+  check('деактивований користувач не входить', relog2.url().includes('/login'));
+
+  // Розрахунковий листок: цифри ті самі, що у відомості.
+  console.log('\nРозрахунковий листок');
+  await owner.goto(employeeUrl);
+  await owner
+    .locator('section:has(h2:has-text("Історія нарахувань")) a')
+    .first()
+    .click();
+  await owner.waitForURL(/\/payslip\?period=/);
+  const payslip = ((await owner.locator('body').textContent()) ?? '').replace(/[\s ]+/g, ' ');
+  check(
+    'у листку є всі складові',
+    payslip.includes('Оклад за відпрацьований час') &&
+      payslip.includes('Відпускні') &&
+      payslip.includes('Податок на доходи'),
+  );
+  check(
+    'сума до виплати збігається з відомістю',
+    payslip.includes('До виплати: 12 762,98'),
+  );
+  check(
+    'частина ПФУ пояснена окремим рядком',
+    payslip.includes('Пенсійним фондом України напряму'),
+  );
+  check('ЄСВ показано як внесок роботодавця', payslip.includes('сплачує роботодавець'));
 
   // ─── 14. Права доступу ─────────────────────────────────────────────────────
   console.log('\nПрава доступу');

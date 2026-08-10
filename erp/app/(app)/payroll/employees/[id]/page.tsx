@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import {
   createAbsence,
@@ -362,7 +363,15 @@ export default async function EmployeePage({ params }: { params: Promise<{ id: s
               <Table head={['Період', 'Оклад', 'Відпускні', 'Лікарняні', 'Разом', 'На руки']}>
                 {payHistory.map((h, i) => (
                   <Row key={i}>
-                    <Cell>{fmtDate(h.period)}</Cell>
+                    <Cell>
+                      <Link
+                        href={`/payroll/employees/${emp.id}/payslip?period=${(isoDay(h.period) ?? '').slice(0, 7)}`}
+                        className="font-semibold text-emerald-700 hover:underline"
+                        title="Розрахунковий листок"
+                      >
+                        {fmtDate(h.period)}
+                      </Link>
+                    </Cell>
                     <Cell align="right">{fmtMoney(h.base_salary)}</Cell>
                     <Cell align="right">
                       {Number(h.vacation_pay) > 0 ? fmtMoney(h.vacation_pay) : '—'}

@@ -106,10 +106,10 @@ export function Sidebar({
         ))}
       </nav>
       <div className="border-t border-emerald-900/10 p-3">
-        <div className="px-2 pb-2">
+        <Link href="/account" className="block rounded-xl px-2 pb-2 hover:bg-emerald-50">
           <div className="truncate text-sm font-semibold text-emerald-950">{name}</div>
-          <div className="text-xs text-emerald-800/60">{roleLabel}</div>
-        </div>
+          <div className="text-xs text-emerald-800/60">{roleLabel} · змінити пароль</div>
+        </Link>
         <form action={logout}>
           <button className="w-full rounded-xl px-3 py-2 text-left text-sm font-semibold text-emerald-800/70 hover:bg-emerald-50">
             Вийти
