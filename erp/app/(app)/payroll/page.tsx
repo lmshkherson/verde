@@ -1,4 +1,5 @@
-import { createEmployee, createPayrollRun, payPayrollRun, postPayrollRun } from '@/app/actions/hr';
+import Link from 'next/link';
+import { createEmployee, createPayrollRun, payPayrollRun, postPayrollRun, unpostPayrollRun } from '@/app/actions/hr';
 import { ActionForm } from '@/components/action-form';
 import { Badge, Button, Card, Cell, Empty, Field, inputClass, PageHeader, Row, Stat, Table } from '@/components/ui';
 import { query, queryOne } from '@/lib/db';
@@ -127,6 +128,13 @@ export default async function PayrollPage({
                       </form>
                     )}
                     {run.status === 'posted' && (
+                      <>
+                      <form action={unpostPayrollRun}>
+                        <input type="hidden" name="run_id" value={run.run_id} />
+                        <Button variant="ghost" className="!min-h-10">
+                          У чернетку
+                        </Button>
+                      </form>
                       <form action={payPayrollRun} className="flex items-end gap-2">
                         <input type="hidden" name="run_id" value={run.run_id} />
                         <input
@@ -137,6 +145,7 @@ export default async function PayrollPage({
                         />
                         <Button className="!min-h-10">Виплатити</Button>
                       </form>
+                      </>
                     )}
                   </div>
                 )}
@@ -156,7 +165,14 @@ export default async function PayrollPage({
               <Table head={['ПІБ', 'Посада', 'Підрозділ', 'Оклад']}>
                 {employees.map((e) => (
                   <Row key={e.id}>
-                    <Cell className="font-semibold">{e.full_name}</Cell>
+                    <Cell>
+                      <Link
+                        href={`/payroll/employees/${e.id}`}
+                        className="font-semibold text-emerald-800 hover:underline"
+                      >
+                        {e.full_name}
+                      </Link>
+                    </Cell>
                     <Cell>{e.position ?? '—'}</Cell>
                     <Cell>
                       <Badge tone={e.department === 'production' ? 'amber' : 'gray'}>

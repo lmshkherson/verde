@@ -5,6 +5,7 @@ import {
   cancelReceipt,
   postReceipt,
   removeReceiptLine,
+  updateReceiptHeader,
 } from '@/app/actions/receipts';
 import { ActionForm } from '@/components/action-form';
 import {
@@ -23,7 +24,7 @@ import {
   inputClass,
 } from '@/components/ui';
 import { query, queryOne } from '@/lib/db';
-import { EXPENSE_CATEGORIES, fmtDate, fmtMoney, fmtQty, unitLabel } from '@/lib/format';
+import { EXPENSE_CATEGORIES, fmtDate, fmtMoney, fmtQty, isoDay, unitLabel } from '@/lib/format';
 import { requireRole } from '@/lib/session';
 
 export const dynamic = 'force-dynamic';
@@ -41,13 +42,13 @@ export default async function ReceiptPage({ params }: { params: Promise<{ id: st
   const doc = await queryOne<{
     id: string;
     number: string;
-    received_on: string;
+    received_on: string | Date;
     status: string;
     supplier: string;
     supplier_id: string;
     supplier_is_vat_payer: boolean;
     supplier_doc_number: string | null;
-    supplier_doc_date: string | null;
+    supplier_doc_date: string | Date | null;
     prices_include_vat: boolean;
     note: string | null;
     net_amount: number;
@@ -55,9 +56,10 @@ export default async function ReceiptPage({ params }: { params: Promise<{ id: st
     gross_amount: number;
     goods_lines: number;
     service_lines: number;
+    warehouse_id: string | null;
   }>(
     `select r.id, r.number, r.received_on, r.status, s.name as supplier, s.id as supplier_id,
-            s.is_vat_payer as supplier_is_vat_payer,
+            s.is_vat_payer as supplier_is_vat_payer, r.warehouse_id,
             r.supplier_doc_number, r.supplier_doc_date, r.prices_include_vat, r.note,
             a.net_amount, a.vat_amount, a.gross_amount, a.goods_lines, a.service_lines
        from receipts r
@@ -68,7 +70,7 @@ export default async function ReceiptPage({ params }: { params: Promise<{ id: st
   );
   if (!doc) notFound();
 
-  const [lines, items] = await Promise.all([
+  const [lines, items, warehouses] = await Promise.all([
     query<{
       id: string;
       kind: string;
@@ -95,6 +97,10 @@ export default async function ReceiptPage({ params }: { params: Promise<{ id: st
       `select id, name, sku, unit from items
         where is_active and kind in ('raw', 'packaging', 'semi', 'finished')
         order by kind, name`,
+    ),
+    query<{ id: string; name: string; is_default: boolean }>(
+      `select id, name, is_default from warehouses
+        where is_active order by is_default desc, code`,
     ),
   ]);
 
@@ -283,6 +289,64 @@ export default async function ReceiptPage({ params }: { params: Promise<{ id: st
         </div>
 
         <div className="space-y-4">
+          {open && (
+            <Card title="Шапка документа">
+              <ActionForm action={updateReceiptHeader} submitLabel="Зберегти шапку" variant="ghost">
+                <input type="hidden" name="receipt_id" value={doc.id} />
+                <Field label="Дата надходження">
+                  <input
+                    name="received_on"
+                    type="date"
+                    defaultValue={isoDay(doc.received_on) ?? ''}
+                    className={inputClass}
+                  />
+                </Field>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Field label="Номер їх документа">
+                    <input
+                      name="supplier_doc_number"
+                      defaultValue={doc.supplier_doc_number ?? ''}
+                      className={inputClass}
+                    />
+                  </Field>
+                  <Field label="Дата їх документа">
+                    <input
+                      name="supplier_doc_date"
+                      type="date"
+                      defaultValue={isoDay(doc.supplier_doc_date) ?? ''}
+                      className={inputClass}
+                    />
+                  </Field>
+                </div>
+                <Field label="Склад">
+                  <select
+                    name="warehouse_id"
+                    className={inputClass}
+                    defaultValue={doc.warehouse_id ?? warehouses.find((w) => w.is_default)?.id ?? ''}
+                  >
+                    {warehouses.map((w) => (
+                      <option key={w.id} value={w.id}>
+                        {w.name}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <label className="flex items-center gap-2 py-1">
+                  <input
+                    name="prices_include_vat"
+                    type="checkbox"
+                    defaultChecked={doc.prices_include_vat}
+                    className="size-5 accent-emerald-700"
+                  />
+                  <span className="text-sm font-semibold text-emerald-900">Ціни вказані з ПДВ</span>
+                </label>
+                <Field label="Примітка">
+                  <input name="note" defaultValue={doc.note ?? ''} className={inputClass} />
+                </Field>
+              </ActionForm>
+            </Card>
+          )}
+
           {open ? (
             <Card title="Проведення">
               <p className="mb-3 text-sm text-emerald-800/70">

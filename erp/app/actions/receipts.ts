@@ -32,8 +32,8 @@ export async function createReceipt(_prev: ActionState, formData: FormData): Pro
       const { rows } = await c.query<{ id: string }>(
         `insert into receipts
            (number, legal_entity_id, supplier_id, received_on, supplier_doc_number,
-            supplier_doc_date, prices_include_vat, note, created_by)
-         values ($1, $2, $3, $4, $5, $6, $7, $8, $9) returning id`,
+            supplier_doc_date, prices_include_vat, warehouse_id, note, created_by)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) returning id`,
         [
           number,
           session.eid,
@@ -42,6 +42,7 @@ export async function createReceipt(_prev: ActionState, formData: FormData): Pro
           strOrNull(formData, 'supplier_doc_number'),
           strOrNull(formData, 'supplier_doc_date'),
           formData.get('prices_include_vat') !== 'off',
+          strOrNull(formData, 'warehouse_id'),
           strOrNull(formData, 'note'),
           session.uid,
         ],
@@ -53,6 +54,42 @@ export async function createReceipt(_prev: ActionState, formData: FormData): Pro
   }
 
   redirect(`/receipts/${receiptId}`);
+}
+
+/**
+ * Редагування шапки — лише в чернетці. Помилка в номері накладної
+ * постачальника не повинна коштувати перестворення документа.
+ */
+export async function updateReceiptHeader(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  const session = await requireRole('warehouse');
+  const receiptId = str(formData, 'receipt_id');
+
+  try {
+    await transaction(async (c) => {
+      await assertDraft(c, receiptId);
+      await c.query(
+        `update receipts set
+           received_on = $2, supplier_doc_number = $3, supplier_doc_date = $4,
+           prices_include_vat = $5, warehouse_id = $6, note = $7
+         where id = $1 and legal_entity_id = $8`,
+        [
+          receiptId,
+          str(formData, 'received_on') || new Date().toISOString().slice(0, 10),
+          strOrNull(formData, 'supplier_doc_number'),
+          strOrNull(formData, 'supplier_doc_date'),
+          formData.get('prices_include_vat') === 'on',
+          strOrNull(formData, 'warehouse_id'),
+          strOrNull(formData, 'note'),
+          session.eid,
+        ],
+      );
+    });
+  } catch (err) {
+    return { error: toMessage(err) };
+  }
+
+  revalidatePath(`/receipts/${receiptId}`);
+  return { ok: 'Шапку збережено' };
 }
 
 async function assertDraft(c: import('pg').PoolClient, receiptId: string) {
@@ -176,9 +213,10 @@ export async function postReceipt(_prev: ActionState, formData: FormData): Promi
         supplier_is_vat_payer: boolean;
         supplier_name: string;
         supplier_edrpou: string | null;
+        warehouse_id: string | null;
       }>(
         `select r.id, r.number, r.status, r.legal_entity_id, r.supplier_id, r.received_on,
-                r.prices_include_vat, r.supplier_doc_number,
+                r.prices_include_vat, r.supplier_doc_number, r.warehouse_id,
                 e.is_vat_payer as buyer_is_vat_payer,
                 s.is_vat_payer as supplier_is_vat_payer,
                 s.name as supplier_name, s.edrpou as supplier_edrpou
@@ -222,7 +260,7 @@ export async function postReceipt(_prev: ActionState, formData: FormData): Promi
       );
       if (lines.length === 0) throw new Error('У документі немає жодного рядка');
 
-      const warehouseId = await defaultWarehouseId(c, 'raw');
+      const warehouseId = doc.warehouse_id ?? (await defaultWarehouseId(c, 'raw'));
       const controlled: { batchId: string; itemId: string; qty: number }[] = [];
       let creditBase = 0;
       let creditVat = 0;

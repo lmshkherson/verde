@@ -17,7 +17,7 @@ const STATUS: Record<string, string> = {
 export default async function ReceiptsPage() {
   const session = await requireRole('warehouse');
 
-  const [docs, suppliers] = await Promise.all([
+  const [docs, suppliers, warehouses] = await Promise.all([
     query<{
       id: string;
       number: string;
@@ -41,6 +41,10 @@ export default async function ReceiptsPage() {
     ),
     query<{ id: string; name: string }>(
       'select id, name from suppliers where is_active order by name',
+    ),
+    query<{ id: string; name: string; is_default: boolean }>(
+      `select id, name, is_default from warehouses
+        where is_active order by is_default desc, code`,
     ),
   ]);
 
@@ -129,6 +133,19 @@ export default async function ReceiptsPage() {
                     {suppliers.map((s) => (
                       <option key={s.id} value={s.id}>
                         {s.name}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label="Склад" hint="куди оприбутковується товар">
+                  <select
+                    name="warehouse_id"
+                    className={inputClass}
+                    defaultValue={warehouses.find((w) => w.is_default)?.id ?? warehouses[0]?.id ?? ''}
+                  >
+                    {warehouses.map((w) => (
+                      <option key={w.id} value={w.id}>
+                        {w.name}
                       </option>
                     ))}
                   </select>

@@ -52,6 +52,9 @@ export default async function StockPage({
           <div className="flex gap-2">
             <LinkButton href="/stock/moves">Журнал рухів</LinkButton>
             {(session.role === 'warehouse' || session.role === 'owner') && (
+              <LinkButton href="/stock/warehouses">Склади</LinkButton>
+            )}
+            {(session.role === 'warehouse' || session.role === 'owner') && (
               <LinkButton href="/stock/operations" variant="primary">
                 Операції
               </LinkButton>

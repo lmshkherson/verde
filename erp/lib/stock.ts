@@ -194,7 +194,9 @@ export async function defaultWarehouseId(
   kind: 'raw' | 'finished' | 'wip',
 ): Promise<string> {
   const { rows } = await client.query<{ id: string }>(
-    'select id from warehouses where kind = $1 and is_active order by code limit 1',
+    // Спершу типовий склад цього типу, і лише як запасний варіант — перший
+    // за кодом: так додавання другого складу не перемикає документи мовчки.
+    'select id from warehouses where kind = $1 and is_active order by is_default desc, code limit 1',
     [kind],
   );
   if (!rows[0]) throw new Error(`Не налаштовано склад типу «${kind}»`);

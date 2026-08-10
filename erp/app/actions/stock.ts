@@ -158,3 +158,104 @@ export async function transferStock(_prev: ActionState, formData: FormData): Pro
   revalidatePath('/stock');
   return { ok: 'Переміщення проведено' };
 }
+
+/**
+ * Довідник складів. Тип після появи рухів не змінюється: від нього залежить,
+ * куди виробництво списує сировину й куди кладе випуск.
+ */
+export async function saveWarehouse(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  await requireRole('warehouse');
+  const id = strOrNull(formData, 'warehouse_id');
+  const code = str(formData, 'code');
+  const name = str(formData, 'name');
+  const kind = str(formData, 'kind');
+
+  if (!code) return { error: 'Вкажіть код складу' };
+  if (!name) return { error: 'Вкажіть назву' };
+  if (!['raw', 'finished', 'wip'].includes(kind)) return { error: 'Оберіть тип складу' };
+
+  const isDefault = formData.get('is_default') === 'on';
+
+  try {
+    await transaction(async (c) => {
+      if (id) {
+        const { rows: moves } = await c.query<{ n: number }>(
+          'select count(*)::int as n from stock_moves where warehouse_id = $1',
+          [id],
+        );
+        const { rows: current } = await c.query<{ kind: string }>(
+          'select kind from warehouses where id = $1',
+          [id],
+        );
+        if (moves[0].n > 0 && current[0]?.kind !== kind) {
+          throw new Error('Тип складу не можна змінити: по ньому вже є рухи');
+        }
+        await c.query(
+          `update warehouses set code = $2, name = $3, kind = $4, address = $5, note = $6
+            where id = $1`,
+          [id, code, name, kind, strOrNull(formData, 'address'), strOrNull(formData, 'note')],
+        );
+      } else {
+        await c.query(
+          `insert into warehouses (code, name, kind, address, note)
+           values ($1, $2, $3, $4, $5)`,
+          [code, name, kind, strOrNull(formData, 'address'), strOrNull(formData, 'note')],
+        );
+      }
+
+      // Типовим складом типу може бути лише один — інакше «за замовчуванням»
+      // означало б «як пощастить».
+      if (isDefault) {
+        await c.query('update warehouses set is_default = false where kind = $1', [kind]);
+        await c.query(
+          'update warehouses set is_default = true where code = $1',
+          [code],
+        );
+      }
+    });
+  } catch (err) {
+    const message = toMessage(err);
+    return {
+      error: message.includes('warehouses_code_key') ? `Код ${code} вже зайнятий` : message,
+    };
+  }
+
+  revalidatePath('/stock/warehouses');
+  return { ok: id ? 'Склад збережено' : 'Склад додано' };
+}
+
+/** Деактивація складу можлива лише порожнього: залишки мають кудись поїхати. */
+export async function setWarehouseActive(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  await requireRole('warehouse');
+  const id = str(formData, 'warehouse_id');
+  const active = str(formData, 'active') === 'true';
+
+  try {
+    await transaction(async (c) => {
+      if (!active) {
+        const { rows } = await c.query<{ qty: number }>(
+          `select coalesce(sum(qty), 0) as qty from stock_moves where warehouse_id = $1`,
+          [id],
+        );
+        if (Math.abs(Number(rows[0].qty)) > 0.0005) {
+          throw new Error(
+            'На складі є залишок — спершу перемістіть його на інший склад.',
+          );
+        }
+        const { rows: def } = await c.query<{ is_default: boolean }>(
+          'select is_default from warehouses where id = $1',
+          [id],
+        );
+        if (def[0]?.is_default) {
+          throw new Error('Це типовий склад свого типу — спершу призначте типовим інший.');
+        }
+      }
+      await c.query('update warehouses set is_active = $2 where id = $1', [id, active]);
+    });
+  } catch (err) {
+    return { error: toMessage(err) };
+  }
+
+  revalidatePath('/stock/warehouses');
+  return { ok: active ? 'Склад активовано' : 'Склад деактивовано' };
+}

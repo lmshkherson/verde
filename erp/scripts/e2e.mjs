@@ -1944,6 +1944,197 @@ try {
   const receiptPostings = (await owner.locator('body').innerText()).replace(/[\s ]+/g, ' ');
   check('надходження стало проводкою', receiptPostings.includes('ВС-НАД'));
 
+  // ─── 13и. Кадри: картка, відпустка, лікарняний, майно ──────────────────────
+  // Відомість поточного місяця вже виплачена, тож відсутності оформлюємо на
+  // наступний місяць і формуємо його відомість. Цифри перераховуються
+  // руками: оклад 20 000, середньоденна = 20 000 × 12 / 365 = 657,53.
+  console.log('\nКадри');
+
+  const next = new Date(Date.UTC(today.getFullYear(), today.getMonth() + 1, 1));
+  const nYear = next.getUTCFullYear();
+  const nMonth = String(next.getUTCMonth() + 1).padStart(2, '0');
+  const nextPeriod = `${nYear}-${nMonth}`;
+
+  await owner.goto(`${BASE}/payroll`);
+  await owner.click('a:has-text("Ткаченко")');
+  await owner.waitForURL(/\/payroll\/employees\/[0-9a-f-]{36}/);
+  const employeeUrl = owner.url();
+
+  // Кадрова картка.
+  await owner.fill('input[name="tax_id"]', '3323456789');
+  await owner.fill('input[name="id_document"]', 'ID 004417890');
+  await owner.fill('input[name="phone"]', '+380671114455');
+  await owner.fill('input[name="hired_on"]', `${year}-01-01`);
+  await owner.fill('input[name="insurance_years"]', '4');
+  await owner.click('button:has-text("Зберегти картку")');
+  await owner.waitForTimeout(1300);
+  await owner.reload();
+  check(
+    'стаж 4 роки дає 60% лікарняних',
+    (await owner.locator('[data-stat="Лікарняні"]').innerText()).includes('60%'),
+  );
+
+  const expectedAvg = Math.round(((20000 * 12) / 365) * 100) / 100;
+
+  // Відпустка 7 календарних днів наступного місяця.
+  await owner.selectOption('select[name="kind"]', 'vacation');
+  await owner.fill('input[name="date_from"]', `${nextPeriod}-01`);
+  await owner.fill('input[name="date_to"]', `${nextPeriod}-07`);
+  await owner.fill('form:has(input[name="date_from"]) input[name="note"]', 'Наказ № 12-В');
+  await owner.click('button:has-text("Оформити")');
+  await owner.waitForTimeout(1400);
+  await owner.reload();
+
+  const vacationCells = await rowCells(owner, 'Щорічна відпустка');
+  check(
+    'відпускні = середньоденна × 7 днів',
+    near(money(vacationCells[3]), expectedAvg * 7, 1),
+    `${vacationCells[3]} проти ${Math.round(expectedAvg * 7)}`,
+  );
+  check(
+    'залишок відпустки зменшився на 7 днів',
+    (await owner.locator('[data-stat="Залишок відпустки"]').innerText()).includes('використано 7'),
+  );
+
+  // Перетин періодів заборонено.
+  await owner.selectOption('select[name="kind"]', 'sick');
+  await owner.fill('input[name="date_from"]', `${nextPeriod}-05`);
+  await owner.fill('input[name="date_to"]', `${nextPeriod}-09`);
+  await owner.click('button:has-text("Оформити")');
+  await owner.waitForTimeout(1200);
+  check('перетин періодів заблоковано', (await owner.locator('text=перетинається').count()) > 0);
+
+  // Лікарняний 8 днів: 5 платить підприємство по 60%, 3 — ПФУ напряму.
+  await owner.selectOption('select[name="kind"]', 'sick');
+  await owner.fill('input[name="date_from"]', `${nextPeriod}-10`);
+  await owner.fill('input[name="date_to"]', `${nextPeriod}-17`);
+  await owner.click('button:has-text("Оформити")');
+  await owner.waitForTimeout(1400);
+  await owner.reload();
+  const sickCells = await rowCells(owner, 'Лікарняний');
+  check(
+    'лікарняний: підприємство платить 5 днів × 60%',
+    near(money(sickCells[3]), expectedAvg * 0.6 * 5, 1),
+    `${sickCells[3]}`,
+  );
+  check('частина ПФУ показана окремо', sickCells.join(' ').includes('ПФУ'));
+
+  // Майно.
+  await owner.fill('input[name="name"]', 'Ноутбук Lenovo, інв. 0012');
+  await owner.click('button:has-text("Записати")');
+  await owner.waitForTimeout(1200);
+  await owner.reload();
+  check('майно на руках', (await owner.locator('text=на руках').count()) > 0);
+
+  // Відомість наступного місяця: відсутності мають розкластися на складові.
+  await owner.goto(`${BASE}/payroll?period=${nextPeriod}`);
+  await owner.click('button:has-text("Сформувати за місяць")');
+  await owner.waitForTimeout(1600);
+  await owner.goto(employeeUrl);
+  // Рядок саме з історії нарахувань: дата «01.09.2026» є і в рядку відпустки,
+  // тож шукаємо всередині картки, а не по всій сторінці.
+  const historyCells = await owner
+    .locator('section:has(h2:has-text("Історія нарахувань")) tr', { hasText: `01.${nMonth}.${nYear}` })
+    .first()
+    .locator('td')
+    .allInnerTexts();
+  check(
+    'у нарахуванні окремо оклад, відпускні й лікарняні',
+    near(money(historyCells[2]), expectedAvg * 7, 1) && near(money(historyCells[3]), expectedAvg * 0.6 * 5, 1),
+    historyCells.join(' | '),
+  );
+  // Очікуваний оклад рахуємо, а не вгадуємо: робочі дні (пн–пт) місяця мінус
+  // пропущені відпусткою (1–7) і лікарняним (10–17).
+  const workdaysBetween = (fromDay, toDay) => {
+    let n = 0;
+    for (let d = fromDay; d <= toDay; d += 1) {
+      const dow = new Date(Date.UTC(nYear, next.getUTCMonth(), d)).getUTCDay();
+      if (dow !== 0 && dow !== 6) n += 1;
+    }
+    return n;
+  };
+  const daysInNext = new Date(Date.UTC(nYear, next.getUTCMonth() + 1, 0)).getUTCDate();
+  const wdMonth = workdaysBetween(1, daysInNext);
+  const wdMissed = workdaysBetween(1, 7) + workdaysBetween(10, 17);
+  const expectedBase = Math.round((20000 * (wdMonth - wdMissed)) / wdMonth * 100) / 100;
+  const baseNext = money(historyCells[1]);
+  check(
+    'оклад зменшився пропорційно пропущеним робочим дням',
+    near(baseNext, expectedBase, 1),
+    `${baseNext} грн при ${wdMonth} робочих днях і ${wdMissed} пропущених`,
+  );
+
+  // Проведена відомість блокує видалення відсутності, чернетка — ні.
+  await owner.goto(`${BASE}/payroll?period=${nextPeriod}`);
+  await owner.click('button:has-text("Провести")');
+  await owner.waitForTimeout(1100);
+  await owner.goto(employeeUrl);
+  await owner
+    .locator('tr', { hasText: 'Щорічна відпустка' })
+    .first()
+    .locator('button:has-text("Видалити")')
+    .click();
+  await owner.waitForTimeout(1200);
+  check(
+    'відсутність під проведеною відомістю не видаляється',
+    (await owner.locator('text=проведене нарахування').count()) > 0,
+  );
+
+  await owner.goto(`${BASE}/payroll?period=${nextPeriod}`);
+  await owner.click('button:has-text("У чернетку")');
+  await owner.waitForTimeout(1100);
+  await owner.goto(employeeUrl);
+  await owner
+    .locator('tr', { hasText: 'Лікарняний' })
+    .first()
+    .locator('button:has-text("Видалити")')
+    .click();
+  await owner.waitForTimeout(1300);
+  await owner.reload();
+  check(
+    'після повернення в чернетку відсутність видаляється',
+    (await owner.locator('tr', { hasText: 'Лікарняний' }).count()) === 0,
+  );
+
+  // ─── 13к. Довідник складів ─────────────────────────────────────────────────
+  console.log('\nСклади');
+
+  await warehouse.goto(`${BASE}/stock/warehouses`);
+  await warehouse.fill('input[name="code"]', 'MOROZ');
+  await warehouse.fill('form:has(input[name="code"]) input[name="name"]', 'Морозильна камера');
+  await warehouse.fill('form:has(input[name="code"]) input[name="address"]', 'вул. Щусєва, 15, камера №2');
+  await warehouse.click('button:has-text("Додати склад")');
+  await warehouse.waitForTimeout(1300);
+  await warehouse.reload();
+  check('склад створено', (await warehouse.locator('text=Морозильна камера').count()) > 0);
+
+  // Новий склад одразу доступний для вибору в надходженні.
+  await warehouse.goto(`${BASE}/receipts`);
+  const whOptions = await warehouse.locator('select[name="warehouse_id"] option').allInnerTexts();
+  check('склад видно у виборі надходження', whOptions.some((o) => o.includes('Морозильна')));
+
+  // Порожній нетиповий склад деактивується, типовий — ні.
+  await warehouse.goto(`${BASE}/stock/warehouses`);
+  await warehouse
+    .locator('tr', { hasText: 'Морозильна камера' })
+    .locator('button:has-text("Деактивувати")')
+    .click();
+  await warehouse.waitForTimeout(1200);
+  await warehouse.reload();
+  check(
+    'порожній склад деактивовано',
+    (await warehouse.locator('tr', { hasText: 'Морозильна камера' }).locator('text=Деактивований').count()) > 0,
+  );
+  await warehouse
+    .locator('tr', { hasText: 'Склад сировини' })
+    .locator('button:has-text("Деактивувати")')
+    .click();
+  await warehouse.waitForTimeout(1200);
+  check(
+    'склад із залишком деактивувати не дають',
+    (await warehouse.locator('text=перемістіть його').count()) > 0,
+  );
+
   // ─── 14. Права доступу ─────────────────────────────────────────────────────
   console.log('\nПрава доступу');
   const denied = await warehouse.goto(`${BASE}/reports`);
