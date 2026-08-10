@@ -118,8 +118,10 @@
   .sub .k{opacity:.55}
 
   /* ---------- BAR ---------- */
-  .bar{display:flex;height:34px;border-radius:10px;overflow:hidden;border:1px solid var(--line);background:var(--cream)}
+  .bar{display:flex;height:34px;border-radius:10px;overflow:hidden;border:1px solid var(--line);background:var(--cream);position:relative}
   .bar div{transition:width .25s ease}
+  .bar .marker{position:absolute;top:-4px;bottom:-4px;width:3px;background:var(--ink);border-radius:2px;transition:left .25s ease;z-index:2;box-shadow:0 0 0 1.5px #fff}
+  .barcap{font-size:.78rem;opacity:.6;margin-top:.7rem;line-height:1.45}
   .legend{display:grid;grid-template-columns:1fr 1fr;gap:.35rem .9rem;margin-top:.9rem;font-size:.8rem}
   .lg{display:flex;align-items:center;gap:.45rem}
   .lg i{width:10px;height:10px;border-radius:3px;flex:none}
@@ -155,6 +157,7 @@
 
   .warnbox{background:#FFF6D6;border:1.5px solid #E5C64A;border-radius:12px;padding:.7rem .9rem;font-size:.82rem;margin-top:.9rem}
   .warnbox:empty{display:none}
+  .warnbox.danger{background:#FDECEA;border-color:#E39B92;color:#7A1710}
 
   /* ---------- MOBILE STICKY SUMMARY ---------- */
   .mbar{display:none}
@@ -222,22 +225,21 @@
     </div>
 
     <div class="card">
-      <h2><span class="dot"></span>1. Ціна та собівартість</h2>
-      <p class="hint">Усі суми — за одиницю продукції, <b>без ПДВ</b>. Собівартості у прайсі немає:
-        введи свою — вона запам'ятається для обраної позиції й підставиться наступного разу.
-        Значення нижче — <b>заглушка</b>, заміни її на реальну.</p>
+      <h2><span class="dot"></span>1. Ціни</h2>
+      <p class="hint">Усі суми — за одиницю продукції, <b>без ПДВ</b>. Відпускну ціну правимо вручну під конкретні
+        перемовини. Дистриб'юторська ціна — це <b>база порівняння</b>: нижче за неї відвантажувати не можна.</p>
       <div class="grid3">
         <div class="field">
           <label>Відпускна ціна</label>
-          <div class="ctrl"><input id="price" inputmode="decimal" value="21.5"><span class="unit">грн</span></div>
+          <div class="ctrl"><input id="price" inputmode="decimal" value="27"><span class="unit">грн</span></div>
         </div>
         <div class="field">
-          <label>Собівартість</label>
-          <div class="ctrl"><input id="cogs" inputmode="decimal" value="12"><span class="unit">грн</span></div>
+          <label>Дистриб'юторська ціна (база)</label>
+          <div class="ctrl"><input id="basePrice" inputmode="decimal" value="21.5"><span class="unit">грн</span></div>
         </div>
         <div class="field">
-          <label>Наша логістика</label>
-          <div class="ctrl"><input id="ownLog" inputmode="decimal" value="1"><span class="unit">грн/од</span></div>
+          <label>Наша логістика (якщо веземо самі)</label>
+          <div class="ctrl"><input id="ownLog" inputmode="decimal" value="0"><span class="unit">грн/од</span></div>
         </div>
       </div>
     </div>
@@ -316,15 +318,16 @@
 
     <div class="card">
       <h2><span class="dot"></span>5. Наші цільові показники</h2>
-      <p class="hint">Маржа рахується від чистої виручки (net-net) — тобто від грошей, які реально залишаються після всіх бонусів і витрат.</p>
+      <p class="hint">Запас — це наскільки чиста відпускна ціна (після всіх бонусів і витрат) вища за дистриб'юторську.
+        Запас нижче нуля означає, що ми віддаємо товар дешевше, ніж власному дистриб'ютору.</p>
       <div class="grid3">
         <div class="field">
-          <label>Цільова маржа</label>
-          <div class="ctrl"><input id="targetMargin" inputmode="decimal" value="30"><span class="unit">%</span></div>
+          <label>Цільовий запас над базою</label>
+          <div class="ctrl"><input id="targetGap" inputmode="decimal" value="10"><span class="unit">%</span></div>
         </div>
         <div class="field">
-          <label>Мінімально допустима</label>
-          <div class="ctrl"><input id="minMargin" inputmode="decimal" value="20"><span class="unit">%</span></div>
+          <label>Мінімально допустимий запас</label>
+          <div class="ctrl"><input id="minGap" inputmode="decimal" value="0"><span class="unit">%</span></div>
         </div>
         <div class="field">
           <label>РРЦ — ціна полиці з ПДВ</label>
@@ -336,6 +339,7 @@
     <div class="card">
       <h2><span class="dot"></span>Структура відпускної ціни</h2>
       <div class="bar" id="bar"></div>
+      <div class="barcap" id="barCap"></div>
       <div class="legend" id="legend"></div>
       <div class="warnbox" id="barWarn"></div>
     </div>
@@ -365,10 +369,10 @@
       <div class="vtitle display" id="vTitle">—</div>
       <div class="vtext" id="vText">—</div>
       <div class="vnums">
-        <div class="vnum"><div class="k">Маржа</div><div class="v" id="vMargin">—</div></div>
-        <div class="vnum"><div class="k">Прибуток / од</div><div class="v" id="vProfit">—</div></div>
-        <div class="vnum"><div class="k">Net-net ціна</div><div class="v" id="vNet">—</div></div>
-        <div class="vnum"><div class="k">Прибуток за період</div><div class="v" id="vTotal">—</div></div>
+        <div class="vnum"><div class="k">Запас до бази</div><div class="v" id="vGapPct">—</div></div>
+        <div class="vnum"><div class="k">Запас / од</div><div class="v" id="vGap">—</div></div>
+        <div class="vnum"><div class="k">Чиста відпускна ціна</div><div class="v" id="vNet">—</div></div>
+        <div class="vnum"><div class="k">Запас за період</div><div class="v" id="vTotal">—</div></div>
       </div>
     </div>
 
@@ -439,12 +443,12 @@ const PRICELIST = [
 ];
 
 /* ---------------- helpers ---------------- */
-const IDS = ['sku','channel','price','cogs','ownLog','bRetro','bMkt','bLog','bPromo','bOther',
+const IDS = ['sku','channel','price','basePrice','ownLog','bRetro','bMkt','bLog','bPromo','bOther',
              'fListing','fPromo','fOther','volume','deferDays','moneyRate','vat',
-             'targetMargin','minMargin','rrp'];
-const DEFAULTS = {sku:'4',channel:'dist',price:21.5,cogs:12,ownLog:1,bRetro:4,bMkt:3,bLog:3,bPromo:0,bOther:0,
+             'targetGap','minGap','rrp'];
+const DEFAULTS = {sku:'4',channel:'retail',price:27,basePrice:21.5,ownLog:0,bRetro:4,bMkt:3,bLog:3,bPromo:0,bOther:0,
              fListing:15000,fPromo:0,fOther:0,volume:10000,deferDays:21,moneyRate:20,vat:20,
-             targetMargin:30,minMargin:20,rrp:50};
+             targetGap:10,minGap:0,rrp:50};
 
 const el = id => document.getElementById(id);
 const num = id => {
@@ -459,17 +463,18 @@ const pct = x => isFinite(x)
   : '—';
 
 /* ---------------- core model ----------------
-   P   — відпускна ціна без ПДВ
-   B   — сума бонусів, частка від P
-   k   — вартість відтермінування, частка від P: (1+ПДВ) * ставка * дні/365
-   Fu  — фіксовані витрати періоду на одиницю
-   NN  — net-net: P*(1 - B - k) - Fu
-   Прибуток = NN - собівартість - власна логістика
-   Маржа = Прибуток / NN
+   P    — відпускна ціна без ПДВ
+   base — дистриб'юторська ціна без ПДВ: база порівняння, нижче неї відвантажувати не можна
+   B    — сума бонусів, частка від P
+   k    — вартість відтермінування, частка від P: (1+ПДВ) * ставка * дні/365
+   Fu   — фіксовані витрати періоду на одиницю
+   NN   — чиста відпускна ціна: P*(1 - B - k) - Fu - власна логістика
+   Запас = NN - base; у відсотках — від base.
+   Запас < 0 означає, що після бонусів мережа отримує товар дешевше за дистриб'ютора.
 ---------------------------------------------- */
 function model(){
   const P = num('price');
-  const cogs = num('cogs'), ownLog = num('ownLog');
+  const base = num('basePrice'), ownLog = num('ownLog');
   const bonuses = [
     {key:'Ретро-бонус',    p:num('bRetro'), color:'#0E7A33'},
     {key:'Маркетинговий',  p:num('bMkt'),   color:'#1DB954'},
@@ -489,41 +494,34 @@ function model(){
 
   const bonusMoney = P*B;
   const deferMoney = P*k;
-  const NN = P*(1 - B - k) - Fu;
-  const costTotal = cogs + ownLog;
-  const profit = NN - costTotal;
-  // при NN <= 0 частка не має сенсу (мінус на мінус дав би «гарну» маржу) — угода свідомо провальна
-  const margin = NN > 0 ? profit/NN*100 : -Infinity;
-  const markupOnCost = costTotal !== 0 ? profit/costTotal*100 : 0;
+  const NN = P*(1 - B - k) - Fu - ownLog;
 
-  // зворотній розрахунок: P = (costTotal/(1-m) + Fu) / (1 - B - k)
+  const gap = NN - base;                            // запас у грн на одиницю
+  const gapPct = base > 0 ? gap/base*100 : 0;       // запас у % до бази
+  const erosion = P > 0 ? (P - NN)/P*100 : 0;       // скільки з'їдають бонуси й витрати
+  const belowBase = gap < 0;                        // червоний флаг
+
+  const targetGap = num('targetGap'), minGap = num('minGap');
+
+  // зворотній розрахунок: NN потрібна = base*(1+z) → P = (base*(1+z) + Fu + ownLog) / (1 - B - k)
   const denom = 1 - B - k;
-  const priceFor = m => {
-    if(denom <= 0) return null;
-    if(m >= 1) return null;
-    return (costTotal/(1-m) + Fu)/denom;
-  };
-  const tM = num('targetMargin')/100, mM = num('minMargin')/100;
-  const priceTarget = priceFor(tM);
-  const priceMin = priceFor(mM);
-  const priceBreakeven = priceFor(0);
+  const needNN = z => base*(1 + z/100) + Fu + ownLog;
+  const priceFor = z => denom > 0 ? needNN(z)/denom : null;
+  const priceTarget = priceFor(targetGap);
+  const priceMin = priceFor(minGap);
+  const priceFloor = priceFor(0);                   // ціна, за якої NN рівно дорівнює базі
 
-  // максимально допустимі бонуси при поточній ціні: B = 1 - k - (NNreq + Fu)/P
-  const maxBonusFor = m => {
-    if(P <= 0 || m >= 1) return null;
-    const NNreq = costTotal/(1-m);
-    return (1 - k - (NNreq + Fu)/P) * 100;
-  };
-  const maxBonusTarget = maxBonusFor(tM);
-  const maxBonusMin = maxBonusFor(mM);
-  const maxBonusBE = maxBonusFor(0);
+  // максимально допустимі бонуси при поточній ціні: B = 1 - k - needNN/P
+  const maxBonusFor = z => P > 0 ? (1 - k - needNN(z)/P)*100 : null;
+  const maxBonusTarget = maxBonusFor(targetGap);
+  const maxBonusMin = maxBonusFor(minGap);
+  const maxBonusFloor = maxBonusFor(0);
 
-  // максимальне відтермінування при поточних бонусах і ціні (маржа = мінімальна)
+  // максимальне відтермінування при поточних бонусах і ціні (запас = мінімальний)
   const maxDefer = (()=>{
     const r = num('moneyRate')/100;
-    if(P <= 0 || r <= 0 || mM >= 1) return null;
-    const NNreq = costTotal/(1-mM);
-    const kMax = 1 - B - (NNreq + Fu)/P;
+    if(P <= 0 || r <= 0) return null;
+    const kMax = 1 - B - needNN(minGap)/P;
     return kMax/((1+vat)*r)*365;
   })();
 
@@ -533,19 +531,20 @@ function model(){
   const netMarkup = priceWithVat > 0 ? (rrp/priceWithVat - 1)*100 : 0;
   const netMargin  = rrp > 0 ? (rrp - priceWithVat)/rrp*100 : 0;
 
-  return {P,cogs,ownLog,costTotal,bonuses,Bpct,B,k,vol,fixTotal,Fu,vat,
-          bonusMoney,deferMoney,NN,profit,margin,markupOnCost,
-          priceTarget,priceMin,priceBreakeven,
-          maxBonusTarget,maxBonusMin,maxBonusBE,maxDefer,
+  return {P,base,ownLog,bonuses,Bpct,B,k,vol,fixTotal,Fu,vat,
+          bonusMoney,deferMoney,NN,gap,gapPct,erosion,belowBase,
+          priceTarget,priceMin,priceFloor,
+          maxBonusTarget,maxBonusMin,maxBonusFloor,maxDefer,
           priceWithVat,rrp,netMarkup,netMargin,
-          targetMargin:num('targetMargin'), minMargin:num('minMargin')};
+          targetGap,minGap};
 }
 
 /* ---------------- render ---------------- */
 function verdictOf(m){
-  if(m.margin >= m.targetMargin) return 'ok';
-  if(m.margin >= m.minMargin) return 'warn';
-  return 'bad';
+  if(m.belowBase) return 'bad';            // червоний флаг: нижче дистриб'юторської ціни
+  if(m.gapPct < m.minGap) return 'bad';
+  if(m.gapPct < m.targetGap) return 'warn';
+  return 'ok';
 }
 
 function render(){
@@ -557,28 +556,39 @@ function render(){
   const v = verdictOf(m);
   const vBox = el('verdict');
   vBox.className = 'verdict ' + v;
-  const titles = {ok:'Підходить ✅', warn:'На межі — торгуємось ⚠️', bad:'Не підходить ❌'};
+  const flag = m.belowBase;
+  const title = flag ? '🚩 Нижче дистриб\'юторської ціни'
+                     : {ok:'Підходить ✅', warn:'На межі — торгуємось ⚠️', bad:'Не підходить ❌'}[v];
   const texts = {
-    ok: 'Умова проходить за цільовою маржею. Можна фіксувати відпускну ціну.',
-    bad: 'Маржа нижча за мінімально допустиму. Треба піднімати ціну, різати бонуси або скорочувати відтермінування.',
-    warn:'Маржа між мінімальною і цільовою. Погоджувати лише з керівником або торгуватись за умови.'
+    ok: 'Умова проходить за цільовим запасом. Можна фіксувати відпускну ціну.',
+    bad: 'Запас нижчий за мінімально допустимий. Треба піднімати ціну, різати бонуси або скорочувати відтермінування.',
+    warn:'Запас між мінімальним і цільовим. Погоджувати лише з керівником або торгуватись за умови.'
   };
-  let extra = '';
-  if(m.NN <= 0) extra = ' Бонуси, лістинг і відтермінування «з\'їдають» усю відпускну ціну — чиста виручка від\'ємна ще до собівартості.';
-  else if(m.profit < 0) extra = ' Угода збиткова — кожна продана одиниця забирає гроші.';
-  if(m.vol <= 0) extra += ' Вкажи плановий обсяг, інакше лістинг не рознесено на одиницю.';
-  el('vTag').textContent = 'Рішення · ціль ' + pct(m.targetMargin) + ' / мін ' + pct(m.minMargin);
-  el('vTitle').textContent = titles[v];
-  el('vText').textContent = texts[v] + extra;
-  el('vMargin').textContent = pct(m.margin);
-  el('vProfit').textContent = money(m.profit) + ' ₴';
+  const isDist = el('channel').value === 'dist';
+  let text = flag
+    ? (isDist
+        ? 'Після бонусів, лістингу та відтермінування чиста ціна на ' + money(-m.gap) +
+          ' ₴ нижча за прайсову дистриб\'юторську — фактично це знижка до прайсу понад узгоджені умови.'
+        : 'Після бонусів, лістингу та відтермінування мережа отримує товар на ' + money(-m.gap) +
+          ' ₴ дешевше, ніж наш дистриб\'ютор. Так відвантажувати не можна — це підриває дистриб\'юторський канал.')
+    : texts[v];
+  if(m.NN <= 0) text += ' Бонуси й витрати з\'їдають усю відпускну ціну — чиста ціна від\'ємна.';
+  if(m.vol <= 0) text += ' Вкажи плановий обсяг, інакше лістинг не рознесено на одиницю.';
+  if(m.base <= 0) text += ' Не заповнена дистриб\'юторська ціна — порівнювати немає з чим.';
+
+  el('vTag').textContent = 'Рішення · ціль +' + pct(m.targetGap) + ' / мін +' + pct(m.minGap) + ' до бази';
+  el('vTitle').textContent = title;
+  el('vText').textContent = text;
+  el('vGapPct').textContent = (m.gapPct >= 0 ? '+' : '−') + pct(Math.abs(m.gapPct));
+  el('vGap').textContent = (m.gap >= 0 ? '+' : '−') + money(Math.abs(m.gap)) + ' ₴';
   el('vNet').textContent = money(m.NN) + ' ₴';
-  el('vTotal').textContent = money0(m.profit*m.vol) + ' ₴';
+  el('vTotal').textContent = money0(m.gap*m.vol) + ' ₴';
 
   el('mbar').className = 'mbar ' + v;
-  el('mMargin').textContent = pct(m.margin);
-  el('mProfit').textContent = money(m.profit) + ' ₴';
-  el('mState').textContent = {ok:'Підходить ✅', warn:'На межі ⚠️', bad:'Не підходить ❌'}[v];
+  el('mMargin').textContent = (m.gapPct >= 0 ? '+' : '−') + pct(Math.abs(m.gapPct));
+  el('mProfit').textContent = money(m.NN) + ' ₴';
+  el('mState').textContent = flag ? '🚩 Нижче бази'
+                                  : {ok:'Підходить ✅', warn:'На межі ⚠️', bad:'Не підходить ❌'}[v];
 
   /* --- розрахунок на одиницю --- */
   let rows = '';
@@ -592,25 +602,24 @@ function render(){
   if(m.Bpct) R('Разом бонуси (' + pct(m.Bpct) + ')', '− ' + money(m.bonusMoney) + ' ₴', 'neg');
   if(m.Fu) R('Лістинг і фікс. витрати на од.', '− ' + money(m.Fu) + ' ₴', 'neg');
   if(m.deferMoney) R('Відтермінування ' + money0(num('deferDays')) + ' дн.', '− ' + money(m.deferMoney) + ' ₴', 'neg');
-  T('Чиста виручка (net-net)', money(m.NN) + ' ₴');
-  R('Собівартість', '− ' + money(m.cogs) + ' ₴', 'neg');
   if(m.ownLog) R('Наша логістика', '− ' + money(m.ownLog) + ' ₴', 'neg');
-  T('Прибуток на одиницю', money(m.profit) + ' ₴', m.profit >= 0 ? 'pos' : 'neg');
-  R('Маржа від чистої виручки', pct(m.margin), m.margin >= m.minMargin ? 'pos' : 'neg');
-  R('Націнка на собівартість', pct(m.markupOnCost));
-  R('Реальна знижка від прайсу', pct(m.P > 0 ? (m.P - m.NN)/m.P*100 : 0));
+  T('Чиста відпускна ціна', money(m.NN) + ' ₴');
+  R('Дистриб\'юторська ціна (база)', money(m.base) + ' ₴');
+  T('Запас над базою', (m.gap >= 0 ? '+' : '−') + money(Math.abs(m.gap)) + ' ₴', m.gap >= 0 ? 'pos' : 'neg');
+  R('Запас у % до бази', (m.gapPct >= 0 ? '+' : '−') + pct(Math.abs(m.gapPct)), m.gapPct >= m.minGap ? 'pos' : 'neg');
+  R('З\'їдають бонуси й витрати', pct(m.erosion));
   el('unitRows').innerHTML = rows;
 
   /* --- межі торгу --- */
   rows = '';
   const na = '—';
-  R('Мінімальна ціна (маржа ' + pct(m.minMargin) + ')', m.priceMin === null ? na : money(m.priceMin) + ' ₴', m.priceMin !== null && m.P >= m.priceMin ? 'pos' : 'neg');
-  R('Цільова ціна (маржа ' + pct(m.targetMargin) + ')', m.priceTarget === null ? na : money(m.priceTarget) + ' ₴');
-  R('Ціна в нуль (беззбитковість)', m.priceBreakeven === null ? na : money(m.priceBreakeven) + ' ₴');
-  R('Макс. бонуси для цільової маржі', m.maxBonusTarget === null ? na : pct(m.maxBonusTarget));
-  R('Макс. бонуси для мін. маржі', m.maxBonusMin === null ? na : pct(m.maxBonusMin), m.maxBonusMin !== null && m.Bpct <= m.maxBonusMin ? 'pos' : 'neg');
-  R('Макс. бонуси в нуль', m.maxBonusBE === null ? na : pct(m.maxBonusBE));
-  R('Макс. відтермінування (мін. маржа)', m.maxDefer === null ? na : money0(Math.max(0,m.maxDefer)) + ' дн.', m.maxDefer !== null && num('deferDays') <= m.maxDefer ? 'pos' : 'neg');
+  R('Мінімальна ціна (запас +' + pct(m.minGap) + ')', m.priceMin === null ? na : money(m.priceMin) + ' ₴', m.priceMin !== null && m.P >= m.priceMin ? 'pos' : 'neg');
+  R('Цільова ціна (запас +' + pct(m.targetGap) + ')', m.priceTarget === null ? na : money(m.priceTarget) + ' ₴');
+  R('Ціна врівень з базою', m.priceFloor === null ? na : money(m.priceFloor) + ' ₴');
+  R('Макс. бонуси для цільового запасу', m.maxBonusTarget === null ? na : pct(m.maxBonusTarget));
+  R('Макс. бонуси для мін. запасу', m.maxBonusMin === null ? na : pct(m.maxBonusMin), m.maxBonusMin !== null && m.Bpct <= m.maxBonusMin ? 'pos' : 'neg');
+  R('Макс. бонуси врівень з базою', m.maxBonusFloor === null ? na : pct(m.maxBonusFloor));
+  R('Макс. відтермінування (мін. запас)', m.maxDefer === null ? na : money0(Math.max(0,m.maxDefer)) + ' дн.', m.maxDefer !== null && num('deferDays') <= m.maxDefer ? 'pos' : 'neg');
   el('limitRows').innerHTML = rows;
 
   /* --- полиця та період --- */
@@ -625,10 +634,11 @@ function render(){
   R('Фіксовані витрати періоду', '− ' + money0(m.fixTotal) + ' ₴', 'neg');
   R('Вартість відтермінування', '− ' + money0(m.deferMoney*m.vol) + ' ₴', 'neg');
   R('Чиста виручка за період', money0(m.NN*m.vol) + ' ₴');
-  T('Прибуток за період', money0(m.profit*m.vol) + ' ₴', m.profit >= 0 ? 'pos' : 'neg');
-  if(m.profit > 0 && m.fixTotal > 0){
-    const payback = m.fixTotal/(m.profit + m.Fu);
-    R('Обсяг для окупності лістингу', money0(payback) + ' од.');
+  R('Та сама кількість по базі', money0(m.base*m.vol) + ' ₴');
+  T('Запас за період', money0(m.gap*m.vol) + ' ₴', m.gap >= 0 ? 'pos' : 'neg');
+  if(m.fixTotal > 0){
+    const perUnit = m.gap + m.Fu;   // запас до рознесення фіксованих витрат
+    R('Обсяг для окупності лістингу', perUnit > 0 ? money0(m.fixTotal/perUnit) + ' од.' : 'не окупається');
   }
   el('periodRows').innerHTML = rows;
 
@@ -639,22 +649,29 @@ function render(){
 
 function renderBar(m){
   const parts = [
-    {name:'Собівартість', val:m.cogs, color:'#0B1F12'},
-    {name:'Наша логістика', val:m.ownLog, color:'#3A5C46'},
+    {name:'Чиста відпускна ціна', val:Math.max(m.NN,0), color:'#FFE600'},
     ...m.bonuses.filter(b=>b.p>0).map(b=>({name:b.key, val:m.P*b.p/100, color:b.color})),
     {name:'Лістинг і фікс. витрати', val:m.Fu, color:'#B8860B'},
     {name:'Відтермінування', val:m.deferMoney, color:'#E5A100'},
-    {name:'Прибуток', val:Math.max(m.profit,0), color:'#FFE600'}
-  ].filter(p=>p.val > 0.0001);
+    {name:'Наша логістика', val:m.ownLog, color:'#3A5C46'}
+  ].filter(p => p.val > 0.0001);
 
   const sum = parts.reduce((s,p)=>s+p.val,0) || 1;
+  const markerAt = Math.min(100, Math.max(0, m.base/sum*100));
   el('bar').innerHTML = parts.map(p =>
-    `<div style="width:${p.val/sum*100}%;background:${p.color}" title="${p.name}: ${money(p.val)} ₴"></div>`).join('');
+      `<div style="width:${p.val/sum*100}%;background:${p.color}" title="${p.name}: ${money(p.val)} ₴"></div>`).join('')
+    + (m.base > 0 ? `<div class="marker" style="left:${markerAt}%" title="Дистриб'юторська база: ${money(m.base)} ₴"></div>` : '');
+
   el('legend').innerHTML = parts.map(p =>
     `<div class="lg"><i style="background:${p.color}"></i>${p.name}<b>${money(p.val)} ₴</b></div>`).join('');
 
-  el('barWarn').innerHTML = m.profit < 0
-    ? `Витрати перевищують відпускну ціну на <b>${money(-m.profit)} ₴</b> за одиницю — прибутку в структурі немає.`
+  el('barCap').innerHTML = m.base > 0
+    ? `Вертикальна риска — дистриб'юторська база <b>${money(m.base)} ₴</b>. Жовтий сегмент має її перекривати.`
+    : '';
+
+  el('barWarn').className = 'warnbox' + (m.belowBase ? ' danger' : '');
+  el('barWarn').innerHTML = m.belowBase
+    ? `🚩 Жовтий сегмент не дотягує до бази: віддаємо на <b>${money(-m.gap)} ₴</b> за одиницю дешевше, ніж дистриб'ютору.`
     : '';
 }
 
@@ -675,31 +692,33 @@ function applyTargetPrice(){
 function summaryText(){
   const m = model();
   const v = verdictOf(m);
-  const label = {ok:'ПІДХОДИТЬ', warn:'НА МЕЖІ', bad:'НЕ ПІДХОДИТЬ'}[v];
+  const label = m.belowBase ? 'ЧЕРВОНИЙ ФЛАГ — НИЖЧЕ ДИСТРИБ\'ЮТОРСЬКОЇ ЦІНИ'
+                            : {ok:'ПІДХОДИТЬ', warn:'НА МЕЖІ', bad:'НЕ ПІДХОДИТЬ'}[v];
   const name = el('dealName').value.trim();
   const chan = el('channel').value === 'dist' ? "дистриб'ютор" : 'мережа напряму';
+  const sign = x => (x >= 0 ? '+' : '−');
   return [
     'VERDE — прорахунок умови' + (name ? ': ' + name : ''),
     'Канал: ' + chan,
     '',
     'Відпускна ціна (без ПДВ): ' + money(m.P) + ' грн',
-    'Собівартість + логістика: ' + money(m.costTotal) + ' грн',
+    'Дистриб\'юторська ціна (база): ' + money(m.base) + ' грн',
     'Бонуси: ' + pct(m.Bpct) + ' (' + money(m.bonusMoney) + ' грн/од)',
     '  ' + m.bonuses.filter(b=>b.p).map(b=>b.key + ' ' + pct(b.p)).join(', '),
     'Лістинг і фікс. витрати: ' + money0(m.fixTotal) + ' грн на ' + money0(m.vol) + ' од = ' + money(m.Fu) + ' грн/од',
     'Відтермінування: ' + money0(num('deferDays')) + ' дн = ' + money(m.deferMoney) + ' грн/од',
     '',
-    'Чиста виручка (net-net): ' + money(m.NN) + ' грн',
-    'Прибуток: ' + money(m.profit) + ' грн/од · маржа ' + pct(m.margin),
-    'Прибуток за період: ' + money0(m.profit*m.vol) + ' грн',
+    'Чиста відпускна ціна: ' + money(m.NN) + ' грн',
+    'Запас над базою: ' + sign(m.gap) + money(Math.abs(m.gap)) + ' грн/од (' + sign(m.gapPct) + pct(Math.abs(m.gapPct)) + ')',
+    'Запас за період: ' + money0(m.gap*m.vol) + ' грн',
     '',
     'РРЦ: ' + money(m.rrp) + ' грн з ПДВ · націнка мережі ' + pct(m.netMarkup),
     '',
-    'Мінімальна ціна (' + pct(m.minMargin) + '): ' + (m.priceMin === null ? '—' : money(m.priceMin) + ' грн'),
-    'Цільова ціна (' + pct(m.targetMargin) + '): ' + (m.priceTarget === null ? '—' : money(m.priceTarget) + ' грн'),
+    'Мінімальна ціна (запас +' + pct(m.minGap) + '): ' + (m.priceMin === null ? '—' : money(m.priceMin) + ' грн'),
+    'Цільова ціна (запас +' + pct(m.targetGap) + '): ' + (m.priceTarget === null ? '—' : money(m.priceTarget) + ' грн'),
     'Макс. бонуси при цій ціні: ' + (m.maxBonusMin === null ? '—' : pct(m.maxBonusMin)),
     '',
-    'РІШЕННЯ: ' + label + ' (ціль ' + pct(m.targetMargin) + ', мінімум ' + pct(m.minMargin) + ')'
+    'РІШЕННЯ: ' + label + ' (ціль +' + pct(m.targetGap) + ', мінімум +' + pct(m.minGap) + ' до бази)'
   ].join('\n');
 }
 
@@ -745,17 +764,15 @@ function currentSku(){
 
 function listPriceOf(p){ return el('channel').value === 'dist' ? p.dist : p.retail; }
 
-// підставляє ціну, РРЦ і збережену собівартість обраної позиції
+// підставляє відпускну ціну каналу, дистриб'юторську базу і РРЦ обраної позиції
 function applySku(){
   const p = currentSku();
   if(!p){ render(); return; }
 
   const listPrice = listPriceOf(p);
   if(listPrice !== null) el('price').value = String(listPrice);
+  if(p.dist !== null) el('basePrice').value = String(p.dist);
   el('rrp').value = String(p.rrp);
-
-  const saved = getCogs()[p.n];
-  if(saved !== undefined) el('cogs').value = String(saved);
 
   if(!el('dealName').value.trim()) el('dealName').value = p.n;
   render();
@@ -766,29 +783,23 @@ function skuNoteHtml(){
   const p = currentSku();
   if(!p) return '';
   const listPrice = listPriceOf(p);
-  if(listPrice === null){
-    return 'Для цієї позиції у прайсі <b>немає ціни дистриб\'ютора</b> — постав відпускну ціну вручну ' +
-           'або рахуй як «мережа напряму» (' + money(p.retail) + ' ₴ без ПДВ).';
+  let s = '';
+
+  if(p.dist === null){
+    s += 'Для цієї позиції у прайсі <b>немає дистриб\'юторської ціни</b> — базу порівняння постав вручну. ';
   }
-  let s = 'З прайсу' + (PRICE_DATE ? ' (' + PRICE_DATE + ')' : '') + ': <b>' + money(listPrice) + ' ₴</b> без ПДВ · ' +
-          money(listPrice*(1 + num('vat')/100)) + ' ₴ з ПДВ · РРЦ ' + money(p.rrp) + ' ₴.';
+  if(listPrice === null){
+    return s + 'Відпускну ціну теж вводимо вручну або рахуємо як «мережа напряму» (' + money(p.retail) + ' ₴ без ПДВ).';
+  }
+
+  s += 'З прайсу' + (PRICE_DATE ? ' (' + PRICE_DATE + ')' : '') + ': <b>' + money(listPrice) + ' ₴</b> без ПДВ · ' +
+       money(listPrice*(1 + num('vat')/100)) + ' ₴ з ПДВ · РРЦ ' + money(p.rrp) + ' ₴.';
   const cur = num('price');
   if(Math.abs(cur - listPrice) > 0.005){
     const d = (cur - listPrice)/listPrice*100;
     s += ' Зараз у полі ' + money(cur) + ' ₴ — це ' + (d > 0 ? '+' : '−') + pct(Math.abs(d)) + ' до прайсу.';
   }
   return s;
-}
-
-/* собівартості немає у прайсі, тож запам'ятовуємо введену — по позиції, локально */
-const COGS_KEY = 'verde_calc_cogs';
-function getCogs(){ try{ return JSON.parse(localStorage.getItem(COGS_KEY) || '{}'); }catch(e){ return {}; } }
-function rememberCogs(){
-  const p = currentSku();
-  if(!p) return;
-  const c = getCogs();
-  c[p.n] = el('cogs').value;
-  try{ localStorage.setItem(COGS_KEY, JSON.stringify(c)); }catch(e){}
 }
 
 /* ---------------- storage ---------------- */
@@ -851,15 +862,16 @@ function renderDeals(){
     writeState(d.state);
     const m = model();
     const v = verdictOf(m);
-    const pillTxt = {ok:'Підходить', warn:'На межі', bad:'Ні'}[v];
+    const pillTxt = m.belowBase ? '🚩 Нижче бази' : {ok:'Підходить', warn:'На межі', bad:'Ні'}[v];
     return `<tr>
       <td>${escapeHtml(d.name)}</td>
       <td>${money(m.P)}</td>
+      <td>${money(m.base)}</td>
       <td>${pct(m.Bpct)}</td>
       <td>${money0(num('deferDays'))} дн</td>
       <td>${money(m.NN)}</td>
-      <td><b>${pct(m.margin)}</b></td>
-      <td>${money0(m.profit*m.vol)}</td>
+      <td><b>${m.gapPct >= 0 ? '+' : '−'}${pct(Math.abs(m.gapPct))}</b></td>
+      <td>${money0(m.gap*m.vol)}</td>
       <td><span class="pill ${v}">${pillTxt}</span></td>
       <td>
         <button class="mini-btn" onclick="loadDeal(${i})">Відкрити</button>
@@ -870,8 +882,8 @@ function renderDeals(){
   writeState(saved);
 
   table.innerHTML = `<thead><tr>
-      <th>Назва</th><th>Ціна</th><th>Бонуси</th><th>Відтерм.</th>
-      <th>Net-net</th><th>Маржа</th><th>Прибуток / період</th><th>Рішення</th><th></th>
+      <th>Назва</th><th>Ціна</th><th>База</th><th>Бонуси</th><th>Відтерм.</th>
+      <th>Чиста ціна</th><th>Запас</th><th>Запас / період</th><th>Рішення</th><th></th>
     </tr></thead><tbody>${rows}</tbody>`;
 }
 
@@ -885,7 +897,6 @@ if(!loadLast()) writeState(DEFAULTS);   // перший запуск — ста�
 IDS.forEach(id => el(id).addEventListener('input', render));
 el('sku').addEventListener('change', applySku);
 el('channel').addEventListener('change', applySku);
-el('cogs').addEventListener('input', rememberCogs);
 render();
 </script>
 
