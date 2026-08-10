@@ -299,9 +299,29 @@
     </div>
 
     <div class="card">
-      <h2><span class="dot"></span>3. Разові та періодичні витрати</h2>
-      <p class="hint">Лістинг і промо-бюджет розносяться на плановий обсяг періоду — так видно їх вагу в кожній одиниці.</p>
-      <div class="grid2">
+      <h2><span class="dot"></span>3. Прогноз продажів</h2>
+      <p class="hint">Обсяг періоду рахується як кількість точок × продажі з однієї точки. Прогноз задається окремо
+        для кожної позиції — саме з нього розноситься лістинг і рахуються підсумки.</p>
+      <div class="grid3">
+        <div class="field">
+          <label>Торгових точок</label>
+          <div class="ctrl"><input id="points" inputmode="decimal" value="100"><span class="unit">ТТ</span></div>
+        </div>
+        <div class="field">
+          <label>Продажі з 1 ТТ за період</label>
+          <div class="ctrl"><input id="perPoint" inputmode="decimal" value="100"><span class="unit">од</span></div>
+        </div>
+        <div class="field">
+          <label>Прогнозований обсяг</label>
+          <div class="ctrl"><input id="volume" value="—" readonly tabindex="-1"><span class="unit">од</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2><span class="dot"></span>4. Разові та періодичні витрати</h2>
+      <p class="hint">Лістинг і промо-бюджет розносяться на прогнозований обсяг — так видно їх вагу в кожній одиниці.</p>
+      <div class="grid3">
         <div class="field">
           <label>Лістинг (вхід у мережу)</label>
           <div class="ctrl"><input id="fListing" inputmode="decimal" value="15000"><span class="unit">грн</span></div>
@@ -314,15 +334,11 @@
           <label>Інші витрати періоду</label>
           <div class="ctrl"><input id="fOther" inputmode="decimal" value="0"><span class="unit">грн</span></div>
         </div>
-        <div class="field">
-          <label>Плановий обсяг за період</label>
-          <div class="ctrl"><input id="volume" inputmode="decimal" value="10000"><span class="unit">од</span></div>
-        </div>
       </div>
     </div>
 
     <div class="card">
-      <h2><span class="dot"></span>4. Відтермінування та ПДВ</h2>
+      <h2><span class="dot"></span>5. Відтермінування та ПДВ</h2>
       <p class="hint">Вартість грошей рахується від суми дебіторки з ПДВ за фактичну кількість днів відстрочки.</p>
       <div class="grid3">
         <div class="field">
@@ -341,7 +357,7 @@
     </div>
 
     <div class="card">
-      <h2><span class="dot"></span>5. Наші цільові показники</h2>
+      <h2><span class="dot"></span>6. Наші цільові показники</h2>
       <p class="hint">Запас — це наскільки чиста відпускна ціна (після всіх бонусів і витрат) вища за дистриб'юторську.
         Запас нижче нуля означає, що ми віддаємо товар дешевше, ніж власному дистриб'ютору.</p>
       <div class="grid3">
@@ -471,12 +487,20 @@ const PRICELIST = [
 
 /* ---------------- helpers ---------------- */
 const IDS = ['client','sku','channel','delivery','price','basePrice','ownLog','bRetro','bMkt','bLog','bPromo','bOther',
-             'fListing','fPromo','fOther','volume','deferDays','moneyRate','vat',
+             'points','perPoint','fListing','fPromo','fOther','deferDays','moneyRate','vat',
              'targetGap','minGap','rrp'];
 const DEFAULTS = {client:'',sku:'4',channel:'retail',delivery:'rc',price:27,basePrice:21.5,ownLog:0,
              bRetro:4,bMkt:3,bLog:3,bPromo:0,bOther:0,
-             fListing:15000,fPromo:0,fOther:0,volume:10000,deferDays:21,moneyRate:20,vat:20,
+             points:100,perPoint:100,fListing:15000,fPromo:0,fOther:0,deferDays:21,moneyRate:20,vat:20,
              targetGap:5,minGap:0,rrp:50};
+
+// стани, збережені до появи прогнозу, мали ручний обсяг — переносимо його в «продажі з 1 ТТ»
+function migrate(s){
+  if(s && s.volume !== undefined && s.points === undefined){
+    s.points = 1; s.perPoint = s.volume;
+  }
+  return s;
+}
 
 const el = id => document.getElementById(id);
 const num = id => {
@@ -516,7 +540,8 @@ function model(){
   const Bpct = bonuses.reduce((s,b)=>s+b.p,0);
   const B = Bpct/100;
 
-  const vol = num('volume');
+  const points = num('points'), perPoint = num('perPoint');
+  const vol = points*perPoint;                      // прогнозований обсяг за період
   const fixTotal = num('fListing') + num('fPromo') + num('fOther');
   const Fu = vol > 0 ? fixTotal/vol : 0;
 
@@ -562,7 +587,7 @@ function model(){
   const netMarkup = priceWithVat > 0 ? (rrp/priceWithVat - 1)*100 : 0;
   const netMargin  = rrp > 0 ? (rrp - priceWithVat)/rrp*100 : 0;
 
-  return {P,base,ownLog,ownDelivery,bonuses,Bpct,B,k,vol,fixTotal,Fu,vat,
+  return {P,base,ownLog,ownDelivery,bonuses,Bpct,B,k,points,perPoint,vol,fixTotal,Fu,vat,
           bonusMoney,deferMoney,NN,gap,gapPct,erosion,belowBase,
           priceTarget,priceMin,priceFloor,
           maxBonusTarget,maxBonusMin,maxBonusFloor,maxDefer,
@@ -581,6 +606,7 @@ function verdictOf(m){
 function render(){
   const m = model();
   el('bSum').value = new Intl.NumberFormat('uk-UA',{maximumFractionDigits:2}).format(m.Bpct);
+  el('volume').value = money0(m.vol);
   el('skuNote').innerHTML = skuNoteHtml();
 
   // логістика редагується лише коли веземо самі
@@ -608,7 +634,7 @@ function render(){
           ' ₴ дешевше, ніж наш дистриб\'ютор. Так відвантажувати не можна — це підриває дистриб\'юторський канал.')
     : texts[v];
   if(m.NN <= 0) text += ' Бонуси й витрати з\'їдають усю відпускну ціну — чиста ціна від\'ємна.';
-  if(m.vol <= 0) text += ' Вкажи плановий обсяг, інакше лістинг не рознесено на одиницю.';
+  if(m.vol <= 0) text += ' Заповни прогноз продажів — без нього лістинг не рознесено на одиницю.';
   if(m.base <= 0) text += ' Не заповнена дистриб\'юторська ціна — порівнювати немає з чим.';
 
   el('vTag').textContent = 'Рішення · ціль +' + pct(m.targetGap) + ' / мін +' + pct(m.minGap) + ' до бази';
@@ -663,7 +689,10 @@ function render(){
   R('РРЦ — ціна полиці з ПДВ', money(m.rrp) + ' ₴');
   R('Націнка мережі до РРЦ', pct(m.netMarkup), m.netMarkup > 0 ? '' : 'neg');
   R('Маржа мережі від РРЦ', pct(m.netMargin), m.netMargin > 0 ? '' : 'neg');
-  T('Обсяг періоду', money0(m.vol) + ' од.');
+  T('Прогноз продажів', money0(m.vol) + ' од.');
+  R('Торгових точок', money0(m.points) + ' ТТ', '', true);
+  R('Продажі з 1 ТТ за період', money0(m.perPoint) + ' од.', '', true);
+  R('Запас з однієї ТТ', money0(m.gap*m.perPoint) + ' ₴', m.gap >= 0 ? 'pos' : 'neg');
   R('Валова виручка по прайсу', money0(m.P*m.vol) + ' ₴');
   R('Бонуси мережі за період', '− ' + money0(m.bonusMoney*m.vol) + ' ₴', 'neg');
   R('Фіксовані витрати періоду', '− ' + money0(m.fixTotal) + ' ₴', 'neg');
@@ -741,6 +770,7 @@ function summaryText(){
     'Дистриб\'юторська ціна (база): ' + money(m.base) + ' грн',
     'Бонуси: ' + pct(m.Bpct) + ' (' + money(m.bonusMoney) + ' грн/од)',
     '  ' + m.bonuses.filter(b=>b.p).map(b=>b.key + ' ' + pct(b.p)).join(', '),
+    'Прогноз: ' + money0(m.points) + ' ТТ × ' + money0(m.perPoint) + ' од = ' + money0(m.vol) + ' од за період',
     'Лістинг і фікс. витрати: ' + money0(m.fixTotal) + ' грн на ' + money0(m.vol) + ' од = ' + money(m.Fu) + ' грн/од',
     'Відтермінування: ' + money0(num('deferDays')) + ' дн = ' + money(m.deferMoney) + ' грн/од',
     '',
@@ -914,7 +944,7 @@ function saveLast(){ try{ localStorage.setItem(LAST_KEY, JSON.stringify(readStat
 function loadLast(){
   try{
     const s = JSON.parse(localStorage.getItem(LAST_KEY) || 'null');
-    if(s){ writeState(s); return true; }
+    if(s){ writeState(migrate(s)); return true; }
   }catch(e){}
   return false;
 }
@@ -947,7 +977,7 @@ function saveDeal(){
 function loadDeal(i){
   const d = getDeals()[i];
   if(!d) return;
-  writeState(d.state);
+  writeState(migrate(d.state));
   el('dealName').value = d.name;
   render();
   window.scrollTo({top:0, behavior:'smooth'});
@@ -984,7 +1014,7 @@ function renderDeals(){
 
   const saved = readState();          // поточний стан, щоб повернути після прорахунку
   const rows = list.map(({d, i}) => {
-    writeState(d.state);
+    writeState(migrate(d.state));
     const m = model();
     const v = verdictOf(m);
     const pillTxt = m.belowBase ? '🚩 Нижче бази' : {ok:'Підходить', warn:'На межі', bad:'Ні'}[v];
@@ -995,6 +1025,7 @@ function renderDeals(){
       <td>${money(m.base)}</td>
       <td>${pct(m.Bpct)}</td>
       <td>${money0(num('deferDays'))} дн</td>
+      <td>${money0(m.points)} × ${money0(m.perPoint)}</td>
       <td>${money(m.NN)}</td>
       <td><b>${m.gapPct >= 0 ? '+' : '−'}${pct(Math.abs(m.gapPct))}</b></td>
       <td>${money0(m.gap*m.vol)}</td>
@@ -1010,7 +1041,7 @@ function renderDeals(){
   table.innerHTML = `<thead><tr>
       ${showAllClients ? '<th>Клієнт</th>' : ''}
       <th>Назва</th><th>Ціна</th><th>База</th><th>Бонуси</th><th>Відтерм.</th>
-      <th>Чиста ціна</th><th>Запас</th><th>Запас / період</th><th>Рішення</th><th></th>
+      <th>ТТ × од</th><th>Чиста ціна</th><th>Запас</th><th>Запас / період</th><th>Рішення</th><th></th>
     </tr></thead><tbody>${rows}</tbody>`;
 }
 
