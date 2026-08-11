@@ -93,6 +93,16 @@
   @media(max-width:560px){.grid4{grid-template-columns:1fr}}
 
   .client-row{display:flex;flex-wrap:wrap;gap:1rem;align-items:flex-end}
+  .client-row .field{flex:1 1 260px}
+
+  /* утиліти замість атрибутів style — їх ріже CSP на хостингу */
+  .w100{width:100%}
+  .flush{margin-top:0}
+  .mb-1{margin-bottom:1rem}
+  .mb-09{margin-bottom:.9rem}
+  .mt-085{margin-top:.85rem}
+  .hint-foot{margin:1rem 0 0}
+  .field-bottom{display:flex;align-items:flex-end}
 
   /* ---------- TABS ---------- */
   .tabs{display:flex;gap:.5rem;margin-bottom:1.2rem;flex-wrap:wrap}
@@ -109,6 +119,7 @@
   table.matrix td,table.matrix th{padding:.45rem .5rem}
   table.matrix tr.off{opacity:.42}
   table.matrix td.name{text-align:left;max-width:250px;white-space:normal;line-height:1.3;font-size:.82rem}
+  table.matrix th.chk{width:34px}
   table.matrix input[type=checkbox]{width:19px;height:19px;accent-color:var(--green-deep);cursor:pointer}
   table.matrix input.cell{
     width:78px;border:1.5px solid var(--line);background:var(--cream);border-radius:8px;
@@ -237,21 +248,21 @@
 <div class="card">
   <h2><span class="dot"></span>Клієнт</h2>
   <div class="client-row">
-    <div class="field" style="flex:1 1 260px">
+    <div class="field">
       <label>Мережа / клієнт</label>
       <div class="ctrl"><select id="client"></select></div>
     </div>
-    <div class="btns" style="margin-top:0">
-      <button class="solid" onclick="addClient()">+ Додати клієнта</button>
-      <button onclick="renameClient()">Перейменувати</button>
-      <button class="ghost" onclick="deleteClient()">Видалити</button>
+    <div class="btns flush">
+      <button class="solid" data-act="addClient">+ Додати клієнта</button>
+      <button data-act="renameClient">Перейменувати</button>
+      <button class="ghost" data-act="deleteClient">Видалити</button>
     </div>
   </div>
 </div>
 
 <div class="tabs">
-  <button class="tab active" id="tabOne" onclick="setMode('one')">Одна позиція</button>
-  <button class="tab" id="tabAll" onclick="setMode('all')">Портфель клієнта</button>
+  <button class="tab active" id="tabOne" data-act="modeOne">Одна позиція</button>
+  <button class="tab" id="tabAll" data-act="modeAll">Портфель клієнта</button>
 </div>
 
 <div id="viewOne">
@@ -297,7 +308,7 @@
           <div class="ctrl"><input id="ownLog" inputmode="decimal" value="0"><span class="unit">грн/од</span></div>
         </div>
       </div>
-      <div class="grid2" style="margin-top:.85rem">
+      <div class="grid2 mt-085">
         <div class="field">
           <label>Доставка</label>
           <div class="ctrl"><select id="delivery">
@@ -426,17 +437,17 @@
 
     <div class="card">
       <h2><span class="dot"></span>Збережені прорахунки <span id="dealsFor"></span></h2>
-      <div class="grid2" style="margin-bottom:.9rem">
+      <div class="grid2 mb-09">
         <div class="field">
           <label>Назва прорахунку (зазвичай — позиція)</label>
           <div class="ctrl"><input id="dealName" placeholder="Напр.: Зарядись магній-кокос, 25 г"></div>
         </div>
-        <div class="field" style="display:flex;align-items:flex-end">
-          <button class="solid" style="width:100%" onclick="saveDeal()">Зберегти поточний</button>
+        <div class="field field-bottom">
+          <button class="solid w100" data-act="saveDeal">Зберегти поточний</button>
         </div>
       </div>
-      <div class="btns" style="margin-top:0;margin-bottom:.9rem">
-        <button class="ghost mini-btn" id="scopeBtn" onclick="toggleScope()">Показати всіх клієнтів</button>
+      <div class="btns flush mb-09">
+        <button class="ghost mini-btn" id="scopeBtn" data-act="toggleScope">Показати всіх клієнтів</button>
       </div>
       <div class="tbl-wrap"><table id="dealsTable"></table></div>
       <div class="empty" id="dealsEmpty">Ще нічого не збережено. Прорахуй умову і натисни «Зберегти поточний» — так зручно порівнювати позиції всередині мережі.</div>
@@ -468,8 +479,8 @@
       <h2><span class="dot"></span>Межі торгу</h2>
       <div class="rows" id="limitRows"></div>
       <div class="btns">
-        <button onclick="applyMinPrice()">Підставити мінімальну ціну</button>
-        <button onclick="applyTargetPrice()">Підставити цільову ціну</button>
+        <button data-act="applyMinPrice">Підставити мінімальну ціну</button>
+        <button data-act="applyTargetPrice">Підставити цільову ціну</button>
       </div>
     </div>
 
@@ -477,8 +488,8 @@
       <h2><span class="dot"></span>Полиця та обсяг періоду</h2>
       <div class="rows" id="periodRows"></div>
       <div class="btns">
-        <button class="solid" onclick="copySummary()" id="copyBtn">Скопіювати підсумок</button>
-        <button class="ghost" onclick="resetAll()">Скинути</button>
+        <button class="solid" data-act="copySummary" id="copyBtn">Скопіювати підсумок</button>
+        <button class="ghost" data-act="resetAll">Скинути</button>
       </div>
     </div>
 
@@ -552,23 +563,23 @@
         <div class="ctrl"><input id="pFixOther" inputmode="decimal" value="0"><span class="unit">грн</span></div>
       </div>
     </div>
-    <p class="hint" style="margin:1rem 0 0">«Інші витрати періоду» — спільний бюджет на промо, POS чи мерч. Розноситься між обраними позиціями пропорційно до їхньої виручки.</p>
+    <p class="hint hint-foot">«Інші витрати періоду» — спільний бюджет на промо, POS чи мерч. Розноситься між обраними позиціями пропорційно до їхньої виручки.</p>
   </div>
 
   <div class="card">
     <h2><span class="dot"></span>Позиції під клієнта <span id="pFor"></span></h2>
     <p class="hint">Постав галочку навпроти позицій, які пропонуємо цій мережі. Ціна підставляється з прайсу — редагуй під перемовини.</p>
-    <div class="btns" style="margin-top:0;margin-bottom:1rem">
-      <button class="mini-btn" onclick="pSelectAll(true)">Обрати всі</button>
-      <button class="mini-btn ghost" onclick="pSelectAll(false)">Зняти всі</button>
-      <button class="mini-btn" onclick="pResetPrices()">Скинути ціни до прайсу</button>
+    <div class="btns flush mb-1">
+      <button class="mini-btn" data-act="selectAll">Обрати всі</button>
+      <button class="mini-btn ghost" data-act="selectNone">Зняти всі</button>
+      <button class="mini-btn" data-act="pResetPrices">Скинути ціни до прайсу</button>
     </div>
     <div class="tbl-wrap"><table id="pTable" class="matrix"></table></div>
   </div>
 
   <div class="card">
     <h2><span class="dot"></span>Підсумок портфеля</h2>
-    <div id="pVerdict" class="verdict ok" style="margin-bottom:1.2rem">
+    <div id="pVerdict" class="verdict ok">
       <div class="vtag" id="pTag">Рішення по портфелю</div>
       <div class="vtitle display" id="pTitle">—</div>
       <div class="vtext" id="pText">—</div>
@@ -578,7 +589,7 @@
       <div class="rows" id="pTotals2"></div>
     </div>
     <div class="btns">
-      <button class="solid" id="pCopyBtn" onclick="pCopy()">Скопіювати підсумок</button>
+      <button class="solid" id="pCopyBtn" data-act="pCopy">Скопіювати підсумок</button>
     </div>
   </div>
 
@@ -905,13 +916,37 @@ function renderBar(m){
   ].filter(p => p.val > 0.0001);
 
   const sum = parts.reduce((s,p)=>s+p.val,0) || 1;
-  const markerAt = Math.min(100, Math.max(0, m.base/sum*100));
-  el('bar').innerHTML = parts.map(p =>
-      `<div style="width:${p.val/sum*100}%;background:${p.color}" title="${p.name}: ${money(p.val)} ₴"></div>`).join('')
-    + (m.base > 0 ? `<div class="marker" style="left:${markerAt}%" title="Дистриб'юторська база: ${money(m.base)} ₴"></div>` : '');
 
-  el('legend').innerHTML = parts.map(p =>
-    `<div class="lg"><i style="background:${p.color}"></i>${p.name}<b>${money(p.val)} ₴</b></div>`).join('');
+  // стилі задаємо через DOM, а не атрибутом style — інакше їх ріже CSP на хостингу
+  const bar = el('bar');
+  bar.innerHTML = '';
+  parts.forEach(p => {
+    const seg = document.createElement('div');
+    seg.style.width = p.val/sum*100 + '%';
+    seg.style.background = p.color;
+    seg.title = p.name + ': ' + money(p.val) + ' ₴';
+    bar.appendChild(seg);
+  });
+  if(m.base > 0){
+    const mk = document.createElement('div');
+    mk.className = 'marker';
+    mk.style.left = Math.min(100, Math.max(0, m.base/sum*100)) + '%';
+    mk.title = "Дистриб'юторська база: " + money(m.base) + ' ₴';
+    bar.appendChild(mk);
+  }
+
+  const lg = el('legend');
+  lg.innerHTML = '';
+  parts.forEach(p => {
+    const item = document.createElement('div');
+    item.className = 'lg';
+    const dot = document.createElement('i');
+    dot.style.background = p.color;
+    const val = document.createElement('b');
+    val.textContent = money(p.val) + ' ₴';
+    item.append(dot, p.name, val);
+    lg.appendChild(item);
+  });
 
   el('barCap').innerHTML = m.base > 0
     ? `Вертикальна риска — дистриб'юторська база <b>${money(m.base)} ₴</b>. Жовтий сегмент має її перекривати.`
@@ -1221,8 +1256,8 @@ function renderDeals(){
       <td>${money0(m.gap*m.vol)}</td>
       <td><span class="pill ${v}">${pillTxt}</span></td>
       <td>
-        <button class="mini-btn" onclick="loadDeal(${i})">Відкрити</button>
-        <button class="mini-btn ghost" onclick="deleteDeal(${i})">×</button>
+        <button class="mini-btn" data-act="loadDeal" data-arg="${i}">Відкрити</button>
+        <button class="mini-btn ghost" data-act="deleteDeal" data-arg="${i}">×</button>
       </td>
     </tr>`;
   }).join('');
@@ -1254,7 +1289,7 @@ function pListPrice(p){ return el('pChannel').value === 'dist' ? p.dist : p.reta
 
 function pBuildTable(){
   let html = `<thead><tr>
-      <th style="width:34px"></th><th>Позиція</th><th>Ціна</th><th>База</th>
+      <th class="chk"></th><th>Позиція</th><th>Ціна</th><th>База</th>
       <th>Прогноз з 1 ТТ</th><th>Обсяг</th><th>Лістинг</th>
       <th>Чиста ціна</th><th>Запас</th><th>Рішення</th>
     </tr></thead><tbody>`;
@@ -1493,6 +1528,25 @@ function setMode(m){
   try{ localStorage.setItem('verde_calc_mode', m); }catch(e){}
   if(m === 'all') pRender();
 }
+
+/* Кнопки працюють через делегування: атрибути onclick ріже CSP там, де сторінка захостена,
+   а один слухач на документі покриває і статичні кнопки, і рядки таблиці, що малюються пізніше. */
+const ACTIONS = {
+  addClient, renameClient, deleteClient, saveDeal, toggleScope,
+  applyMinPrice, applyTargetPrice, copySummary, resetAll, pResetPrices, pCopy,
+  modeOne: () => setMode('one'),
+  modeAll: () => setMode('all'),
+  selectAll: () => pSelectAll(true),
+  selectNone: () => pSelectAll(false),
+  loadDeal: arg => loadDeal(+arg),
+  deleteDeal: arg => deleteDeal(+arg)
+};
+document.addEventListener('click', e => {
+  const btn = e.target.closest && e.target.closest('[data-act]');
+  if(!btn) return;
+  const fn = ACTIONS[btn.dataset.act];
+  if(fn){ e.preventDefault(); fn(btn.dataset.arg); }
+});
 
 /* ---------------- init ---------------- */
 buildSkuList();
