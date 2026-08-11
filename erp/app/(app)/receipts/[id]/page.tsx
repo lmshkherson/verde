@@ -210,13 +210,13 @@ export default async function ReceiptPage({ params }: { params: Promise<{ id: st
                       </option>
                       {items.map((i) => (
                         <option key={i.id} value={i.id}>
-                          {i.name} ({i.sku})
+                          {i.name} ({i.sku}, {unitLabel(i.unit)})
                         </option>
                       ))}
                     </select>
                   </Field>
                   <div className="grid gap-3 sm:grid-cols-2">
-                    <Field label="Кількість">
+                    <Field label="Кількість" hint="в одиниці, вказаній біля позиції">
                       <input name="qty" type="number" step="0.001" min="0" className={inputClass} />
                     </Field>
                     <Field

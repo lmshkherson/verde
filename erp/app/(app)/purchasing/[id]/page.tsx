@@ -241,7 +241,7 @@ export default async function PurchaseOrderPage({ params }: { params: Promise<{ 
                   ))}
                 </select>
               </Field>
-              <Field label="Кількість">
+              <Field label="Кількість" hint="в одиниці, вказаній біля позиції">
                 <input name="qty" type="number" step="0.001" min="0" required className={inputClass} />
               </Field>
               <Field label="Ціна за одиницю">

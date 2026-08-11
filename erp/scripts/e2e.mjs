@@ -1853,6 +1853,15 @@ try {
   await warehouse.reload();
 
   // Товар у тому ж документі — перевізник виставив одним актом.
+  const boxOption = await warehouse
+    .locator('select[name="item_id"] option', { hasText: 'Шоубокс картонний' })
+    .first()
+    .textContent();
+  check(
+    'у виборі номенклатури видно одиницю вимірювання',
+    /,\s*шт\)/.test(boxOption ?? ''),
+    boxOption?.trim(),
+  );
   await selectByText(warehouse, 'select[name="item_id"]', 'Шоубокс картонний');
   await warehouse.fill('input[name="qty"]', '500');
   await warehouse.fill('input[name="unit_price"]', '6.60');
