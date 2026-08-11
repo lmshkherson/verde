@@ -16,6 +16,7 @@ import {
 } from '@/components/ui';
 import { query } from '@/lib/db';
 import { fmtDate, fmtMoney } from '@/lib/format';
+import { openCustomerOrders, openSupplierOrders } from '@/lib/open-docs';
 import { requireRole } from '@/lib/session';
 
 export const dynamic = 'force-dynamic';
@@ -23,7 +24,7 @@ export const dynamic = 'force-dynamic';
 export default async function BankPage() {
   const session = await requireRole('warehouse', 'sales');
 
-  const [accounts, statements, queue, customers, suppliers] = await Promise.all([
+  const [accounts, statements, queue, customers, suppliers, customerOrders, supplierOrders] = await Promise.all([
     query<{
       id: string;
       name: string;
@@ -68,7 +69,7 @@ export default async function BankPage() {
     query<BankTx & { statement_id: string | null }>(
       `select t.id, t.op_date, t.amount, t.counterparty_name, t.counterparty_edrpou,
               t.counterparty_iban, t.purpose, t.doc_number, t.status, t.match_kind, t.other_account, t.note,
-              t.statement_id, null::text as matched_name
+              t.statement_id, null::text as matched_name, null::text as matched_doc
          from bank_transactions t
         where t.legal_entity_id = $1 and t.status = 'new'
         order by t.op_date desc, t.id
@@ -77,6 +78,8 @@ export default async function BankPage() {
     ),
     query<Party>('select id, name, edrpou, iban from customers where is_active order by name'),
     query<Party>('select id, name, edrpou, iban from suppliers where is_active order by name'),
+    openCustomerOrders(session.eid),
+    openSupplierOrders(session.eid),
   ]);
 
   const totalUnmatched = accounts.reduce((s, a) => s + Number(a.unmatched), 0);
@@ -125,7 +128,14 @@ export default async function BankPage() {
             ) : (
               <div className="space-y-3">
                 {queue.map((tx) => (
-                  <BankRow key={tx.id} tx={tx} customers={customers} suppliers={suppliers} />
+                  <BankRow
+                    key={tx.id}
+                    tx={tx}
+                    customers={customers}
+                    suppliers={suppliers}
+                    customerOrders={customerOrders}
+                    supplierOrders={supplierOrders}
+                  />
                 ))}
               </div>
             )}

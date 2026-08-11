@@ -5,6 +5,7 @@ import { BankRow, type BankTx, type Party } from '@/components/bank-row';
 import { Card, Empty, LinkButton, PageHeader, Stat } from '@/components/ui';
 import { query, queryOne } from '@/lib/db';
 import { fmtDate, fmtMoney } from '@/lib/format';
+import { openCustomerOrders, openSupplierOrders } from '@/lib/open-docs';
 import { requireRole } from '@/lib/session';
 
 export const dynamic = 'force-dynamic';
@@ -43,20 +44,27 @@ export default async function StatementPage({ params }: { params: Promise<{ id: 
   );
   if (!statement) notFound();
 
-  const [rows, customers, suppliers] = await Promise.all([
+  const [rows, customers, suppliers, customerOrders, supplierOrders] = await Promise.all([
     query<BankTx>(
       `select t.id, t.op_date, t.amount, t.counterparty_name, t.counterparty_edrpou,
               t.counterparty_iban, t.purpose, t.doc_number, t.status, t.match_kind, t.other_account, t.note,
-              coalesce(c.name, sp.name) as matched_name
+              coalesce(c.name, sp.name) as matched_name,
+              coalesce(so2.number, po2.number) as matched_doc
          from bank_transactions t
          left join customers c on c.id = t.customer_id
          left join suppliers sp on sp.id = t.supplier_id
+         left join payments pay on pay.id = t.payment_id
+         left join sales_orders so2 on so2.id = pay.so_id
+         left join supplier_payments spay on spay.id = t.supplier_payment_id
+         left join purchase_orders po2 on po2.id = spay.po_id
         where t.statement_id = $1
         order by t.op_date, t.id`,
       [id],
     ),
     query<Party>('select id, name, edrpou, iban from customers where is_active order by name'),
     query<Party>('select id, name, edrpou, iban from suppliers where is_active order by name'),
+    openCustomerOrders(session.eid),
+    openSupplierOrders(session.eid),
   ]);
 
   const pending = rows.filter((r) => r.status === 'new');
@@ -115,6 +123,8 @@ export default async function StatementPage({ params }: { params: Promise<{ id: 
                 tx={tx}
                 customers={customers}
                 suppliers={suppliers}
+                customerOrders={customerOrders}
+                supplierOrders={supplierOrders}
                 statementId={statement.id}
               />
             ))}

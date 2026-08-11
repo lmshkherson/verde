@@ -1701,6 +1701,39 @@ try {
     `оплачено ${atbCells[4]}, борг ${atbCells[5]}`,
   );
 
+  // Оплату можна прив'язати до конкретного замовлення — і тоді в самому
+  // замовленні видно, що воно оплачене. Платіж без номера документа в
+  // призначенні: автомат замовлення не вгадає, людина обирає його зі списку.
+  const soPayCsv = [
+    'Дата;Контрагент;ЄДРПОУ;Рахунок контрагента;Призначення платежу;Сума',
+    `${day};АТБ маркет, ТОВ;;;Доплата за батончики;5000,00`,
+  ].join('\n');
+  await warehouse.goto(`${BASE}/bank`);
+  await warehouse.fill('textarea[name="content"]', soPayCsv);
+  await warehouse.click('button:has-text("Імпортувати")');
+  await warehouse.waitForURL(/\/bank\/[0-9a-f-]{36}/);
+
+  const payForm = warehouse.locator('form:has(select[name="target"])').first();
+  await selectByText(warehouse, 'form:has(select[name="target"]) select[name="target"]', 'АТБ-Маркет');
+  await selectByText(warehouse, 'select[name="so_id"]', 'ВС-ЗАМ');
+  await payForm.locator('button[type="submit"]').click();
+  await warehouse.waitForTimeout(1500);
+  await warehouse.reload();
+  const soMatched = (await warehouse.locator('body').innerText()).replace(/[\s ]+/g, ' ');
+  check('рознесено з прив’язкою до замовлення', soMatched.includes('ВС-ЗАМ-'));
+
+  // Замовлення бачить обидві оплати: 12 500 автомат прив'язав за номером
+  // документа з призначення платежу, 5 000 людина — вибором зі списку.
+  await sales.goto(`${BASE}/sales`);
+  await sales.click(`a:has-text("ВС-ЗАМ-${today.getFullYear()}-0001")`);
+  await sales.waitForURL(/\/sales\/[0-9a-f-]{36}/);
+  const soPage = (await sales.locator('body').innerText()).replace(/[\s ]+/g, ' ');
+  check(
+    'замовлення показує свої оплати з виписки',
+    soPage.includes('Оплачено 17 500,00'),
+    '12 500 за номером у призначенні + 5 000 вручну',
+  );
+
   // І потрапляє у проводки як звичайний документ.
   await owner.goto(`${BASE}/accounting`);
   await owner.click('button:has-text("Перегенерувати період")');

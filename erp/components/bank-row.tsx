@@ -1,8 +1,11 @@
+'use client';
+
+import { useState } from 'react';
 import { matchTransaction, unmatchTransaction } from '@/app/actions/bank';
 import { ActionForm } from './action-form';
 import { Badge, inputClass } from './ui';
 import { fmtDate, fmtMoney } from '@/lib/format';
-import { suggestByName } from '@/lib/bank';
+import { suggestByName } from '@/lib/bank-match';
 
 export interface BankTx {
   id: string;
@@ -18,6 +21,8 @@ export interface BankTx {
   other_account: string | null;
   note: string | null;
   matched_name: string | null;
+  /** Номер замовлення чи заявки, до яких прив'язана створена оплата. */
+  matched_doc: string | null;
 }
 
 export interface Party {
@@ -25,6 +30,15 @@ export interface Party {
   name: string;
   edrpou: string | null;
   iban: string | null;
+}
+
+/** Незакритий документ, до якого можна прив'язати оплату. */
+export interface OpenDoc {
+  id: string;
+  party_id: string;
+  number: string;
+  label: string;
+  balance_due: number;
 }
 
 /** Рахунки для операцій, у яких контрагента як такого немає. */
@@ -40,16 +54,25 @@ export const OTHER_ACCOUNTS: [string, string][] = [
  * Ціль вибирається одним списком: клієнт, постачальник, рахунок обліку або
  * «не потребує». Підказка за ЄДРПОУ чи назвою одразу підставляється в select,
  * але лишається саме підказкою — рознесення підтверджує людина.
+ *
+ * Коли обрано клієнта чи постачальника, нижче з'являється вибір конкретного
+ * замовлення (заявки) з боргом — оплата прив'яжеться саме до нього, і в
+ * замовленні буде видно, що воно оплачене. Якщо номер документа читається з
+ * призначення платежу, замовлення підставляється саме.
  */
 export function BankRow({
   tx,
   customers,
   suppliers,
+  customerOrders = [],
+  supplierOrders = [],
   statementId,
 }: {
   tx: BankTx;
   customers: Party[];
   suppliers: Party[];
+  customerOrders?: OpenDoc[];
+  supplierOrders?: OpenDoc[];
   statementId?: string;
 }) {
   const inflow = Number(tx.amount) > 0;
@@ -61,6 +84,19 @@ export function BankRow({
     (tx.counterparty_iban ? pool.find((p) => p.iban === tx.counterparty_iban) : undefined);
   const suggestedId = byCode?.id ?? suggestByName(tx.counterparty_name, pool);
   const suggested = suggestedId ? `${prefix}:${suggestedId}` : '';
+
+  const [target, setTarget] = useState(suggested);
+
+  const [targetKind, targetId] = target.includes(':') ? target.split(':') : ['', ''];
+  const docs =
+    targetKind === 'customer'
+      ? customerOrders.filter((o) => o.party_id === targetId)
+      : targetKind === 'supplier'
+        ? supplierOrders.filter((o) => o.party_id === targetId)
+        : [];
+  const docField = targetKind === 'customer' ? 'so_id' : 'po_id';
+  // Номер із призначення платежу — найкраща підказка, яку дає сам банк.
+  const preselected = tx.doc_number ? (docs.find((d) => d.number === tx.doc_number)?.id ?? '') : '';
 
   return (
     <div className="rounded-xl border border-emerald-900/10 p-3" data-tx={tx.id}>
@@ -91,7 +127,13 @@ export function BankRow({
             <input type="hidden" name="tx_id" value={tx.id} />
             {statementId && <input type="hidden" name="statement_id" value={statementId} />}
             <div className="grid gap-2 sm:grid-cols-[1fr_1fr]">
-              <select name="target" defaultValue={suggested} className={inputClass} required>
+              <select
+                name="target"
+                value={target}
+                onChange={(e) => setTarget(e.target.value)}
+                className={inputClass}
+                required
+              >
                 <option value="" disabled>
                   Куди відносити…
                 </option>
@@ -126,6 +168,25 @@ export function BankRow({
                 placeholder={tx.doc_number ? `Документ ${tx.doc_number}` : 'Примітка'}
               />
             </div>
+            {docs.length > 0 && (
+              <select
+                key={`${docField}-${targetId}`}
+                name={docField}
+                defaultValue={preselected}
+                className={inputClass}
+              >
+                <option value="">
+                  {targetKind === 'customer'
+                    ? '— без прив’язки до замовлення (просто на клієнта) —'
+                    : '— без прив’язки до заявки (просто на постачальника) —'}
+                </option>
+                {docs.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.number} · {d.label} · борг {fmtMoney(d.balance_due)}
+                  </option>
+                ))}
+              </select>
+            )}
           </ActionForm>
         </div>
       ) : (
@@ -137,6 +198,9 @@ export function BankRow({
                 ? `Рахунок ${tx.other_account}`
                 : (tx.matched_name ?? 'Рознесено')}
           </Badge>
+          {tx.matched_doc && (
+            <span className="text-xs font-semibold text-emerald-800/70">{tx.matched_doc}</span>
+          )}
           {tx.note && <span className="text-xs text-emerald-800/60">{tx.note}</span>}
           <form action={unmatchTransaction} className="ml-auto">
             <input type="hidden" name="tx_id" value={tx.id} />
