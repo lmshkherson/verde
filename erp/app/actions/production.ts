@@ -234,6 +234,34 @@ export async function createProductionOrder(_prev: ActionState, formData: FormDa
   redirect(`/production/${orderId}`);
 }
 
+/** Шапка варки: дату виробництва й примітку можна виправити до закриття. */
+export async function updateProductionHeader(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  await requireRole('production');
+  const orderId = str(formData, 'order_id');
+
+  try {
+    await transaction(async (c) => {
+      const { rows } = await c.query<{ status: string }>(
+        'select status from production_orders where id = $1',
+        [orderId],
+      );
+      if (!rows[0]) throw new Error('Документ не знайдено');
+      if (!['planned', 'in_progress'].includes(rows[0].status)) {
+        throw new Error('Варку вже закрито — шапка зафіксована');
+      }
+      await c.query(
+        'update production_orders set planned_for = $2, note = $3 where id = $1',
+        [orderId, strOrNull(formData, 'planned_for'), strOrNull(formData, 'note')],
+      );
+    });
+  } catch (err) {
+    return { error: toMessage(err) };
+  }
+
+  revalidatePath(`/production/${orderId}`);
+  return { ok: 'Шапку збережено' };
+}
+
 export async function startProduction(formData: FormData) {
   await requireRole('production');
   const id = str(formData, 'order_id');

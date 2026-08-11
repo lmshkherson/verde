@@ -1,9 +1,10 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { cancelProductionOrder, startProduction } from '@/app/actions/production';
-import { Badge, Button, Card, Cell, Empty, LinkButton, PageHeader, Row, Stat, Table } from '@/components/ui';
+import { cancelProductionOrder, startProduction, updateProductionHeader } from '@/app/actions/production';
+import { ActionForm } from '@/components/action-form';
+import { Badge, Button, Card, Cell, Empty, Field, inputClass, LinkButton, PageHeader, Row, Stat, Table } from '@/components/ui';
 import { query, queryOne } from '@/lib/db';
-import { fmtDate, fmtMoney, fmtQty, PROD_STATUS, unitLabel } from '@/lib/format';
+import { fmtDate, fmtMoney, fmtQty, isoDay, PROD_STATUS, unitLabel } from '@/lib/format';
 import { requireRole } from '@/lib/session';
 import { CompleteProductionForm, type Material } from '../complete-form';
 
@@ -16,6 +17,11 @@ const statusTone: Record<string, 'gray' | 'amber' | 'green' | 'red'> = {
   cancelled: 'red',
 };
 
+/**
+ * Документ варки — та сама структура, що й у надходження: статус біля
+ * заголовка, показники, рядки документа з цінами й підсумком у головній
+ * колонці, шапка і проведення — у правій.
+ */
 export default async function ProductionOrderPage({ params }: { params: Promise<{ id: string }> }) {
   const session = await requireRole('production');
   const { id } = await params;
@@ -26,7 +32,7 @@ export default async function ProductionOrderPage({ params }: { params: Promise<
     status: string;
     planned_qty: number;
     produced_qty: number;
-    planned_for: string | null;
+    planned_for: string | Date | null;
     finished_at: string | null;
     note: string | null;
     product: string;
@@ -59,6 +65,7 @@ export default async function ProductionOrderPage({ params }: { params: Promise<
     query<{
       item_id: string;
       name: string;
+      sku: string;
       unit: string;
       qty_per_batch: number;
       loss_pct: number;
@@ -68,7 +75,7 @@ export default async function ProductionOrderPage({ params }: { params: Promise<
     }>(
       // «На складі» — це лише допущені партії: карантинні у варку не підуть,
       // і показувати їх як доступні означало б обіцяти те, чого немає.
-      `select rl.item_id, i.name, i.unit, rl.qty_per_batch, rl.loss_pct,
+      `select rl.item_id, i.name, i.sku, i.unit, rl.qty_per_batch, rl.loss_pct,
               coalesce(q.released_qty, 0) as available,
               coalesce(q.blocked_qty, 0) as blocked,
               coalesce(s.avg_cost, 0) as avg_cost
@@ -108,13 +115,20 @@ export default async function ProductionOrderPage({ params }: { params: Promise<
     avgCost: m.avg_cost,
   }));
 
+  const requiredOf = (m: (typeof materials)[number]) =>
+    Math.round(((m.qty_per_batch * (1 + m.loss_pct / 100) * order.planned_qty) / order.output_qty) * 1000) /
+    1000;
+  const plannedMaterialCost = materials.reduce((s, m) => s + requiredOf(m) * Number(m.avg_cost), 0);
+  const consumedTotal = consumed.reduce((s, c) => s + Number(c.qty) * Number(c.unit_cost), 0);
+
   return (
     <>
       <PageHeader
         title={`Варка ${order.number}`}
-        subtitle={`${order.product} · рецептура v${order.version}`}
+        subtitle={`${order.product} · техкарта v${order.version} · вихід ${fmtQty(order.output_qty)} шт із варки`}
         action={
-          <div className="flex gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge tone={statusTone[order.status]}>{PROD_STATUS[order.status]}</Badge>
             <LinkButton href={`/movements/${order.id}`}>Рухи документа</LinkButton>
             <LinkButton href="/production">← До списку</LinkButton>
           </div>
@@ -130,6 +144,11 @@ export default async function ProductionOrderPage({ params }: { params: Promise<
           tone={order.status === 'done' ? 'good' : 'default'}
         />
         <Stat
+          label="Сировина на план"
+          value={fmtMoney(order.status === 'done' ? consumedTotal : plannedMaterialCost)}
+          hint={order.status === 'done' ? 'фактично списано' : 'за поточними цінами складу'}
+        />
+        <Stat
           label="Собівартість одиниці"
           value={order.unit_cost ? fmtMoney(order.unit_cost) : '—'}
           hint={
@@ -140,111 +159,164 @@ export default async function ProductionOrderPage({ params }: { params: Promise<
               : undefined
           }
         />
-        <div className="rounded-2xl border border-emerald-900/10 bg-white p-4 shadow-sm">
-          <div className="text-xs font-semibold uppercase tracking-wide text-emerald-800/60">Статус</div>
-          <div className="mt-2">
-            <Badge tone={statusTone[order.status]}>{PROD_STATUS[order.status]}</Badge>
-          </div>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-[1fr_340px]">
+        <div className="space-y-4">
           {canWork && (
-            <div className="mt-3 flex gap-2">
+            <Card title="Рядки документа — потреба в сировині">
+              <Table head={['№', 'Компонент', 'Потрібно', 'На складі', 'Ціна', 'Сума', 'Вистачає?']}>
+                {materials.map((m, idx) => {
+                  const required = requiredOf(m);
+                  const enough = m.available + 0.0005 >= required;
+                  return (
+                    <Row key={m.item_id}>
+                      <Cell className="text-emerald-800/50">{idx + 1}</Cell>
+                      <Cell>
+                        <div className="font-semibold">{m.name}</div>
+                        <div className="text-xs text-emerald-800/50">
+                          {m.sku}
+                          {m.loss_pct > 0 ? ` · втрати ${m.loss_pct}%` : ''}
+                        </div>
+                      </Cell>
+                      <Cell align="right">{fmtQty(required, unitLabel(m.unit))}</Cell>
+                      <Cell align="right">
+                        {fmtQty(m.available, unitLabel(m.unit))}
+                        {Number(m.blocked) > 0.0005 && (
+                          <div className="text-xs font-semibold text-amber-600">
+                            + {fmtQty(m.blocked)} не допущено
+                          </div>
+                        )}
+                      </Cell>
+                      <Cell align="right">{fmtMoney(m.avg_cost)}</Cell>
+                      <Cell align="right" className="font-semibold">
+                        {fmtMoney(required * m.avg_cost)}
+                      </Cell>
+                      <Cell align="right">
+                        {enough ? (
+                          <Badge tone="green">так</Badge>
+                        ) : (
+                          <Badge tone="red">бракує {fmtQty(required - m.available)}</Badge>
+                        )}
+                      </Cell>
+                    </Row>
+                  );
+                })}
+              </Table>
+              <div className="mt-3 flex justify-end text-sm">
+                <span className="text-emerald-800/60">Разом сировина:&nbsp;</span>
+                <span className="font-bold tabular-nums">{fmtMoney(plannedMaterialCost)}</span>
+              </div>
+            </Card>
+          )}
+
+          {canWork && (
+            <Card title="Закриття варки">
+              <CompleteProductionForm
+                orderId={order.id}
+                plannedQty={order.planned_qty}
+                outputQty={order.output_qty}
+                materials={formMaterials}
+                defaultBatchCode={`${order.product_sku}/${order.number}`}
+                capitalizeOverhead={order.overhead_policy === 'capitalize'}
+              />
+            </Card>
+          )}
+
+          {order.status === 'done' && (
+            <Card title="Рядки документа — фактично списано">
+              {consumed.length === 0 ? (
+                <Empty>Списань не було</Empty>
+              ) : (
+                <>
+                  <Table head={['№', 'Компонент', 'Партія', 'Кількість', 'Ціна', 'Сума']}>
+                    {consumed.map((c, i) => (
+                      <Row key={i}>
+                        <Cell className="text-emerald-800/50">{i + 1}</Cell>
+                        <Cell className="font-semibold">{c.name}</Cell>
+                        <Cell className="font-mono text-xs">{c.batch_code ?? '—'}</Cell>
+                        <Cell align="right">{fmtQty(c.qty, unitLabel(c.unit))}</Cell>
+                        <Cell align="right">{fmtMoney(c.unit_cost)}</Cell>
+                        <Cell align="right" className="font-semibold">
+                          {fmtMoney(Number(c.qty) * Number(c.unit_cost))}
+                        </Cell>
+                      </Row>
+                    ))}
+                  </Table>
+                  <div className="mt-3 flex justify-end text-sm">
+                    <span className="text-emerald-800/60">Разом списано:&nbsp;</span>
+                    <span className="font-bold tabular-nums">{fmtMoney(consumedTotal)}</span>
+                  </div>
+                </>
+              )}
+              <p className="mt-4 text-sm text-emerald-800/70">
+                Закрито {fmtDate(order.finished_at)}. Готова продукція оприбуткована партією{' '}
+                <span className="font-mono">{order.batch_code}</span> —{' '}
+                <Link href="/stock" className="font-semibold text-emerald-700 hover:underline">
+                  перевірити на складі
+                </Link>
+                .
+              </p>
+            </Card>
+          )}
+        </div>
+
+        <div className="space-y-4">
+          {canWork && (
+            <Card title="Шапка документа">
+              <ActionForm action={updateProductionHeader} submitLabel="Зберегти шапку" variant="ghost">
+                <input type="hidden" name="order_id" value={order.id} />
+                <Field label="Дата виробництва">
+                  <input
+                    name="planned_for"
+                    type="date"
+                    defaultValue={isoDay(order.planned_for) ?? ''}
+                    className={inputClass}
+                  />
+                </Field>
+                <Field label="Примітка">
+                  <input name="note" defaultValue={order.note ?? ''} className={inputClass} />
+                </Field>
+              </ActionForm>
+            </Card>
+          )}
+
+          {canWork ? (
+            <Card title="Проведення">
+              <p className="mb-3 text-sm text-emerald-800/70">
+                Закриття варки спише сировину партіями за FEFO, порахує собівартість і оприбуткує
+                готову продукцію окремою партією з власним терміном придатності.
+              </p>
               {order.status === 'planned' && (
-                <form action={startProduction}>
+                <form action={startProduction} className="mb-3">
                   <input type="hidden" name="order_id" value={order.id} />
-                  <Button className="!min-h-9 !px-3 text-xs">Почати</Button>
+                  <Button>Почати</Button>
                 </form>
               )}
               <form action={cancelProductionOrder}>
                 <input type="hidden" name="order_id" value={order.id} />
-                <Button variant="ghost" className="!min-h-9 !px-3 text-xs">
-                  Скасувати
-                </Button>
+                <Button variant="ghost">Скасувати документ</Button>
               </form>
-            </div>
+            </Card>
+          ) : (
+            <Card title="Документ">
+              <dl className="space-y-2 text-sm">
+                {[
+                  ['Продукт', order.product],
+                  ['Техкарта', `v${order.version}`],
+                  ['Партія випуску', order.batch_code ?? '—'],
+                  ['Закрито', order.finished_at ? fmtDate(order.finished_at) : '—'],
+                  ['Примітка', order.note ?? '—'],
+                ].map(([k, v]) => (
+                  <div key={k} className="flex justify-between gap-3">
+                    <dt className="text-emerald-800/60">{k}</dt>
+                    <dd className="text-right font-medium text-emerald-950">{v}</dd>
+                  </div>
+                ))}
+              </dl>
+            </Card>
           )}
         </div>
-      </div>
-
-      <div className="grid gap-4">
-        {canWork && (
-          <Card title="Потреба в сировині">
-            <Table head={['Компонент', 'Норма на план', 'На складі', 'Вистачає?']}>
-              {materials.map((m) => {
-                const required =
-                  Math.round(
-                    ((m.qty_per_batch * (1 + m.loss_pct / 100) * order.planned_qty) / order.output_qty) *
-                      1000,
-                  ) / 1000;
-                const enough = m.available + 0.0005 >= required;
-                return (
-                  <Row key={m.item_id}>
-                    <Cell>
-                      <div className="font-semibold">{m.name}</div>
-                      {m.loss_pct > 0 && (
-                        <div className="text-xs text-emerald-800/50">втрати {m.loss_pct}%</div>
-                      )}
-                    </Cell>
-                    <Cell align="right">{fmtQty(required, unitLabel(m.unit))}</Cell>
-                    <Cell align="right">
-                      {fmtQty(m.available, unitLabel(m.unit))}
-                      {Number(m.blocked) > 0.0005 && (
-                        <div className="text-xs font-semibold text-amber-600">
-                          + {fmtQty(m.blocked)} не допущено
-                        </div>
-                      )}
-                    </Cell>
-                    <Cell align="right">
-                      {enough ? (
-                        <Badge tone="green">так</Badge>
-                      ) : (
-                        <Badge tone="red">бракує {fmtQty(required - m.available)}</Badge>
-                      )}
-                    </Cell>
-                  </Row>
-                );
-              })}
-            </Table>
-          </Card>
-        )}
-
-        {canWork && (
-          <Card title="Закриття варки">
-            <CompleteProductionForm
-              orderId={order.id}
-              plannedQty={order.planned_qty}
-              outputQty={order.output_qty}
-              materials={formMaterials}
-              defaultBatchCode={`${order.product_sku}/${order.number}`}
-              capitalizeOverhead={order.overhead_policy === 'capitalize'}
-            />
-          </Card>
-        )}
-
-        {order.status === 'done' && (
-          <Card title="Фактично списано">
-            {consumed.length === 0 ? (
-              <Empty>Списань не було</Empty>
-            ) : (
-              <Table head={['Компонент', 'Партія', 'Кількість', 'Сума']}>
-                {consumed.map((c, i) => (
-                  <Row key={i}>
-                    <Cell>{c.name}</Cell>
-                    <Cell className="font-mono text-xs">{c.batch_code ?? '—'}</Cell>
-                    <Cell align="right">{fmtQty(c.qty, unitLabel(c.unit))}</Cell>
-                    <Cell align="right">{fmtMoney(c.qty * c.unit_cost)}</Cell>
-                  </Row>
-                ))}
-              </Table>
-            )}
-            <p className="mt-4 text-sm text-emerald-800/70">
-              Закрито {fmtDate(order.finished_at)}. Готова продукція оприбуткована партією{' '}
-              <span className="font-mono">{order.batch_code}</span> —{' '}
-              <Link href="/stock" className="font-semibold text-emerald-700 hover:underline">
-                перевірити на складі
-              </Link>
-              .
-            </p>
-          </Card>
-        )}
       </div>
     </>
   );
