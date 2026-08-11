@@ -88,6 +88,39 @@
     background-size:5px 5px,5px 5px;background-repeat:no-repeat;
   }
 
+  .grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:.85rem}
+  @media(max-width:900px){.grid4{grid-template-columns:repeat(2,1fr)}}
+  @media(max-width:560px){.grid4{grid-template-columns:1fr}}
+
+  .client-row{display:flex;flex-wrap:wrap;gap:1rem;align-items:flex-end}
+
+  /* ---------- TABS ---------- */
+  .tabs{display:flex;gap:.5rem;margin-bottom:1.2rem;flex-wrap:wrap}
+  .tab{
+    font-family:'Montserrat',sans-serif;font-weight:800;font-size:.85rem;cursor:pointer;
+    border:2px solid var(--line);background:var(--white);color:var(--ink);opacity:.65;
+    border-radius:100px;padding:.7rem 1.4rem;transition:.2s;
+  }
+  .tab:hover{opacity:1;border-color:var(--green-deep)}
+  .tab.active{background:var(--ink);border-color:var(--ink);color:var(--yellow);opacity:1}
+
+  /* ---------- MATRIX ---------- */
+  table.matrix{min-width:1080px}
+  table.matrix td,table.matrix th{padding:.45rem .5rem}
+  table.matrix tr.off{opacity:.42}
+  table.matrix td.name{text-align:left;max-width:250px;white-space:normal;line-height:1.3;font-size:.82rem}
+  table.matrix input[type=checkbox]{width:19px;height:19px;accent-color:var(--green-deep);cursor:pointer}
+  table.matrix input.cell{
+    width:78px;border:1.5px solid var(--line);background:var(--cream);border-radius:8px;
+    font-family:'Montserrat',sans-serif;font-weight:700;font-size:.83rem;color:var(--ink);
+    padding:.32rem .45rem;text-align:right;outline:none;
+  }
+  table.matrix input.cell:focus{border-color:var(--green);background:#fff}
+  table.matrix input.cell:disabled{opacity:.5}
+  table.matrix tr.grp td{background:var(--cream);font-family:'Montserrat',sans-serif;font-weight:800;
+    font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;opacity:.65;text-align:left}
+  .num{font-variant-numeric:tabular-nums}
+
   /* ---------- RESULTS ---------- */
   .sticky{position:sticky;top:88px}
   @media(max-width:980px){.sticky{position:static}}
@@ -200,25 +233,32 @@
 </section>
 
 <main class="wrap">
+
+<div class="card">
+  <h2><span class="dot"></span>Клієнт</h2>
+  <div class="client-row">
+    <div class="field" style="flex:1 1 260px">
+      <label>Мережа / клієнт</label>
+      <div class="ctrl"><select id="client"></select></div>
+    </div>
+    <div class="btns" style="margin-top:0">
+      <button class="solid" onclick="addClient()">+ Додати клієнта</button>
+      <button onclick="renameClient()">Перейменувати</button>
+      <button class="ghost" onclick="deleteClient()">Видалити</button>
+    </div>
+  </div>
+</div>
+
+<div class="tabs">
+  <button class="tab active" id="tabOne" onclick="setMode('one')">Одна позиція</button>
+  <button class="tab" id="tabAll" onclick="setMode('all')">Портфель клієнта</button>
+</div>
+
+<div id="viewOne">
 <div class="layout">
 
   <!-- ============ INPUTS ============ -->
   <div>
-
-    <div class="card">
-      <h2><span class="dot"></span>Клієнт</h2>
-      <p class="hint">Кожен прорахунок зберігається під обраним клієнтом. Так видно всі умови по мережі в одному місці
-        і можна порівняти позиції між собою.</p>
-      <div class="field">
-        <label>Мережа / клієнт</label>
-        <div class="ctrl"><select id="client"></select></div>
-      </div>
-      <div class="btns">
-        <button class="solid" onclick="addClient()">+ Додати клієнта</button>
-        <button onclick="renameClient()">Перейменувати</button>
-        <button class="ghost" onclick="deleteClient()">Видалити</button>
-      </div>
-    </div>
 
     <div class="card">
       <h2><span class="dot"></span>0. Товар і канал</h2>
@@ -444,6 +484,109 @@
 
   </div>
 </div>
+</div>
+
+<!-- ============ ПОРТФЕЛЬ ============ -->
+<div id="viewAll" hidden>
+
+  <div class="card">
+    <h2><span class="dot"></span>Спільні умови мережі</h2>
+    <p class="hint">Ці умови діють на всі обрані позиції. Ціна, прогноз і лістинг задаються для кожної позиції окремо в таблиці нижче.</p>
+    <div class="grid4">
+      <div class="field">
+        <label>Канал продажу</label>
+        <div class="ctrl"><select id="pChannel">
+          <option value="retail">Мережа напряму / роздріб</option>
+          <option value="dist">Дистриб'ютор</option>
+        </select></div>
+      </div>
+      <div class="field">
+        <label>Торгових точок</label>
+        <div class="ctrl"><input id="pPoints" inputmode="decimal" value="100"><span class="unit">ТТ</span></div>
+      </div>
+      <div class="field">
+        <label>Відтермінування</label>
+        <div class="ctrl"><input id="pDefer" inputmode="decimal" value="21"><span class="unit">днів</span></div>
+      </div>
+      <div class="field">
+        <label>Вартість грошей</label>
+        <div class="ctrl"><input id="pRate" inputmode="decimal" value="20"><span class="unit">% річних</span></div>
+      </div>
+      <div class="field">
+        <label>Ретро-бонус</label>
+        <div class="ctrl"><input id="pRetro" inputmode="decimal" value="4"><span class="unit">%</span></div>
+      </div>
+      <div class="field">
+        <label>Маркетинговий</label>
+        <div class="ctrl"><input id="pMkt" inputmode="decimal" value="3"><span class="unit">%</span></div>
+      </div>
+      <div class="field">
+        <label>Логістичний</label>
+        <div class="ctrl"><input id="pLog" inputmode="decimal" value="3"><span class="unit">%</span></div>
+      </div>
+      <div class="field">
+        <label>Промо та інші бонуси</label>
+        <div class="ctrl"><input id="pPromo" inputmode="decimal" value="0"><span class="unit">%</span></div>
+      </div>
+      <div class="field">
+        <label>Доставка</label>
+        <div class="ctrl"><select id="pDelivery">
+          <option value="rc">На РЦ клієнта</option>
+          <option value="tt">РЦ немає, веземо на точки</option>
+        </select></div>
+      </div>
+      <div class="field">
+        <label>Наша логістика</label>
+        <div class="ctrl"><input id="pOwnLog" inputmode="decimal" value="0"><span class="unit">грн/од</span></div>
+      </div>
+      <div class="field">
+        <label>Цільовий запас</label>
+        <div class="ctrl"><input id="pTargetGap" inputmode="decimal" value="5"><span class="unit">%</span></div>
+      </div>
+      <div class="field">
+        <label>Мінімальний запас</label>
+        <div class="ctrl"><input id="pMinGap" inputmode="decimal" value="0"><span class="unit">%</span></div>
+      </div>
+      <div class="field">
+        <label>Інші витрати періоду</label>
+        <div class="ctrl"><input id="pFixOther" inputmode="decimal" value="0"><span class="unit">грн</span></div>
+      </div>
+      <div class="field">
+        <label>ПДВ</label>
+        <div class="ctrl"><input id="pVat" inputmode="decimal" value="20"><span class="unit">%</span></div>
+      </div>
+    </div>
+    <p class="hint" style="margin:1rem 0 0">«Інші витрати періоду» — спільний бюджет на промо, POS чи мерч. Розноситься між обраними позиціями пропорційно до їхньої виручки.</p>
+  </div>
+
+  <div class="card">
+    <h2><span class="dot"></span>Позиції під клієнта <span id="pFor"></span></h2>
+    <p class="hint">Постав галочку навпроти позицій, які пропонуємо цій мережі. Ціна підставляється з прайсу — редагуй під перемовини.</p>
+    <div class="btns" style="margin-top:0;margin-bottom:1rem">
+      <button class="mini-btn" onclick="pSelectAll(true)">Обрати всі</button>
+      <button class="mini-btn ghost" onclick="pSelectAll(false)">Зняти всі</button>
+      <button class="mini-btn" onclick="pResetPrices()">Скинути ціни до прайсу</button>
+    </div>
+    <div class="tbl-wrap"><table id="pTable" class="matrix"></table></div>
+  </div>
+
+  <div class="card">
+    <h2><span class="dot"></span>Підсумок портфеля</h2>
+    <div id="pVerdict" class="verdict ok" style="margin-bottom:1.2rem">
+      <div class="vtag" id="pTag">Рішення по портфелю</div>
+      <div class="vtitle display" id="pTitle">—</div>
+      <div class="vtext" id="pText">—</div>
+    </div>
+    <div class="layout">
+      <div class="rows" id="pTotals"></div>
+      <div class="rows" id="pTotals2"></div>
+    </div>
+    <div class="btns">
+      <button class="solid" id="pCopyBtn" onclick="pCopy()">Скопіювати підсумок</button>
+    </div>
+  </div>
+
+</div>
 </main>
 
 <div class="mbar ok" id="mbar">
@@ -524,6 +667,17 @@ const pct = x => isFinite(x)
    Запас = NN - base; у відсотках — від base.
    Запас < 0 означає, що після бонусів мережа отримує товар дешевше за дистриб'ютора.
 ---------------------------------------------- */
+/* Ядро: спільне для режиму однієї позиції та портфеля — щоб обидва рахували однаково.
+   B і k — частки (не відсотки); Fu — фіксовані витрати на одиницю. */
+function core({P, base, ownLog, B, k, Fu, targetGap, minGap}){
+  const NN = P*(1 - B - k) - Fu - ownLog;
+  const gap = NN - base;
+  const gapPct = base > 0 ? gap/base*100 : 0;
+  const belowBase = gap < 0;
+  const verdict = (belowBase || gapPct < minGap) ? 'bad' : (gapPct < targetGap ? 'warn' : 'ok');
+  return {NN, gap, gapPct, belowBase, verdict};
+}
+
 function model(){
   const P = num('price');
   const base = num('basePrice');
@@ -550,14 +704,10 @@ function model(){
 
   const bonusMoney = P*B;
   const deferMoney = P*k;
-  const NN = P*(1 - B - k) - Fu - ownLog;
-
-  const gap = NN - base;                            // запас у грн на одиницю
-  const gapPct = base > 0 ? gap/base*100 : 0;       // запас у % до бази
-  const erosion = P > 0 ? (P - NN)/P*100 : 0;       // скільки з'їдають бонуси й витрати
-  const belowBase = gap < 0;                        // червоний флаг
-
   const targetGap = num('targetGap'), minGap = num('minGap');
+
+  const {NN, gap, gapPct, belowBase} = core({P, base, ownLog, B, k, Fu, targetGap, minGap});
+  const erosion = P > 0 ? (P - NN)/P*100 : 0;       // скільки з'їдають бонуси й витрати
 
   // зворотній розрахунок: NN потрібна = base*(1+z) → P = (base*(1+z) + Fu + ownLog) / (1 - B - k)
   const denom = 1 - B - k;
@@ -597,10 +747,8 @@ function model(){
 
 /* ---------------- render ---------------- */
 function verdictOf(m){
-  if(m.belowBase) return 'bad';            // червоний флаг: нижче дистриб'юторської ціни
-  if(m.gapPct < m.minGap) return 'bad';
-  if(m.gapPct < m.targetGap) return 'warn';
-  return 'ok';
+  return core({P:m.P, base:m.base, ownLog:m.ownLog, B:m.B, k:m.k, Fu:m.Fu,
+               targetGap:m.targetGap, minGap:m.minGap}).verdict;
 }
 
 function render(){
@@ -788,14 +936,14 @@ function summaryText(){
   ].join('\n');
 }
 
-function copySummary(){
-  const txt = summaryText();
-  const done = () => { const b = el('copyBtn'); const t = b.textContent;
-    b.textContent = 'Скопійовано ✓'; setTimeout(()=>b.textContent = t, 1800); };
+function copyText(txt, btn){
+  const done = () => { const t = btn.textContent;
+    btn.textContent = 'Скопійовано ✓'; setTimeout(()=>btn.textContent = t, 1800); };
   if(navigator.clipboard && navigator.clipboard.writeText){
     navigator.clipboard.writeText(txt).then(done, ()=>fallbackCopy(txt,done));
   } else fallbackCopy(txt, done);
 }
+function copySummary(){ copyText(summaryText(), el('copyBtn')); }
 function fallbackCopy(txt, done){
   const ta = document.createElement('textarea');
   ta.value = txt; ta.style.position='fixed'; ta.style.opacity='0';
@@ -903,6 +1051,7 @@ function addClient(){
   renderClientList();
   el('client').value = id;
   render();
+  pLoadForClient();     // у нового клієнта — власний, порожній портфель
 }
 
 function renameClient(){
@@ -917,6 +1066,7 @@ function renameClient(){
   renderClientList();
   el('client').value = id;
   render();
+  pRender();
 }
 
 function deleteClient(){
@@ -927,9 +1077,13 @@ function deleteClient(){
   if(!confirm('Видалити «' + name + '»' + (mine.length ? ' разом із прорахунками (' + mine.length + ' шт.)' : '') + '?')) return;
   setClients(getClients().filter(c => c.id !== id));
   setDeals(getDeals().filter(d => d.clientId !== id));
+  const ports = getPortfolios();
+  delete ports[id];
+  try{ localStorage.setItem(PORT_KEY, JSON.stringify(ports)); }catch(e){}
   renderClientList();
   el('client').value = '';
   render();
+  pLoadForClient();
 }
 
 /* ---------------- storage ---------------- */
@@ -1049,6 +1203,262 @@ function escapeHtml(s){
   return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
+/* ================= ПОРТФЕЛЬ КЛІЄНТА =================
+   Матриця: галочка = позицію пропонуємо цій мережі.
+   Спільні умови зверху, ціна / прогноз / лістинг — по кожній позиції.
+==================================================== */
+const P_SHARED = ['pChannel','pPoints','pDefer','pRate','pRetro','pMkt','pLog','pPromo',
+                  'pDelivery','pOwnLog','pTargetGap','pMinGap','pFixOther','pVat'];
+const PORT_KEY = 'verde_calc_portfolios';
+const cellId = (f,i) => 'p_' + f + '_' + i;
+const cell = (f,i) => el(cellId(f,i));
+const cellNum = (f,i) => { const n = parseFloat(String(cell(f,i).value).replace(/\s/g,'').replace(',','.')); return isFinite(n) ? n : 0; };
+
+function pListPrice(p){ return el('pChannel').value === 'dist' ? p.dist : p.retail; }
+
+function pBuildTable(){
+  let html = `<thead><tr>
+      <th style="width:34px"></th><th>Позиція</th><th>Ціна</th><th>База</th>
+      <th>Прогноз з 1 ТТ</th><th>Обсяг</th><th>Лістинг</th>
+      <th>Чиста ціна</th><th>Запас</th><th>Рішення</th>
+    </tr></thead><tbody>`;
+  let group = null;
+  PRICELIST.forEach((p,i) => {
+    if(p.g !== group){ group = p.g; html += `<tr class="grp"><td colspan="10">${p.g}</td></tr>`; }
+    html += `<tr id="${cellId('row',i)}" class="off">
+      <td><input type="checkbox" id="${cellId('on',i)}"></td>
+      <td class="name">${escapeHtml(p.n)}</td>
+      <td><input class="cell" id="${cellId('price',i)}" inputmode="decimal"></td>
+      <td><input class="cell" id="${cellId('base',i)}" inputmode="decimal"></td>
+      <td><input class="cell" id="${cellId('per',i)}" inputmode="decimal"></td>
+      <td class="num" id="${cellId('vol',i)}">—</td>
+      <td><input class="cell" id="${cellId('list',i)}" inputmode="decimal"></td>
+      <td class="num" id="${cellId('nn',i)}">—</td>
+      <td class="num"><b id="${cellId('gap',i)}">—</b></td>
+      <td id="${cellId('v',i)}">—</td>
+    </tr>`;
+  });
+  el('pTable').innerHTML = html + '</tbody>';
+
+  PRICELIST.forEach((p,i) => {
+    ['price','base','per','list'].forEach(f => cell(f,i).addEventListener('input', pRender));
+    cell('on',i).addEventListener('change', pRender);
+  });
+}
+
+function pDefaults(){
+  PRICELIST.forEach((p,i) => {
+    const lp = pListPrice(p);
+    cell('on',i).checked = false;
+    cell('price',i).value = lp === null ? '' : String(lp);
+    cell('base',i).value  = p.dist === null ? '' : String(p.dist);
+    cell('per',i).value   = '50';
+    cell('list',i).value  = '0';
+  });
+}
+
+function pResetPrices(){
+  PRICELIST.forEach((p,i) => {
+    const lp = pListPrice(p);
+    if(lp !== null) cell('price',i).value = String(lp);
+    if(p.dist !== null) cell('base',i).value = String(p.dist);
+  });
+  pRender();
+}
+
+function pSelectAll(on){
+  PRICELIST.forEach((p,i) => cell('on',i).checked = on);
+  pRender();
+}
+
+function portfolio(){
+  const vat = num('pVat')/100;
+  const k = (1+vat)*(num('pRate')/100)*(num('pDefer')/365);
+  const B = (num('pRetro') + num('pMkt') + num('pLog') + num('pPromo'))/100;
+  const points = num('pPoints');
+  const ownLog = el('pDelivery').value === 'tt' ? num('pOwnLog') : 0;
+  const targetGap = num('pTargetGap'), minGap = num('pMinGap');
+  const fixOther = num('pFixOther');
+
+  const rows = PRICELIST.map((p,i) => {
+    const price = cellNum('price',i), base = cellNum('base',i);
+    const vol = points*cellNum('per',i);
+    return {i, p, on:cell('on',i).checked, price, base, vol,
+            listing:cellNum('list',i), revenue:price*vol};
+  });
+
+  const sel = rows.filter(r => r.on);
+  const revTotal = sel.reduce((s,r) => s + r.revenue, 0);
+  sel.forEach(r => {
+    // спільний бюджет розноситься пропорційно до виручки позиції
+    const share = revTotal > 0 ? r.revenue/revTotal : (sel.length ? 1/sel.length : 0);
+    r.fix = r.listing + fixOther*share;
+    r.Fu = r.vol > 0 ? r.fix/r.vol : 0;
+    Object.assign(r, core({P:r.price, base:r.base, ownLog, B, k, Fu:r.Fu, targetGap, minGap}));
+  });
+
+  const t = {
+    count: sel.length,
+    flags: sel.filter(r => r.belowBase).length,
+    warns: sel.filter(r => r.verdict === 'warn').length,
+    noForecast: sel.filter(r => r.vol <= 0).length,
+    vol: sel.reduce((s,r) => s + r.vol, 0),
+    revenue: revTotal,
+    bonusMoney: sel.reduce((s,r) => s + r.price*B*r.vol, 0),
+    deferMoney: sel.reduce((s,r) => s + r.price*k*r.vol, 0),
+    fixTotal: sel.reduce((s,r) => s + r.listing, 0) + (sel.length ? fixOther : 0),
+    netRevenue: sel.reduce((s,r) => s + r.NN*r.vol, 0),
+    baseRevenue: sel.reduce((s,r) => s + r.base*r.vol, 0)
+  };
+  t.gap = t.netRevenue - t.baseRevenue;
+  t.gapPct = t.baseRevenue > 0 ? t.gap/t.baseRevenue*100 : 0;
+  t.verdict = t.flags ? 'bad' : (t.gapPct < minGap ? 'bad' : (t.warns || t.gapPct < targetGap ? 'warn' : 'ok'));
+
+  return {rows, sel, t, B, k, points, ownLog, targetGap, minGap, vat};
+}
+
+function pRender(){
+  const {rows, sel, t, targetGap, minGap} = portfolio();
+
+  rows.forEach(r => {
+    const i = r.i;
+    el(cellId('row',i)).className = r.on ? '' : 'off';
+    ['price','base','per','list'].forEach(f => cell(f,i).disabled = !r.on);
+    if(!r.on){
+      cell('vol',i).textContent = cell('nn',i).textContent = cell('gap',i).textContent = '—';
+      el(cellId('v',i)).innerHTML = '';
+      return;
+    }
+    cell('vol',i).textContent = money0(r.vol);
+    cell('nn',i).textContent = money(r.NN);
+    const g = el(cellId('gap',i));
+    g.textContent = (r.gapPct >= 0 ? '+' : '−') + pct(Math.abs(r.gapPct));
+    g.style.color = r.gapPct >= 0 ? 'var(--green-deep)' : 'var(--red)';
+    const txt = r.belowBase ? '🚩 Нижче бази' : {ok:'Підходить', warn:'На межі', bad:'Ні'}[r.verdict];
+    el(cellId('v',i)).innerHTML = `<span class="pill ${r.verdict}">${txt}</span>`;
+  });
+
+  el('pFor').textContent = el('client').value ? '· ' + clientName(el('client').value) : '';
+
+  const box = el('pVerdict');
+  box.className = 'verdict ' + t.verdict;
+  const titles = {ok:'Портфель проходить ✅', warn:'Портфель на межі ⚠️', bad:'Портфель не проходить ❌'};
+  el('pTitle').textContent = t.count === 0 ? 'Позиції не обрано'
+                           : (t.flags ? '🚩 ' + t.flags + ' поз. нижче дистриб\'юторської ціни' : titles[t.verdict]);
+  el('pTag').textContent = 'Рішення по портфелю · ціль +' + pct(targetGap) + ' / мін +' + pct(minGap) + ' до бази';
+
+  let txt;
+  if(t.count === 0) txt = 'Постав галочки навпроти позицій, які пропонуємо цій мережі.';
+  else if(t.flags) txt = 'Ці позиції після бонусів виходять дешевше за дистриб\'юторську ціну. Або піднімай по них ціну, або прибирай їх із пропозиції.';
+  else if(t.verdict === 'warn') txt = 'Портфель тримається над базою, але запас нижчий за цільовий — є що обговорити з мережею.';
+  else txt = 'Усі обрані позиції проходять за цільовим запасом. Пропозицію можна фіксувати.';
+  if(t.noForecast) txt += ' У ' + t.noForecast + ' обраних позицій не заповнений прогноз — їхній лістинг не рознесено.';
+  el('pText').textContent = txt;
+
+  let rows1 = '', rows2 = '';
+  const R = (into, k, v, cls, sub) => {
+    const s = `<div class="row${sub?' sub':''}"><div class="k">${k}</div><div class="v${cls?' '+cls:''}">${v}</div></div>`;
+    if(into === 1) rows1 += s; else rows2 += s;
+  };
+  const T = (into, k, v, cls) => {
+    const s = `<div class="row total"><div class="k">${k}</div><div class="v${cls?' '+cls:''}">${v}</div></div>`;
+    if(into === 1) rows1 += s; else rows2 += s;
+  };
+
+  R(1, 'Обрано позицій', money0(t.count) + ' з ' + PRICELIST.length);
+  R(1, 'Нижче бази', money0(t.flags) + ' поз.', t.flags ? 'neg' : 'pos');
+  R(1, 'На межі', money0(t.warns) + ' поз.');
+  R(1, 'Торгових точок', money0(num('pPoints')) + ' ТТ');
+  T(1, 'Прогноз продажів', money0(t.vol) + ' од.');
+  R(1, 'Валова виручка по прайсу', money0(t.revenue) + ' ₴');
+
+  R(2, 'Бонуси мережі', '− ' + money0(t.bonusMoney) + ' ₴', 'neg');
+  R(2, 'Лістинг і фікс. витрати', '− ' + money0(t.fixTotal) + ' ₴', 'neg');
+  R(2, 'Вартість відтермінування', '− ' + money0(t.deferMoney) + ' ₴', 'neg');
+  R(2, 'Чиста виручка', money0(t.netRevenue) + ' ₴');
+  R(2, 'Той самий обсяг по базі', money0(t.baseRevenue) + ' ₴');
+  T(2, 'Запас за період', money0(t.gap) + ' ₴', t.gap >= 0 ? 'pos' : 'neg');
+  R(2, 'Запас у % до бази', (t.gapPct >= 0 ? '+' : '−') + pct(Math.abs(t.gapPct)), t.gapPct >= minGap ? 'pos' : 'neg');
+
+  el('pTotals').innerHTML = rows1;
+  el('pTotals2').innerHTML = rows2;
+
+  pSave();
+}
+
+/* ---- збереження портфеля під клієнта ---- */
+function pReadState(){
+  const s = {shared:{}, rows:[]};
+  P_SHARED.forEach(id => s.shared[id] = el(id).value);
+  PRICELIST.forEach((p,i) => s.rows.push({
+    on: cell('on',i).checked,
+    price: cell('price',i).value, base: cell('base',i).value,
+    per: cell('per',i).value, list: cell('list',i).value
+  }));
+  return s;
+}
+function pWriteState(s){
+  if(!s) return;
+  P_SHARED.forEach(id => { if(s.shared && s.shared[id] !== undefined) el(id).value = s.shared[id]; });
+  (s.rows || []).forEach((r,i) => {
+    if(i >= PRICELIST.length) return;
+    cell('on',i).checked = !!r.on;
+    cell('price',i).value = r.price; cell('base',i).value = r.base;
+    cell('per',i).value = r.per;     cell('list',i).value = r.list;
+  });
+}
+function getPortfolios(){ try{ return JSON.parse(localStorage.getItem(PORT_KEY) || '{}'); }catch(e){ return {}; } }
+function pSave(){
+  const id = el('client').value || '_none';
+  const all = getPortfolios();
+  all[id] = pReadState();
+  try{ localStorage.setItem(PORT_KEY, JSON.stringify(all)); }catch(e){}
+}
+function pLoadForClient(){
+  const id = el('client').value || '_none';
+  const s = getPortfolios()[id];
+  if(s) pWriteState(s); else pDefaults();
+  pRender();
+}
+
+function pCopy(){
+  const {sel, t, targetGap, minGap} = portfolio();
+  const chan = el('pChannel').value === 'dist' ? "дистриб'ютор" : 'мережа напряму';
+  const lines = [
+    'VERDE — пропозиція для: ' + clientName(el('client').value),
+    'Канал: ' + chan + ' · ' + money0(num('pPoints')) + ' ТТ · відтермінування ' + money0(num('pDefer')) + ' дн',
+    'Бонуси: ' + pct(num('pRetro') + num('pMkt') + num('pLog') + num('pPromo')),
+    '',
+    'Позиції (' + sel.length + '):'
+  ];
+  sel.forEach(r => lines.push(
+    '  · ' + r.p.n + ' — ' + money(r.price) + ' грн, чиста ' + money(r.NN) +
+    ', запас ' + (r.gapPct >= 0 ? '+' : '−') + pct(Math.abs(r.gapPct)) +
+    (r.belowBase ? '  🚩 НИЖЧЕ БАЗИ' : '')));
+  lines.push('',
+    'Прогноз: ' + money0(t.vol) + ' од · виручка ' + money0(t.revenue) + ' грн',
+    'Чиста виручка: ' + money0(t.netRevenue) + ' грн',
+    'Запас до бази: ' + money0(t.gap) + ' грн (' + (t.gapPct >= 0 ? '+' : '−') + pct(Math.abs(t.gapPct)) + ')',
+    '',
+    'РІШЕННЯ: ' + (t.flags ? 'ЧЕРВОНИЙ ФЛАГ — ' + t.flags + ' поз. нижче дистриб\'юторської ціни'
+                           : {ok:'ПІДХОДИТЬ', warn:'НА МЕЖІ', bad:'НЕ ПІДХОДИТЬ'}[t.verdict]) +
+    ' (ціль +' + pct(targetGap) + ', мінімум +' + pct(minGap) + ')');
+  copyText(lines.join('\n'), el('pCopyBtn'));
+}
+
+/* ---- перемикання режимів ---- */
+let mode = 'one';
+function setMode(m){
+  mode = m;
+  el('viewOne').hidden = m !== 'one';
+  el('viewAll').hidden = m !== 'all';
+  el('tabOne').classList.toggle('active', m === 'one');
+  el('tabAll').classList.toggle('active', m === 'all');
+  el('mbar').style.display = m === 'one' ? '' : 'none';
+  try{ localStorage.setItem('verde_calc_mode', m); }catch(e){}
+  if(m === 'all') pRender();
+}
+
 /* ---------------- init ---------------- */
 buildSkuList();
 renderClientList();
@@ -1056,8 +1466,18 @@ if(!loadLast()) writeState(DEFAULTS);   // перший запуск — ста�
 IDS.forEach(id => el(id).addEventListener('input', render));
 el('sku').addEventListener('change', applySku);
 el('channel').addEventListener('change', applySku);
-['client','delivery'].forEach(id => el(id).addEventListener('change', render));
+el('delivery').addEventListener('change', render);
+el('client').addEventListener('change', () => { render(); pLoadForClient(); });
 render();
+
+pBuildTable();
+P_SHARED.forEach(id => {
+  el(id).addEventListener('input', pRender);
+  el(id).addEventListener('change', pRender);
+});
+el('pChannel').addEventListener('change', pResetPrices);   // ціни каналу підставляються заново
+pLoadForClient();
+try{ setMode(localStorage.getItem('verde_calc_mode') === 'all' ? 'all' : 'one'); }catch(e){ setMode('one'); }
 </script>
 
 </body>
