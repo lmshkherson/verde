@@ -2476,6 +2476,64 @@ try {
   );
   check('ЄСВ показано як внесок роботодавця', payslip.includes('сплачує роботодавець'));
 
+  // ─── 13з-г. Загальний склад групи ──────────────────────────────────────────
+  // Управлінськи склад один: ФОП продає більше, ніж має, — нестача сама
+  // поповнюється внутрішньою реалізацією від юрособи, де товар є. У бухгалтерії
+  // це повноцінні документи: продаж із ПДВ у ТОВ і оприбуткування у ФОП.
+  console.log('\nЗагальний склад групи');
+
+  await switchEntity(sales, 'Верде Роздріб');
+  const fopPist = (await stockCost(sales, 'finished', 'Фісташка')).qty;
+  await switchEntity(sales, 'Верде Світ');
+  const tovPist = (await stockCost(sales, 'finished', 'Фісташка')).qty;
+  check('передумова: у ТОВ є запас для поповнення', tovPist >= 20, `ТОВ ${tovPist}, ФОП ${fopPist}`);
+
+  // Замовлення від ФОП на більше, ніж у ФОП є, — не перемикаючись із ТОВ.
+  const overQty = Math.round(fopPist + 20);
+  await sales.goto(`${BASE}/sales`);
+  await selectByText(
+    sales,
+    'form:has(select[name="customer_id"]) select[name="entity_id"]',
+    'Верде Роздріб',
+  );
+  await selectByText(sales, 'select[name="customer_id"]', 'Ранок');
+  await sales.click('form:has(select[name="customer_id"]) button[type="submit"]');
+  await sales.waitForURL(/\/sales\/[0-9a-f-]{36}/);
+  await fillEntryRow(sales, 0, 'Фісташка', { qty: overQty });
+  await sales.click('button:has-text("Додати рядки в замовлення")');
+  await sales.waitForTimeout(800);
+  await sales.reload();
+  await sales.click('button:has-text("Підтвердити")');
+  await sales.waitForTimeout(700);
+  await sales.reload();
+  await sales.click('button:has-text("Провести відвантаження")');
+  await sales.waitForTimeout(2600);
+  await sales.reload();
+  check('замовлення відвантажено повністю', (await sales.locator('text=Відвантажено').count()) > 0);
+
+  // Внутрішня реалізація створилася сама: у ТОВ з'явилося друге замовлення
+  // на власну роздрібну юрособу (перше — з розділу «реалізація між своїми»).
+  await sales.goto(`${BASE}/sales`);
+  const internalRows = await sales.locator('tr', { hasText: 'наша роздрібна' }).count();
+  check(
+    'нестача сама закрилася внутрішньою реалізацією',
+    internalRows >= 2,
+    `${internalRows} внутрішніх замовлень у ТОВ`,
+  );
+
+  // Донорський склад ТОВ віддав рівно нестачу, склад ФОП розпродано в нуль.
+  const tovAfter = (await stockCost(sales, 'finished', 'Фісташка')).qty;
+  check(
+    'ТОВ віддав рівно нестачу',
+    near(tovAfter, tovPist - 20, 0.001),
+    `${tovPist} → ${tovAfter} шт`,
+  );
+  await switchEntity(sales, 'Верде Роздріб');
+  const fopAfterRaw = (await stockCost(sales, 'finished', 'Фісташка')).qty;
+  const fopAfter = Number.isNaN(fopAfterRaw) ? 0 : fopAfterRaw;
+  check('ФОП продав понад власний залишок — склад нуль', near(fopAfter, 0, 0.001), `${fopPist} → ${fopAfter}`);
+  await switchEntity(sales, 'Верде Світ');
+
   // ─── 14. Права доступу ─────────────────────────────────────────────────────
   console.log('\nПрава доступу');
   const denied = await warehouse.goto(`${BASE}/reports`);
