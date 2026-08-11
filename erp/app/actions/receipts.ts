@@ -100,101 +100,39 @@ async function assertDraft(c: import('pg').PoolClient, receiptId: string) {
   if (rows[0].status !== 'draft') throw new Error('Документ уже проведено — змінювати рядки не можна');
 }
 
-export async function addGoodsLine(_prev: ActionState, formData: FormData): Promise<ActionState> {
-  await requireRole('warehouse');
-  const receiptId = str(formData, 'receipt_id');
-  const itemId = str(formData, 'item_id');
-  const qty = num(formData, 'qty');
-
-  if (!itemId) return { error: 'Оберіть номенклатуру' };
-  if (qty <= 0) return { error: 'Кількість має бути більшою за нуль' };
-
-  try {
-    await transaction(async (c) => {
-      await assertDraft(c, receiptId);
-      // Ставку беремо з картки позиції на момент введення й далі зберігаємо в
-      // рядку: зміна довідника не має переписувати вже введені документи.
-      await c.query(
-        `insert into receipt_lines
-           (receipt_id, kind, item_id, qty, unit_price, vat_rate, batch_code, expires_on)
-         values ($1, 'goods', $2, $3, $4, (select vat_rate from items where id = $2), $5, $6)`,
-        [
-          receiptId,
-          itemId,
-          qty,
-          num(formData, 'unit_price'),
-          strOrNull(formData, 'batch_code'),
-          strOrNull(formData, 'expires_on'),
-        ],
-      );
-    });
-  } catch (err) {
-    return { error: toMessage(err) };
-  }
-
-  revalidatePath(`/receipts/${receiptId}`);
-  return { ok: 'Товар додано' };
-}
-
+/**
+ * Разова послуга, якої немає в довіднику: опис вільним текстом і стаття
+ * витрат руками. Послуги з довідника вводяться рядком у таблиці накладної —
+ * там статтю, поведінку і ставку ПДВ дає їхня картка.
+ */
 export async function addServiceLine(_prev: ActionState, formData: FormData): Promise<ActionState> {
   const session = await requireRole('warehouse');
   const receiptId = str(formData, 'receipt_id');
-  const serviceItemId = str(formData, 'service_item_id');
   const description = str(formData, 'description');
   const amount = num(formData, 'amount');
+  const category = str(formData, 'category');
 
-  if (!serviceItemId && !description) {
-    return { error: 'Оберіть послугу з довідника або опишіть її текстом' };
-  }
+  if (!description) return { error: 'Опишіть послугу — це піде в призначення витрати' };
+  if (!category) return { error: 'Оберіть статтю витрат' };
   if (amount <= 0) return { error: 'Вкажіть суму' };
+
+  const vatRate = num(formData, 'vat_rate', session.vat ? 20 : 0);
+  if (vatRate > 0 && !session.vat) {
+    return { error: 'Юрособа не платник ПДВ — податок їй не відшкодовується, вкажіть повну суму' };
+  }
 
   try {
     await transaction(async (c) => {
       await assertDraft(c, receiptId);
-
-      // Послуга з довідника несе статтю витрат, поведінку і ставку ПДВ у
-      // своїй картці — поля форми для неї не читаються, щоб той самий рядок
-      // не залежав від того, що випадково лишилось у селектах.
-      let category = str(formData, 'category');
-      let costBehavior = str(formData, 'cost_behavior') || 'fixed';
-      let vatRate = num(formData, 'vat_rate', session.vat ? 20 : 0);
-      let lineDescription = description;
-
-      if (serviceItemId) {
-        const { rows } = await c.query<{
-          name: string;
-          expense_category: string;
-          cost_behavior: string;
-          vat_rate: number;
-        }>(
-          `select name, expense_category, cost_behavior, vat_rate
-             from items where id = $1 and kind = 'service' and is_active`,
-          [serviceItemId],
-        );
-        if (!rows[0]) throw new Error('Послугу не знайдено в довіднику');
-        category = rows[0].expense_category;
-        costBehavior = rows[0].cost_behavior;
-        vatRate = Number(rows[0].vat_rate);
-        lineDescription = description || rows[0].name;
-      } else {
-        if (!category) throw new Error('Оберіть статтю витрат');
-        if (vatRate > 0 && !session.vat) {
-          throw new Error(
-            'Юрособа не платник ПДВ — податок їй не відшкодовується, вкажіть повну суму',
-          );
-        }
-      }
-
       await c.query(
         `insert into receipt_lines
-           (receipt_id, kind, item_id, description, category, cost_behavior, qty, unit_price, vat_rate)
-         values ($1, 'service', $2, $3, $4, $5, 1, $6, $7)`,
+           (receipt_id, kind, description, category, cost_behavior, qty, unit_price, vat_rate)
+         values ($1, 'service', $2, $3, $4, 1, $5, $6)`,
         [
           receiptId,
-          serviceItemId || null,
-          lineDescription,
+          description,
           category,
-          costBehavior,
+          str(formData, 'cost_behavior') || 'fixed',
           amount,
           vatRate,
         ],
@@ -206,6 +144,94 @@ export async function addServiceLine(_prev: ActionState, formData: FormData): Pr
 
   revalidatePath(`/receipts/${receiptId}`);
   return { ok: 'Послугу додано' };
+}
+
+/**
+ * Пакетне збереження рядків — введення накладної як із паперу: таблиця
+ * «номенклатура, кількість, ціна», один запис у базу на весь документ.
+ * Товар і послуги з довідника йдуть одним списком: у паперовій накладній
+ * доставка стоїть таким самим рядком, як і сировина.
+ */
+export async function saveReceiptLines(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  await requireRole('warehouse');
+  const receiptId = str(formData, 'receipt_id');
+
+  let lines: { item_id: string; qty: number; unit_price: number; batch_code: string; expires_on: string }[];
+  try {
+    lines = JSON.parse(str(formData, 'lines'));
+  } catch {
+    return { error: 'Не вдалося прочитати рядки — оновіть сторінку і спробуйте ще раз' };
+  }
+  if (!Array.isArray(lines) || lines.length === 0) return { error: 'У накладній немає жодного рядка' };
+  if (lines.length > 200) return { error: 'Забагато рядків за раз — розбийте на два документи' };
+
+  let saved = 0;
+  try {
+    await transaction(async (c) => {
+      await assertDraft(c, receiptId);
+      for (const [i, line] of lines.entries()) {
+        const row = i + 1;
+        const qty = Number(line.qty);
+        const price = Number(line.unit_price);
+        if (!line.item_id) throw new Error(`Рядок ${row}: не обрано номенклатуру`);
+        if (!Number.isFinite(qty) || qty <= 0) throw new Error(`Рядок ${row}: кількість має бути більшою за нуль`);
+        if (!Number.isFinite(price) || price < 0) throw new Error(`Рядок ${row}: перевірте ціну`);
+
+        const { rows: items } = await c.query<{
+          name: string;
+          kind: string;
+          vat_rate: number;
+          expense_category: string | null;
+          cost_behavior: string;
+        }>(
+          'select name, kind, vat_rate, expense_category, cost_behavior from items where id = $1 and is_active',
+          [line.item_id],
+        );
+        if (!items[0]) throw new Error(`Рядок ${row}: позицію не знайдено в довіднику`);
+        const item = items[0];
+
+        if (item.kind === 'service') {
+          // Стаття, поведінка і ставка — з картки послуги; сума рядка
+          // лягає як кількість × ціна.
+          await c.query(
+            `insert into receipt_lines
+               (receipt_id, kind, item_id, description, category, cost_behavior, qty, unit_price, vat_rate)
+             values ($1, 'service', $2, $3, $4, $5, 1, $6, $7)`,
+            [
+              receiptId,
+              line.item_id,
+              item.name,
+              item.expense_category ?? 'services',
+              item.cost_behavior,
+              Math.round(qty * price * 10000) / 10000,
+              Number(item.vat_rate),
+            ],
+          );
+        } else {
+          await c.query(
+            `insert into receipt_lines
+               (receipt_id, kind, item_id, qty, unit_price, vat_rate, batch_code, expires_on)
+             values ($1, 'goods', $2, $3, $4, $5, $6, $7)`,
+            [
+              receiptId,
+              line.item_id,
+              qty,
+              price,
+              Number(item.vat_rate),
+              String(line.batch_code ?? '').trim() || null,
+              String(line.expires_on ?? '').trim() || null,
+            ],
+          );
+        }
+        saved += 1;
+      }
+    });
+  } catch (err) {
+    return { error: toMessage(err) };
+  }
+
+  revalidatePath(`/receipts/${receiptId}`);
+  return { ok: `Додано рядків: ${saved}` };
 }
 
 export async function removeReceiptLine(formData: FormData) {

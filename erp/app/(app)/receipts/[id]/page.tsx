@@ -1,13 +1,14 @@
 import { notFound } from 'next/navigation';
 import {
-  addGoodsLine,
   addServiceLine,
   cancelReceipt,
   postReceipt,
   removeReceiptLine,
+  saveReceiptLines,
   updateReceiptHeader,
 } from '@/app/actions/receipts';
 import { ActionForm } from '@/components/action-form';
+import { ReceiptEntry } from '@/components/receipt-entry';
 import {
   Alert,
   Badge,
@@ -70,7 +71,7 @@ export default async function ReceiptPage({ params }: { params: Promise<{ id: st
   );
   if (!doc) notFound();
 
-  const [lines, items, services, warehouses] = await Promise.all([
+  const [lines, entryItems, warehouses] = await Promise.all([
     query<{
       id: string;
       kind: string;
@@ -93,15 +94,12 @@ export default async function ReceiptPage({ params }: { params: Promise<{ id: st
         order by l.kind desc, i.name, l.description`,
       [id],
     ),
-    query<{ id: string; name: string; sku: string; unit: string }>(
-      `select id, name, sku, unit from items
-        where is_active and kind in ('raw', 'packaging', 'semi', 'finished')
+    // Товар і послуги одним списком — у паперовій накладній доставка стоїть
+    // таким самим рядком, як і сировина.
+    query<{ id: string; name: string; sku: string; unit: string; kind: string; vat_rate: number; barcode: string | null }>(
+      `select id, name, sku, unit, kind, vat_rate, barcode from items
+        where is_active
         order by kind, name`,
-    ),
-    query<{ id: string; name: string; expense_category: string }>(
-      `select id, name, expense_category from items
-        where is_active and kind = 'service'
-        order by name`,
     ),
     query<{ id: string; name: string; is_default: boolean }>(
       `select id, name, is_default from warehouses
@@ -205,70 +203,29 @@ export default async function ReceiptPage({ params }: { params: Promise<{ id: st
 
           {open && (
             <>
-              <Card title="Додати товар">
-                <ActionForm action={addGoodsLine} submitLabel="Додати товар" variant="ghost">
-                  <input type="hidden" name="receipt_id" value={doc.id} />
-                  <Field label="Номенклатура">
-                    <select name="item_id" required className={inputClass} defaultValue="">
-                      <option value="" disabled>
-                        Оберіть позицію…
-                      </option>
-                      {items.map((i) => (
-                        <option key={i.id} value={i.id}>
-                          {i.name} ({i.sku}, {unitLabel(i.unit)})
-                        </option>
-                      ))}
-                    </select>
-                  </Field>
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <Field label="Кількість" hint="в одиниці, вказаній біля позиції">
-                      <input name="qty" type="number" step="0.001" min="0" className={inputClass} />
-                    </Field>
-                    <Field
-                      label="Ціна за одиницю"
-                      hint={doc.prices_include_vat ? 'з ПДВ' : 'без ПДВ'}
-                    >
-                      <input name="unit_price" type="number" step="0.0001" min="0" className={inputClass} />
-                    </Field>
-                  </div>
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <Field label="Номер партії" hint="з документа постачальника">
-                      <input name="batch_code" className={inputClass} />
-                    </Field>
-                    <Field label="Придатний до" hint="порожньо — порахується з терміну придатності">
-                      <input name="expires_on" type="date" className={inputClass} />
-                    </Field>
-                  </div>
-                </ActionForm>
+              <Card title="Введення накладної">
+                <p className="mb-3 text-sm text-emerald-800/70">
+                  Заповнюйте рядки як із паперу: номенклатура, кількість, ціна{' '}
+                  {doc.prices_include_vat ? 'з ПДВ' : 'без ПДВ'} — сума й підсумки рахуються самі.
+                  Позиція шукається за назвою, артикулом або штрихкодом; послуги (доставка, оренда)
+                  вводяться таким самим рядком і при проведенні підуть у витрати, а не на склад.
+                </p>
+                <ReceiptEntry
+                  receiptId={doc.id}
+                  items={entryItems}
+                  pricesIncludeVat={doc.prices_include_vat}
+                  action={saveReceiptLines}
+                />
               </Card>
 
-              <Card title="Додати послугу">
+              <Card title="Разова послуга не з довідника">
                 <p className="mb-3 text-sm text-emerald-800/70">
-                  Послуга на склад не потрапляє: вона одразу лягає у витрати періоду за обраною
-                  статтею й у борг перед постачальником. Саме так проводяться оренда, доставка,
-                  реклама, банківське обслуговування.
+                  Для послуги, якої немає в номенклатурі й яка не повториться: опис вільним
+                  текстом і стаття витрат руками.
                 </p>
                 <ActionForm action={addServiceLine} submitLabel="Додати послугу" variant="ghost">
                   <input type="hidden" name="receipt_id" value={doc.id} />
-                  {services.length > 0 && (
-                    <Field
-                      label="Послуга з довідника"
-                      hint="стаття витрат, поведінка і ставка ПДВ візьмуться з її картки"
-                    >
-                      <select name="service_item_id" className={inputClass} defaultValue="">
-                        <option value="">— разова послуга, ввести вручну —</option>
-                        {services.map((s) => (
-                          <option key={s.id} value={s.id}>
-                            {s.name} · {EXPENSE_CATEGORIES[s.expense_category] ?? s.expense_category}
-                          </option>
-                        ))}
-                      </select>
-                    </Field>
-                  )}
-                  <Field
-                    label="Опис"
-                    hint={services.length > 0 ? 'для послуги з довідника можна лишити порожнім' : undefined}
-                  >
+                  <Field label="Опис">
                     <input
                       name="description"
                       className={inputClass}
@@ -276,7 +233,7 @@ export default async function ReceiptPage({ params }: { params: Promise<{ id: st
                     />
                   </Field>
                   <div className="grid gap-3 sm:grid-cols-2">
-                    <Field label="Стаття витрат" hint="для ручного вводу">
+                    <Field label="Стаття витрат">
                       <select name="category" required className={inputClass} defaultValue="services">
                         {Object.entries(EXPENSE_CATEGORIES).map(([key, label]) => (
                           <option key={key} value={key}>

@@ -1844,7 +1844,7 @@ try {
   await warehouse.waitForURL(/\/receipts\/[0-9a-f-]{36}/);
   const receiptUrl = warehouse.url();
 
-  // Послуга: доставка, якої в заявках не було й бути не могло.
+  // Разова послуга: доставка вільним текстом, як із паперового акта.
   await warehouse.fill('input[name="description"]', 'Доставка сировини');
   await selectByText(warehouse, 'select[name="category"]', 'Логістика й доставка');
   await warehouse.fill('input[name="amount"]', '3600');
@@ -1852,21 +1852,16 @@ try {
   await warehouse.waitForTimeout(1200);
   await warehouse.reload();
 
-  // Товар у тому ж документі — перевізник виставив одним актом.
-  const boxOption = await warehouse
-    .locator('select[name="item_id"] option', { hasText: 'Шоубокс картонний' })
-    .first()
-    .textContent();
+  // Товар у тому ж документі — рядком таблиці, як у паперовій накладній.
+  await warehouse.fill('input[name="row_item_0"]', 'Шоубокс картонний (PAK-BOX)');
   check(
-    'у виборі номенклатури видно одиницю вимірювання',
-    /,\s*шт\)/.test(boxOption ?? ''),
-    boxOption?.trim(),
+    'таблиця показує одиницю вимірювання обраної позиції',
+    ((await warehouse.locator('[data-row-unit="0"]').innerText()) ?? '').trim() === 'шт',
   );
-  await selectByText(warehouse, 'select[name="item_id"]', 'Шоубокс картонний');
-  await warehouse.fill('input[name="qty"]', '500');
-  await warehouse.fill('input[name="unit_price"]', '6.60');
-  await warehouse.fill('input[name="batch_code"]', 'ПЛ-2026/88');
-  await warehouse.click('button:has-text("Додати товар")');
+  await warehouse.fill('input[name="row_qty_0"]', '500');
+  await warehouse.fill('input[name="row_price_0"]', '6.60');
+  await warehouse.fill('input[name="row_batch_0"]', 'ПЛ-2026/88');
+  await warehouse.click('button:has-text("Додати рядки в накладну")');
   await warehouse.waitForTimeout(1200);
   await warehouse.reload();
 
@@ -1922,10 +1917,10 @@ try {
   await warehouse.click('form:has(select[name="supplier_id"]) button[type="submit"]');
   await warehouse.waitForURL(/\/receipts\/[0-9a-f-]{36}/);
 
-  await selectByText(warehouse, 'select[name="item_id"]', 'Какао терте');
-  await warehouse.fill('input[name="qty"]', '10');
-  await warehouse.fill('input[name="unit_price"]', '540');
-  await warehouse.click('button:has-text("Додати товар")');
+  await warehouse.fill('input[name="row_item_0"]', 'Какао терте (RAW-KAKAO)');
+  await warehouse.fill('input[name="row_qty_0"]', '10');
+  await warehouse.fill('input[name="row_price_0"]', '540');
+  await warehouse.click('button:has-text("Додати рядки в накладну")');
   await warehouse.waitForTimeout(1200);
   await warehouse.reload();
   await warehouse.click('button:has-text("Провести")');
@@ -1974,16 +1969,21 @@ try {
     'разом із посіяними послугами',
   );
 
-  // Надходження: послуга обирається з довідника, опис можна не вводити.
+  // Надходження: послуга з довідника — таким самим рядком таблиці, як товар.
   await warehouse.goto(`${BASE}/receipts`);
   await selectByText(warehouse, 'select[name="supplier_id"]', 'ПакЛайн');
   await warehouse.click('form:has(select[name="supplier_id"]) button[type="submit"]');
   await warehouse.waitForURL(/\/receipts\/[0-9a-f-]{36}/);
   const svcReceiptUrl = warehouse.url();
 
-  await selectByText(warehouse, 'select[name="service_item_id"]', 'Оренда цеху');
-  await warehouse.fill('input[name="amount"]', '12000');
-  await warehouse.click('button:has-text("Додати послугу")');
+  await warehouse.fill('input[name="row_item_0"]', 'Оренда цеху (SRV-RENT)');
+  check(
+    'рядок послуги в таблиці позначений як послуга',
+    ((await warehouse.locator('[data-row-unit="0"]').innerText()) ?? '').includes('посл'),
+  );
+  await warehouse.fill('input[name="row_qty_0"]', '1');
+  await warehouse.fill('input[name="row_price_0"]', '12000');
+  await warehouse.click('button:has-text("Додати рядки в накладну")');
   await warehouse.waitForTimeout(1200);
   await warehouse.reload();
 
