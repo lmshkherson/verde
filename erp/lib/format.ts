@@ -42,7 +42,11 @@ export const ITEM_KINDS: Record<string, string> = {
   packaging: 'Пакування',
   semi: 'Напівфабрикат',
   finished: 'Готова продукція',
+  service: 'Послуга',
 };
+
+/** Типи, що лежать на складі. Послуга — ні: вона одразу йде у витрати. */
+export const STOCK_ITEM_KINDS = ['raw', 'packaging', 'semi', 'finished'];
 
 export const UNITS: Record<string, string> = {
   kg: 'кг',

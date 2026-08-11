@@ -31,7 +31,7 @@ export default async function StockOperationsPage() {
        order by i.name, b.expires_on nulls last
     `, [session.eid]),
     query<{ id: string; sku: string; name: string; unit: string }>(
-      'select id, sku, name, unit from items where is_active order by name',
+      "select id, sku, name, unit from items where is_active and kind <> 'service' order by name",
     ),
     query<{ id: string; name: string }>('select id, name from warehouses where is_active order by code'),
   ]);

@@ -3,8 +3,26 @@
 import { revalidatePath } from 'next/cache';
 import { transaction } from '@/lib/db';
 import { type ActionState, num, str, strOrNull, toMessage } from '@/lib/action-state';
+import { EXPENSE_CATEGORIES } from '@/lib/format';
 import { requireRole } from '@/lib/session';
 import { normalizeEan } from '@/lib/barcode.mjs';
+
+/**
+ * Стаття витрат обов'язкова лише для послуг: при проведенні надходження сума
+ * лягає саме за нею, і послуга без статті просто не знала б, куди йти.
+ */
+function readServiceFields(
+  kind: string,
+  formData: FormData,
+): { category: string | null; behavior: string } | { error: string } {
+  if (kind !== 'service') return { category: null, behavior: 'fixed' };
+  const category = str(formData, 'expense_category');
+  if (!EXPENSE_CATEGORIES[category]) {
+    return { error: 'Оберіть статтю витрат — за нею послуга ляже у фінрезультат' };
+  }
+  const behavior = str(formData, 'cost_behavior') === 'variable' ? 'variable' : 'fixed';
+  return { category, behavior };
+}
 
 /**
  * Порожній штрихкод — це нормально, а от помилковий гірший за відсутній:
@@ -48,6 +66,8 @@ export async function createItem(_prev: ActionState, formData: FormData): Promis
   if ('error' in barcode) return { error: barcode.error };
   const temp = readTemp(formData);
   if ('error' in temp) return { error: temp.error };
+  const service = readServiceFields(kind, formData);
+  if ('error' in service) return { error: service.error };
 
   try {
     await transaction((c) =>
@@ -55,9 +75,10 @@ export async function createItem(_prev: ActionState, formData: FormData): Promis
         `insert into items
            (sku, name, kind, unit, shelf_life_days, min_stock, weight_g, pcs_per_box,
             price_distributor, price_network, price_rrp, uktzed, uom_code, note, barcode,
-            temp_min_c, temp_max_c, temp_note, quality_control, acceptance_spec)
+            temp_min_c, temp_max_c, temp_note, quality_control, acceptance_spec,
+            vat_rate, expense_category, cost_behavior)
          values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18,
-                 $19, $20)`,
+                 $19, $20, $21, $22, $23)`,
         [
           sku,
           name,
@@ -79,6 +100,9 @@ export async function createItem(_prev: ActionState, formData: FormData): Promis
           strOrNull(formData, 'temp_note'),
           formData.get('quality_control') === 'on',
           strOrNull(formData, 'acceptance_spec'),
+          num(formData, 'vat_rate', 20),
+          service.category,
+          service.behavior,
         ],
       ),
     );
@@ -117,16 +141,32 @@ export async function updateItem(_prev: ActionState, formData: FormData): Promis
   if ('error' in barcode) return { error: barcode.error };
   const temp = readTemp(formData);
   if ('error' in temp) return { error: temp.error };
+  const service = readServiceFields(kind, formData);
+  if ('error' in service) return { error: service.error };
 
   try {
     await transaction(async (c) => {
-      const { rows: current } = await c.query<{ kind: string; unit: string; moves: number }>(
+      const { rows: current } = await c.query<{
+        kind: string;
+        unit: string;
+        moves: number;
+        expenses: number;
+      }>(
         `select i.kind, i.unit,
-                (select count(*) from stock_moves m where m.item_id = i.id)::int as moves
+                (select count(*) from stock_moves m where m.item_id = i.id)::int as moves,
+                (select count(*) from expenses x where x.item_id = i.id)::int as expenses
            from items i where i.id = $1`,
         [id],
       );
       if (!current[0]) throw new Error('Позицію не знайдено');
+
+      // Дзеркальний захист до складських рухів: послуга з витратами в історії
+      // не може стати товаром — звіт за послугами втратив би ці суми.
+      if (current[0].kind === 'service' && kind !== 'service' && current[0].expenses > 0) {
+        throw new Error(
+          'Тип не можна змінити: за цією послугою вже проведені витрати. Заведіть нову позицію й деактивуйте цю.',
+        );
+      }
 
       if (current[0].moves > 0) {
         if (current[0].unit !== unit) {
@@ -149,7 +189,8 @@ export async function updateItem(_prev: ActionState, formData: FormData): Promis
            price_distributor = $10, price_network = $11, price_rrp = $12,
            uktzed = $13, uom_code = $14, note = $15, vat_rate = $16, barcode = $17,
            temp_min_c = $18, temp_max_c = $19, temp_note = $20,
-           quality_control = $21, acceptance_spec = $22
+           quality_control = $21, acceptance_spec = $22,
+           expense_category = $23, cost_behavior = $24
          where id = $1`,
         [
           id,
@@ -174,6 +215,8 @@ export async function updateItem(_prev: ActionState, formData: FormData): Promis
           strOrNull(formData, 'temp_note'),
           formData.get('quality_control') === 'on',
           strOrNull(formData, 'acceptance_spec'),
+          service.category,
+          service.behavior,
         ],
       );
     });

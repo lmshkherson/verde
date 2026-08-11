@@ -139,31 +139,62 @@ export async function addGoodsLine(_prev: ActionState, formData: FormData): Prom
 export async function addServiceLine(_prev: ActionState, formData: FormData): Promise<ActionState> {
   const session = await requireRole('warehouse');
   const receiptId = str(formData, 'receipt_id');
+  const serviceItemId = str(formData, 'service_item_id');
   const description = str(formData, 'description');
   const amount = num(formData, 'amount');
-  const category = str(formData, 'category');
 
-  if (!description) return { error: 'Опишіть послугу — це піде в призначення витрати' };
-  if (!category) return { error: 'Оберіть статтю витрат' };
-  if (amount <= 0) return { error: 'Вкажіть суму' };
-
-  const vatRate = num(formData, 'vat_rate', session.vat ? 20 : 0);
-  if (vatRate > 0 && !session.vat) {
-    return { error: 'Юрособа не платник ПДВ — податок їй не відшкодовується, вкажіть повну суму' };
+  if (!serviceItemId && !description) {
+    return { error: 'Оберіть послугу з довідника або опишіть її текстом' };
   }
+  if (amount <= 0) return { error: 'Вкажіть суму' };
 
   try {
     await transaction(async (c) => {
       await assertDraft(c, receiptId);
+
+      // Послуга з довідника несе статтю витрат, поведінку і ставку ПДВ у
+      // своїй картці — поля форми для неї не читаються, щоб той самий рядок
+      // не залежав від того, що випадково лишилось у селектах.
+      let category = str(formData, 'category');
+      let costBehavior = str(formData, 'cost_behavior') || 'fixed';
+      let vatRate = num(formData, 'vat_rate', session.vat ? 20 : 0);
+      let lineDescription = description;
+
+      if (serviceItemId) {
+        const { rows } = await c.query<{
+          name: string;
+          expense_category: string;
+          cost_behavior: string;
+          vat_rate: number;
+        }>(
+          `select name, expense_category, cost_behavior, vat_rate
+             from items where id = $1 and kind = 'service' and is_active`,
+          [serviceItemId],
+        );
+        if (!rows[0]) throw new Error('Послугу не знайдено в довіднику');
+        category = rows[0].expense_category;
+        costBehavior = rows[0].cost_behavior;
+        vatRate = Number(rows[0].vat_rate);
+        lineDescription = description || rows[0].name;
+      } else {
+        if (!category) throw new Error('Оберіть статтю витрат');
+        if (vatRate > 0 && !session.vat) {
+          throw new Error(
+            'Юрособа не платник ПДВ — податок їй не відшкодовується, вкажіть повну суму',
+          );
+        }
+      }
+
       await c.query(
         `insert into receipt_lines
-           (receipt_id, kind, description, category, cost_behavior, qty, unit_price, vat_rate)
-         values ($1, 'service', $2, $3, $4, 1, $5, $6)`,
+           (receipt_id, kind, item_id, description, category, cost_behavior, qty, unit_price, vat_rate)
+         values ($1, 'service', $2, $3, $4, $5, 1, $6, $7)`,
         [
           receiptId,
-          description,
+          serviceItemId || null,
+          lineDescription,
           category,
-          str(formData, 'cost_behavior') || 'fixed',
+          costBehavior,
           amount,
           vatRate,
         ],
@@ -284,8 +315,8 @@ export async function postReceipt(_prev: ActionState, formData: FormData): Promi
           await c.query(
             `insert into expenses
                (legal_entity_id, category, spent_on, description, amount_net, vat_amount,
-                supplier_id, cost_behavior, receipt_id, created_by)
-             values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+                supplier_id, cost_behavior, receipt_id, item_id, created_by)
+             values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
             [
               doc.legal_entity_id,
               line.category,
@@ -296,6 +327,7 @@ export async function postReceipt(_prev: ActionState, formData: FormData): Promi
               doc.supplier_id,
               line.cost_behavior,
               doc.id,
+              line.item_id,
               session.uid,
             ],
           );

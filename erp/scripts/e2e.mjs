@@ -1953,6 +1953,80 @@ try {
   const receiptPostings = (await owner.locator('body').innerText()).replace(/[\s ]+/g, ' ');
   check('надходження стало проводкою', receiptPostings.includes('ВС-НАД'));
 
+  // ─── 13з-б. Послуги як номенклатура ────────────────────────────────────────
+  // Повторювані послуги живуть картками в довіднику: стаття витрат, поведінка
+  // і ставка ПДВ задані один раз, документ надходження бере їх звідти, а звіт
+  // показує витрати в розрізі кожної конкретної послуги.
+  console.log('\nПослуги з довідника');
+
+  await warehouse.goto(`${BASE}/catalog`);
+  const svcForm = warehouse.locator('section:has(h2:has-text("Нова послуга"))');
+  await svcForm.locator('input[name="sku"]').fill('SRV-INET');
+  await svcForm.locator('input[name="name"]').fill('Інтернет офісу');
+  await svcForm.locator('select[name="expense_category"]').selectOption('utilities');
+  await svcForm.locator('button[type="submit"]').click();
+  await warehouse.waitForTimeout(1200);
+  await warehouse.goto(`${BASE}/catalog?kind=service`);
+  const svcList = (await warehouse.locator('body').innerText()).replace(/[\s ]+/g, ' ');
+  check(
+    'картка послуги створюється з каталогу',
+    svcList.includes('Інтернет офісу') && svcList.includes('Оренда цеху'),
+    'разом із посіяними послугами',
+  );
+
+  // Надходження: послуга обирається з довідника, опис можна не вводити.
+  await warehouse.goto(`${BASE}/receipts`);
+  await selectByText(warehouse, 'select[name="supplier_id"]', 'ПакЛайн');
+  await warehouse.click('form:has(select[name="supplier_id"]) button[type="submit"]');
+  await warehouse.waitForURL(/\/receipts\/[0-9a-f-]{36}/);
+  const svcReceiptUrl = warehouse.url();
+
+  await selectByText(warehouse, 'select[name="service_item_id"]', 'Оренда цеху');
+  await warehouse.fill('input[name="amount"]', '12000');
+  await warehouse.click('button:has-text("Додати послугу")');
+  await warehouse.waitForTimeout(1200);
+  await warehouse.reload();
+
+  const svcDoc = (await warehouse.locator('body').innerText()).replace(/[\s ]+/g, ' ');
+  check(
+    'рядок узяв назву і статтю з картки послуги',
+    svcDoc.includes('Оренда цеху') && svcDoc.includes('послуга · Оренда'),
+  );
+  check(
+    'ПДВ виділився за ставкою з картки',
+    near(await stat(warehouse, 'Без ПДВ'), 10000, 0.02) &&
+      near(await stat(warehouse, 'ПДВ'), 2000, 0.02),
+    'ціни з ПДВ: 12 000 = 10 000 + 2 000',
+  );
+
+  await warehouse.goto(svcReceiptUrl);
+  await warehouse.click('button:has-text("Провести")');
+  await warehouse.waitForTimeout(1800);
+
+  // Картка послуги показує історію і суми — без ПДВ.
+  await warehouse.goto(`${BASE}/catalog?kind=service`);
+  await warehouse.click('a:has-text("Оренда цеху")');
+  await warehouse.waitForURL(/\/catalog\/[0-9a-f-]{36}/);
+  const svcCard = (await warehouse.locator('body').innerText()).replace(/[\s ]+/g, ' ');
+  check(
+    'картка послуги веде історію витрат',
+    // Номер документа несе префікс юрособи (ВС-НАД-…), тож шукаємо лише
+    // серію; сума в «Разом» — без ПДВ.
+    svcCard.includes('НАД-') && svcCard.includes('10 000,00'),
+    'надходження видно у витратах картки',
+  );
+
+  // Звіт власника: скільки витрачено на кожну конкретну послугу. Заголовок
+  // картки CSS підіймає в верхній регістр, тому innerText його не знайде —
+  // питаємо сам h2.
+  await owner.goto(`${BASE}/reports`);
+  const svcReport = (await owner.locator('body').innerText()).replace(/[\s ]+/g, ' ');
+  check(
+    'звіт показує витрати в розрізі послуг',
+    (await owner.locator('h2:has-text("Витрати на послуги")').count()) > 0 &&
+      svcReport.includes('Оренда цеху'),
+  );
+
   // ─── 13и. Кадри: картка, відпустка, лікарняний, майно ──────────────────────
   // Відомість поточного місяця вже виплачена, тож відсутності оформлюємо на
   // наступний місяць і формуємо його відомість. Цифри перераховуються

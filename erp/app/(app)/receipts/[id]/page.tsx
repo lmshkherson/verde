@@ -70,7 +70,7 @@ export default async function ReceiptPage({ params }: { params: Promise<{ id: st
   );
   if (!doc) notFound();
 
-  const [lines, items, warehouses] = await Promise.all([
+  const [lines, items, services, warehouses] = await Promise.all([
     query<{
       id: string;
       kind: string;
@@ -97,6 +97,11 @@ export default async function ReceiptPage({ params }: { params: Promise<{ id: st
       `select id, name, sku, unit from items
         where is_active and kind in ('raw', 'packaging', 'semi', 'finished')
         order by kind, name`,
+    ),
+    query<{ id: string; name: string; expense_category: string }>(
+      `select id, name, expense_category from items
+        where is_active and kind = 'service'
+        order by name`,
     ),
     query<{ id: string; name: string; is_default: boolean }>(
       `select id, name, is_default from warehouses
@@ -245,16 +250,33 @@ export default async function ReceiptPage({ params }: { params: Promise<{ id: st
                 </p>
                 <ActionForm action={addServiceLine} submitLabel="Додати послугу" variant="ghost">
                   <input type="hidden" name="receipt_id" value={doc.id} />
-                  <Field label="Опис">
+                  {services.length > 0 && (
+                    <Field
+                      label="Послуга з довідника"
+                      hint="стаття витрат, поведінка і ставка ПДВ візьмуться з її картки"
+                    >
+                      <select name="service_item_id" className={inputClass} defaultValue="">
+                        <option value="">— разова послуга, ввести вручну —</option>
+                        {services.map((s) => (
+                          <option key={s.id} value={s.id}>
+                            {s.name} · {EXPENSE_CATEGORIES[s.expense_category] ?? s.expense_category}
+                          </option>
+                        ))}
+                      </select>
+                    </Field>
+                  )}
+                  <Field
+                    label="Опис"
+                    hint={services.length > 0 ? 'для послуги з довідника можна лишити порожнім' : undefined}
+                  >
                     <input
                       name="description"
                       className={inputClass}
                       placeholder="Доставка сировини за березень"
-                      required
                     />
                   </Field>
                   <div className="grid gap-3 sm:grid-cols-2">
-                    <Field label="Стаття витрат">
+                    <Field label="Стаття витрат" hint="для ручного вводу">
                       <select name="category" required className={inputClass} defaultValue="services">
                         {Object.entries(EXPENSE_CATEGORIES).map(([key, label]) => (
                           <option key={key} value={key}>

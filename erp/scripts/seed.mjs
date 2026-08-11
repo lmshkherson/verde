@@ -361,6 +361,24 @@ try {
     );
   }
 
+  // Послуги: картки для повторюваних витрат, щоб у надходженні їх обирали зі
+  // списку, а звіти бачили витрати в розрізі кожної послуги.
+  const SERVICES = [
+    ['SRV-RENT', 'Оренда цеху', 'rent', 'fixed', 20],
+    ['SRV-DELIV', 'Доставка сировини', 'logistics', 'variable', 20],
+    ['SRV-ACC', 'Бухгалтерський супровід', 'services', 'fixed', 0],
+  ];
+  for (const [sku, name, category, behavior, vat] of SERVICES) {
+    await client.query(
+      `insert into items (sku, name, kind, unit, expense_category, cost_behavior, vat_rate)
+       values ($1, $2, 'service', 'pcs', $3, $4, $5)
+       on conflict (sku) do update set
+         name = excluded.name, expense_category = excluded.expense_category,
+         cost_behavior = excluded.cost_behavior, vat_rate = excluded.vat_rate`,
+      [sku, name, category, behavior, vat],
+    );
+  }
+
   for (const recipe of RECIPES) {
     const { rows: exists } = await client.query(
       `select r.id from recipes r join items i on i.id = r.product_item_id where i.sku = $1`,
@@ -539,7 +557,7 @@ try {
 
   await client.query('commit');
   console.log(
-    `Довідники заповнено: ${ENTITIES.length} юрособи, ${USERS.length} користувачів, ${ITEMS.length} позицій, ` +
+    `Довідники заповнено: ${ENTITIES.length} юрособи, ${USERS.length} користувачів, ${ITEMS.length} позицій, 3 послуги, ` +
       `${RECIPES.length} рецептур, ${SUPPLIERS.length} постачальників, ${CUSTOMERS.length} клієнтів, ` +
       `${HACCP_POINTS.length} точок HACCP, поживні дані для ${NUTRITION.length} видів сировини.`,
   );

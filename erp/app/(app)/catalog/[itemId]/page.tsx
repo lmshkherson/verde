@@ -6,7 +6,7 @@ import { Barcode } from '@/components/barcode';
 import { ActionForm } from '@/components/action-form';
 import { Alert, Badge, Card, Cell, Empty, Field, inputClass, LinkButton, PageHeader, Row, Table } from '@/components/ui';
 import { query, queryOne } from '@/lib/db';
-import { fmtMoney, fmtQty, ITEM_KINDS, UNITS, unitLabel } from '@/lib/format';
+import { EXPENSE_CATEGORIES, fmtDate, fmtMoney, fmtQty, ITEM_KINDS, STOCK_ITEM_KINDS, UNITS, unitLabel } from '@/lib/format';
 import { requireRole } from '@/lib/session';
 
 export const dynamic = 'force-dynamic';
@@ -51,6 +51,8 @@ export default async function ItemEditPage({ params }: { params: Promise<{ itemI
     salt_100: number | null;
     note: string | null;
     is_active: boolean;
+    expense_category: string | null;
+    cost_behavior: string;
     moves: number;
   }>(
     `select i.*, (select count(*) from stock_moves m where m.item_id = i.id)::int as moves
@@ -58,6 +60,155 @@ export default async function ItemEditPage({ params }: { params: Promise<{ itemI
     [itemId],
   );
   if (!item) notFound();
+
+  // Послуга — інша сутність: без складу, партій і поживних даних. Її картка
+  // редагує лише те, що впливає на витрати, і показує історію цих витрат.
+  if (item.kind === 'service') {
+    const [history, totals] = await Promise.all([
+      query<{ spent_on: string | Date; description: string; amount_net: number; entity: string }>(
+        `select x.spent_on, x.description, x.amount_net, e.short_name as entity
+           from expenses x
+           join legal_entities e on e.id = x.legal_entity_id
+          where x.item_id = $1
+          order by x.spent_on desc, x.created_at desc
+          limit 24`,
+        [itemId],
+      ),
+      queryOne<{ total: number; month: number; n: number }>(
+        `select coalesce(sum(amount_net), 0) as total,
+                coalesce(sum(amount_net) filter (
+                  where spent_on >= date_trunc('month', current_date)), 0) as month,
+                count(*)::int as n
+           from expenses where item_id = $1`,
+        [itemId],
+      ),
+    ]);
+
+    return (
+      <>
+        <PageHeader
+          title={item.name}
+          subtitle={`${item.sku} · ${ITEM_KINDS[item.kind]}`}
+          action={<LinkButton href="/catalog?kind=service">← До номенклатури</LinkButton>}
+        />
+
+        {!item.is_active && (
+          <div className="mb-4">
+            <Alert tone="amber">
+              Послуга деактивована: у виборі документів її немає, але історія витрат збережена.
+            </Alert>
+          </div>
+        )}
+
+        <div className="grid gap-4 lg:grid-cols-[1fr_340px]">
+          <div className="space-y-4">
+            <Card title="Редагування">
+              <ActionForm action={updateItem} submitLabel="Зберегти">
+                <input type="hidden" name="item_id" value={item.id} />
+                <input type="hidden" name="kind" value="service" />
+                <input type="hidden" name="unit" value={item.unit} />
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Field label="Артикул (SKU)">
+                    <input name="sku" required defaultValue={item.sku} className={inputClass} />
+                  </Field>
+                  <Field label="Назва">
+                    <input name="name" required defaultValue={item.name} className={inputClass} />
+                  </Field>
+                </div>
+                <Field label="Стаття витрат" hint="діє на нові документи, проведені не переписує">
+                  <select
+                    name="expense_category"
+                    required
+                    defaultValue={item.expense_category ?? 'services'}
+                    className={inputClass}
+                  >
+                    {Object.entries(EXPENSE_CATEGORIES).map(([key, label]) => (
+                      <option key={key} value={key}>
+                        {label}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Field label="Поведінка витрати" hint="змінна росте з обсягом випуску">
+                    <select name="cost_behavior" defaultValue={item.cost_behavior} className={inputClass}>
+                      <option value="fixed">Постійна</option>
+                      <option value="variable">Змінна</option>
+                    </select>
+                  </Field>
+                  <Field label="Ставка ПДВ, %" hint="діє на нові документи">
+                    <input
+                      name="vat_rate"
+                      type="number"
+                      step="0.1"
+                      min="0"
+                      defaultValue={item.vat_rate}
+                      className={inputClass}
+                    />
+                  </Field>
+                </div>
+                <Field label="Примітка">
+                  <input name="note" defaultValue={item.note ?? ''} className={inputClass} />
+                </Field>
+              </ActionForm>
+            </Card>
+
+            <Card title="Витрати за цією послугою">
+              {history.length === 0 ? (
+                <Empty>Проведених витрат ще немає</Empty>
+              ) : (
+                <Table head={['Дата', 'Призначення', 'Юрособа', 'Сума без ПДВ']}>
+                  {history.map((h, i) => (
+                    <Row key={i}>
+                      <Cell>{fmtDate(h.spent_on)}</Cell>
+                      <Cell className="font-semibold">{h.description}</Cell>
+                      <Cell>{h.entity}</Cell>
+                      <Cell align="right">{fmtMoney(h.amount_net)}</Cell>
+                    </Row>
+                  ))}
+                </Table>
+              )}
+            </Card>
+          </div>
+
+          <div className="space-y-4">
+            <Card title="Разом">
+              <dl className="space-y-2 text-sm">
+                {(
+                  [
+                    ['За поточний місяць', fmtMoney(totals?.month ?? 0)],
+                    ['За весь час', fmtMoney(totals?.total ?? 0)],
+                    ['Проведених витрат', String(totals?.n ?? 0)],
+                  ] as [string, string][]
+                ).map(([k, v]) => (
+                  <div key={k} className="flex justify-between gap-3">
+                    <dt className="text-emerald-800/60">{k}</dt>
+                    <dd className="font-semibold text-emerald-950">{v}</dd>
+                  </div>
+                ))}
+              </dl>
+            </Card>
+
+            <Card title={item.is_active ? 'Деактивація' : 'Активація'}>
+              <p className="mb-3 text-sm text-emerald-800/70">
+                {item.is_active
+                  ? 'Послуга зникне зі списків вибору в надходженні. Проведені витрати лишаються.'
+                  : 'Послуга повернеться у списки вибору.'}
+              </p>
+              <ActionForm
+                action={setItemActive}
+                submitLabel={item.is_active ? 'Деактивувати' : 'Активувати'}
+                variant={item.is_active ? 'danger' : 'primary'}
+              >
+                <input type="hidden" name="item_id" value={item.id} />
+                <input type="hidden" name="active" value={item.is_active ? 'false' : 'true'} />
+              </ActionForm>
+            </Card>
+          </div>
+        </div>
+      </>
+    );
+  }
 
   const allergens = await query<{ code: string; name: string; kind: string | null }>(
     `select a.code, a.name, ia.kind
@@ -124,9 +275,9 @@ export default async function ItemEditPage({ params }: { params: Promise<{ itemI
                   disabled={locked}
                   className={`${inputClass} disabled:bg-emerald-900/5`}
                 >
-                  {Object.entries(ITEM_KINDS).map(([key, label]) => (
+                  {STOCK_ITEM_KINDS.map((key) => (
                     <option key={key} value={key}>
-                      {label}
+                      {ITEM_KINDS[key]}
                     </option>
                   ))}
                 </select>

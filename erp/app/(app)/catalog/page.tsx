@@ -3,7 +3,7 @@ import { createItem } from '@/app/actions/catalog';
 import { ActionForm } from '@/components/action-form';
 import { Badge, Card, Cell, Empty, Field, inputClass, LinkButton, PageHeader, Row, Table } from '@/components/ui';
 import { query } from '@/lib/db';
-import { fmtMoney, fmtQty, ITEM_KINDS, UNITS, unitLabel } from '@/lib/format';
+import { EXPENSE_CATEGORIES, fmtMoney, fmtQty, ITEM_KINDS, STOCK_ITEM_KINDS, UNITS, unitLabel } from '@/lib/format';
 import { requireRole } from '@/lib/session';
 
 export const dynamic = 'force-dynamic';
@@ -47,7 +47,7 @@ export default async function CatalogPage({
     <>
       <PageHeader
         title="Номенклатура"
-        subtitle="Сировина, пакування й готова продукція з прайсом"
+        subtitle="Сировина, пакування, готова продукція з прайсом і послуги"
         action={
           <LinkButton href={showInactive ? `/catalog${kind ? `?kind=${kind}` : ''}` : `/catalog?${kind ? `kind=${kind}&` : ''}inactive=1`}>
             {showInactive ? 'Лише активні' : 'Показати деактивовані'}
@@ -99,16 +99,20 @@ export default async function CatalogPage({
                     </div>
                   </Cell>
                   <Cell>
-                    <Badge tone={i.kind === 'finished' ? 'green' : 'gray'}>{ITEM_KINDS[i.kind]}</Badge>
+                    <Badge tone={i.kind === 'finished' ? 'green' : i.kind === 'service' ? 'blue' : 'gray'}>
+                      {ITEM_KINDS[i.kind]}
+                    </Badge>
                     {!i.is_active && (
                       <div className="mt-0.5">
                         <Badge tone="amber">деактивована</Badge>
                       </div>
                     )}
                   </Cell>
-                  <Cell align="right">{fmtQty(i.qty, unitLabel(i.unit))}</Cell>
                   <Cell align="right">
-                    {i.min_stock > 0 ? fmtQty(i.min_stock, unitLabel(i.unit)) : '—'}
+                    {i.kind === 'service' ? '—' : fmtQty(i.qty, unitLabel(i.unit))}
+                  </Cell>
+                  <Cell align="right">
+                    {i.kind !== 'service' && i.min_stock > 0 ? fmtQty(i.min_stock, unitLabel(i.unit)) : '—'}
                   </Cell>
                   <Cell align="right">
                     {i.price_distributor ? (
@@ -127,6 +131,7 @@ export default async function CatalogPage({
           )}
         </Card>
 
+        <div className="space-y-4">
         <Card title="Нова позиція">
           <ActionForm action={createItem} submitLabel="Додати">
             <Field label="Артикул (SKU)">
@@ -138,9 +143,9 @@ export default async function CatalogPage({
             <div className="grid grid-cols-2 gap-3">
               <Field label="Тип">
                 <select name="kind" required className={inputClass} defaultValue="raw">
-                  {Object.entries(ITEM_KINDS).map(([key, label]) => (
+                  {STOCK_ITEM_KINDS.map((key) => (
                     <option key={key} value={key}>
-                      {label}
+                      {ITEM_KINDS[key]}
                     </option>
                   ))}
                 </select>
@@ -193,6 +198,48 @@ export default async function CatalogPage({
             </Field>
           </ActionForm>
         </Card>
+
+        <Card title="Нова послуга">
+          <p className="mb-3 text-sm text-emerald-800/70">
+            Послуга на склад не потрапляє — картка потрібна, щоб у надходженні обирати її зі
+            списку, а не вводити текст щоразу, і бачити у звітах, скільки на неї витрачено.
+          </p>
+          <ActionForm action={createItem} submitLabel="Додати послугу" variant="ghost">
+            <input type="hidden" name="kind" value="service" />
+            <input type="hidden" name="unit" value="pcs" />
+            <Field label="Артикул (SKU)">
+              <input name="sku" required className={inputClass} placeholder="SRV-RENT" />
+            </Field>
+            <Field label="Назва">
+              <input name="name" required className={inputClass} placeholder="Оренда цеху" />
+            </Field>
+            <Field label="Стаття витрат" hint="за нею сума ляже у фінрезультат">
+              <select name="expense_category" required className={inputClass} defaultValue="services">
+                {Object.entries(EXPENSE_CATEGORIES).map(([key, label]) => (
+                  <option key={key} value={key}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Поведінка" hint="змінна росте з випуском">
+                <select name="cost_behavior" className={inputClass} defaultValue="fixed">
+                  <option value="fixed">Постійна</option>
+                  <option value="variable">Змінна</option>
+                </select>
+              </Field>
+              <Field label="Ставка ПДВ, %">
+                <select name="vat_rate" className={inputClass} defaultValue="20">
+                  <option value="20">20</option>
+                  <option value="7">7</option>
+                  <option value="0">0 / без ПДВ</option>
+                </select>
+              </Field>
+            </div>
+          </ActionForm>
+        </Card>
+        </div>
       </div>
     </>
   );

@@ -1,6 +1,7 @@
+import Link from 'next/link';
 import { Badge, Card, Cell, Empty, PageHeader, Row, Stat, Table } from '@/components/ui';
 import { query, queryOne } from '@/lib/db';
-import { fmtDate, fmtMoney, fmtQty, ITEM_KINDS, unitLabel } from '@/lib/format';
+import { EXPENSE_CATEGORIES, fmtDate, fmtMoney, fmtQty, ITEM_KINDS, unitLabel } from '@/lib/format';
 import { requireRole } from '@/lib/session';
 
 export const dynamic = 'force-dynamic';
@@ -10,7 +11,7 @@ const monthFmt = new Intl.DateTimeFormat('uk-UA', { month: 'long', year: 'numeri
 export default async function ReportsPage() {
   const session = await requireRole(); // лише власник
 
-  const [summary, margins, production, prices, stockValue, vatRows, entityTotals] = await Promise.all([
+  const [summary, margins, production, prices, stockValue, vatRows, entityTotals, serviceSpend] = await Promise.all([
     // Виручка береться без ПДВ: податок іде транзитом у бюджет і виручкою не є.
     queryOne<{ revenue: number; cogs: number; orders: number; vat: number }>(
       `select
@@ -102,6 +103,21 @@ export default async function ReportsPage() {
        where e.is_active
        order by e.short_name
     `),
+    // Витрати в розрізі конкретних послуг із довідника. Ручні рядки послуг
+    // сюди не потрапляють — вони живуть лише у статтях витрат.
+    query<{ id: string; name: string; category: string | null; month: number; total: number; last_on: string | Date | null }>(
+      `select i.id, i.name, i.expense_category as category,
+              coalesce(sum(x.amount_net) filter (
+                where x.spent_on >= date_trunc('month', current_date)), 0) as month,
+              coalesce(sum(x.amount_net), 0) as total,
+              max(x.spent_on) as last_on
+         from items i
+         left join expenses x on x.item_id = i.id and x.legal_entity_id = $1
+        where i.kind = 'service'
+        group by i.id, i.name, i.expense_category
+        order by total desc, i.name`,
+      [session.eid],
+    ),
   ]);
 
   const margin = (summary?.revenue ?? 0) - (summary?.cogs ?? 0);
@@ -230,6 +246,34 @@ export default async function ReportsPage() {
               ))}
             </Table>
           )}
+        </Card>
+
+        <Card title="Витрати на послуги">
+          {serviceSpend.length === 0 ? (
+            <Empty>Заведіть послуги в номенклатурі — і тут з’явиться, скільки на кожну витрачено</Empty>
+          ) : (
+            <Table head={['Послуга', 'Стаття', 'Остання витрата', 'Поточний місяць', 'За весь час']}>
+              {serviceSpend.map((s) => (
+                <Row key={s.id}>
+                  <Cell>
+                    <Link href={`/catalog/${s.id}`} className="font-semibold text-emerald-800 hover:underline">
+                      {s.name}
+                    </Link>
+                  </Cell>
+                  <Cell>{EXPENSE_CATEGORIES[s.category ?? ''] ?? s.category ?? '—'}</Cell>
+                  <Cell align="right">{s.last_on ? fmtDate(s.last_on) : '—'}</Cell>
+                  <Cell align="right">{fmtMoney(s.month)}</Cell>
+                  <Cell align="right" className="font-semibold">
+                    {fmtMoney(s.total)}
+                  </Cell>
+                </Row>
+              ))}
+            </Table>
+          )}
+          <p className="mt-3 text-xs text-emerald-800/60">
+            Суми без ПДВ, лише по обраній юрособі. Послуги, введені в надходженні вручну, сюди не
+            потрапляють — вони видні у фінрезультаті за статтями витрат.
+          </p>
         </Card>
 
         <Card title="Історія закупівельних цін">
