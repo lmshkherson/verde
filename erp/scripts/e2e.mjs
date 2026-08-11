@@ -2110,6 +2110,56 @@ try {
       svcReport.includes('Оренда цеху'),
   );
 
+  // ─── 13з-в. Юрособа обирається в документі ─────────────────────────────────
+  // Перемикач зверху — лише фільтр і значення за замовчуванням: документ можна
+  // оформити від будь-якої юрособи, не перемикаючись. Номер бере її префікс,
+  // ПДВ і проводки йдуть від неї.
+  console.log('\nЮрособа в документі');
+
+  // Комірник працює від ТОВ, але оформлює надходження на ФОП.
+  await warehouse.goto(`${BASE}/receipts`);
+  // Саме поле форми: у бічній панелі є однойменний перемикач юрособи.
+  await selectByText(
+    warehouse,
+    'form:has(select[name="supplier_id"]) select[name="entity_id"]',
+    'Верде Роздріб',
+  );
+  await selectByText(warehouse, 'select[name="supplier_id"]', 'Сухофрукт Трейд');
+  await warehouse.click('form:has(select[name="supplier_id"]) button[type="submit"]');
+  await warehouse.waitForURL(/\/receipts\/[0-9a-f-]{36}/);
+  const fopDoc = (await warehouse.locator('body').innerText()).replace(/[\s ]+/g, ' ');
+  check(
+    'документ створився від обраної юрособи з її префіксом',
+    fopDoc.includes('ВР-НАД-') && fopDoc.includes('Верде Роздріб ←'),
+  );
+
+  await warehouse.fill('input[name="row_item_0"]', 'Какао терте (RAW-KAKAO)');
+  await warehouse.fill('input[name="row_qty_0"]', '5');
+  await warehouse.fill('input[name="row_price_gross_0"]', '540');
+  await warehouse.click('button:has-text("Додати рядки в накладну")');
+  await warehouse.waitForTimeout(1200);
+  await warehouse.reload();
+  await warehouse.click('button:has-text("Провести")');
+  await warehouse.waitForTimeout(1800);
+  await warehouse.reload();
+  check(
+    'надходження на іншу юрособу проведено без перемикання',
+    (await warehouse.locator('text=Проведено').count()) > 0,
+  );
+
+  // Управлінка «вся група»: юрособи складаються в один котел і балансують.
+  await owner.goto(`${BASE}/accounting?book=management&scope=group`);
+  const groupAcc = (await owner.locator('body').innerText()).replace(/[\s ]+/g, ' ');
+  check('оборотка вміє показувати всю групу разом', groupAcc.includes('Вся група разом'));
+  check(
+    'консолідована управлінська оборотка балансує',
+    near(await stat(owner, 'Оберти за дебетом'), await stat(owner, 'Оберти за кредитом'), 0.02),
+  );
+
+  await owner.goto(`${BASE}/pl?scope=group`);
+  const groupPl = (await owner.locator('body').innerText()).replace(/[\s ]+/g, ' ');
+  check('фінрезультат по всій групі відкривається', groupPl.includes('Вся група разом'));
+
   // ─── 13и. Кадри: картка, відпустка, лікарняний, майно ──────────────────────
   // Відомість поточного місяця вже виплачена, тож відсутності оформлюємо на
   // наступний місяць і формуємо його відомість. Цифри перераховуються

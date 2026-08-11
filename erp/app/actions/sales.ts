@@ -6,6 +6,7 @@ import { transaction } from '@/lib/db';
 import { type ActionState, num, str, strOrNull, toMessage } from '@/lib/action-state';
 import { allocateFefo, defaultWarehouseId, insertMoves, nextDocNumber, round2, round3 } from '@/lib/stock';
 import { calcPurchaseVat, saleVatRate } from '@/lib/vat';
+import { resolveEntityId } from '@/lib/doc-entity';
 import { requireRole } from '@/lib/session';
 import { logAutoPoint } from '@/lib/haccp';
 import { normalizeIban } from '@/lib/bank';
@@ -137,22 +138,23 @@ export async function createSalesOrder(_prev: ActionState, formData: FormData): 
   let soId: string;
   try {
     soId = await transaction(async (c) => {
+      const entityId = await resolveEntityId(c, formData, session.eid);
       // Продавати самому собі не можна — це не документ, а помилка вибору.
       const { rows: check } = await c.query<{ legal_entity_id: string | null }>(
         'select legal_entity_id from customers where id = $1',
         [customerId],
       );
-      if (check[0]?.legal_entity_id === session.eid) {
-        throw new Error('Не можна оформити продаж самому собі — перемкніть юрособу або оберіть іншого клієнта');
+      if (check[0]?.legal_entity_id === entityId) {
+        throw new Error('Не можна оформити продаж самому собі — оберіть іншу юрособу або іншого клієнта');
       }
 
-      const number = await nextDocNumber(c, session.eid, 'ЗАМ');
+      const number = await nextDocNumber(c, entityId, 'ЗАМ');
       const { rows } = await c.query<{ id: string }>(
         `insert into sales_orders (number, legal_entity_id, customer_id, ship_by, note, created_by)
          values ($1, $2, $3, $4, $5, $6) returning id`,
         [
           number,
-          session.eid,
+          entityId,
           customerId,
           strOrNull(formData, 'ship_by'),
           strOrNull(formData, 'note'),
@@ -599,13 +601,20 @@ export async function recordPayment(_prev: ActionState, formData: FormData): Pro
 
   const soId = strOrNull(formData, 'so_id');
   try {
-    await transaction((c) =>
-      c.query(
+    await transaction(async (c) => {
+      // Гроші лягають тій юрособі, чиє замовлення оплачують.
+      const { rows: ent } = soId
+        ? await c.query<{ legal_entity_id: string }>(
+            'select legal_entity_id from sales_orders where id = $1',
+            [soId],
+          )
+        : { rows: [] as { legal_entity_id: string }[] };
+      await c.query(
         `insert into payments (customer_id, legal_entity_id, so_id, paid_on, amount, method, note, created_by)
          values ($1, $2, $3, $4, $5, $6, $7, $8)`,
         [
           customerId,
-          session.eid,
+          ent[0]?.legal_entity_id ?? session.eid,
           soId,
           str(formData, 'paid_on') || new Date().toISOString().slice(0, 10),
           amount,
@@ -613,8 +622,8 @@ export async function recordPayment(_prev: ActionState, formData: FormData): Pro
           strOrNull(formData, 'note'),
           session.uid,
         ],
-      ),
-    );
+      );
+    });
   } catch (err) {
     return { error: toMessage(err) };
   }

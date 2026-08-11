@@ -18,7 +18,7 @@ const statusTone: Record<string, 'gray' | 'amber' | 'green' | 'red'> = {
 export default async function PurchasingPage() {
   const session = await requireRole('warehouse');
 
-  const [orders, suppliers, shortages] = await Promise.all([
+  const [orders, suppliers, shortages, entities] = await Promise.all([
     query<{
       id: string;
       number: string;
@@ -44,6 +44,9 @@ export default async function PurchasingPage() {
     query<{ id: string; name: string }>('select id, name from suppliers where is_active order by name'),
     query<{ sku: string; name: string; qty: number; min_stock: number; unit: string }>(
       "select sku, name, qty, min_stock, unit from v_low_stock where kind in ('raw','packaging') order by qty / nullif(min_stock, 0)",
+    ),
+    query<{ id: string; short_name: string; is_vat_payer: boolean }>(
+      `select id, short_name, is_vat_payer from legal_entities where is_active order by short_name`,
     ),
   ]);
 
@@ -129,6 +132,15 @@ export default async function PurchasingPage() {
             <Empty>Спершу додайте постачальника</Empty>
           ) : (
             <ActionForm action={createPurchaseOrder} submitLabel="Створити заявку">
+                <Field label="Юрособа" hint="від кого оформлюється документ — визначає номер і ПДВ">
+                  <select name="entity_id" className={inputClass} defaultValue={session.eid}>
+                    {entities.map((e) => (
+                      <option key={e.id} value={e.id}>
+                        {e.short_name} · {e.is_vat_payer ? 'з ПДВ' : 'без ПДВ'}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
               <Field label="Постачальник">
                 <select name="supplier_id" required className={inputClass} defaultValue="">
                   <option value="" disabled>

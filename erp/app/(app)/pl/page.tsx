@@ -52,14 +52,20 @@ function PlRow({
 export default async function ProfitAndLossPage({
   searchParams,
 }: {
-  searchParams: Promise<{ period?: string }>;
+  searchParams: Promise<{ period?: string; scope?: string }>;
 }) {
   const session = await requireRole(); // лише власник
-  const { period } = await searchParams;
+  const { period, scope } = await searchParams;
 
   const now = new Date();
   const current = period ?? `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   const from = `${current}-01`;
+
+  // Управлінський «общий котел»: фінрезультат усіх юросіб однією сумою.
+  const groupScope = scope === 'group';
+  const entityIds = groupScope
+    ? (await query<{ id: string }>('select id from legal_entities where is_active')).map((e) => e.id)
+    : [session.eid];
 
   const [pl, opex, expenses, vat, receivable, payable, periods, suppliers, output] = await Promise.all([
     queryOne<{
@@ -73,19 +79,26 @@ export default async function ProfitAndLossPage({
       opex: number;
       net_result: number;
     }>(
-      `select revenue_gross_net, returns_net, revenue_net, cogs, gross_profit,
-              write_offs, production_costs, opex, net_result
+      `select coalesce(sum(revenue_gross_net), 0) as revenue_gross_net,
+              coalesce(sum(returns_net), 0)       as returns_net,
+              coalesce(sum(revenue_net), 0)       as revenue_net,
+              coalesce(sum(cogs), 0)              as cogs,
+              coalesce(sum(gross_profit), 0)      as gross_profit,
+              coalesce(sum(write_offs), 0)        as write_offs,
+              coalesce(sum(production_costs), 0)  as production_costs,
+              coalesce(sum(opex), 0)              as opex,
+              coalesce(sum(net_result), 0)        as net_result
          from v_pl_monthly
-        where legal_entity_id = $1 and period = $2::date`,
-      [session.eid, from],
+        where legal_entity_id = any($1::uuid[]) and period = $2::date`,
+      [entityIds, from],
     ),
     query<{ category: string; amount: number }>(
       `select category, sum(amount_net) as amount
          from expenses
-        where legal_entity_id = $1
+        where legal_entity_id = any($1::uuid[])
           and spent_on >= $2::date and spent_on < ($2::date + interval '1 month')
         group by category order by sum(amount_net) desc`,
-      [session.eid, from],
+      [entityIds, from],
     ),
     query<{
       id: string;
@@ -99,29 +112,31 @@ export default async function ProfitAndLossPage({
       `select e.id, e.spent_on, e.category, e.description, e.amount_net, e.vat_amount, s.name as supplier
          from expenses e
          left join suppliers s on s.id = e.supplier_id
-        where e.legal_entity_id = $1
+        where e.legal_entity_id = any($1::uuid[])
           and e.spent_on >= $2::date and e.spent_on < ($2::date + interval '1 month')
         order by e.spent_on desc limit 40`,
-      [session.eid, from],
+      [entityIds, from],
     ),
     queryOne<{ liability: number | null; credit: number | null; payable: number }>(
-      `select liability, credit, payable from v_vat_summary
-        where legal_entity_id = $1 and period = $2::date`,
-      [session.eid, from],
+      `select sum(liability) as liability, sum(credit) as credit,
+              coalesce(sum(payable), 0) as payable
+         from v_vat_summary
+        where legal_entity_id = any($1::uuid[]) and period = $2::date`,
+      [entityIds, from],
     ),
     queryOne<{ total: number }>(
       `select coalesce(sum(balance_due), 0) as total
-         from v_customer_balance_by_entity where legal_entity_id = $1`,
-      [session.eid],
+         from v_customer_balance_by_entity where legal_entity_id = any($1::uuid[])`,
+      [entityIds],
     ),
     queryOne<{ total: number }>(
       `select coalesce(sum(balance_due), 0) as total
-         from v_supplier_balance where legal_entity_id = $1`,
-      [session.eid],
+         from v_supplier_balance where legal_entity_id = any($1::uuid[])`,
+      [entityIds],
     ),
     query<{ period: string }>(
-      'select distinct period from v_pl_monthly where legal_entity_id = $1 order by period desc limit 12',
-      [session.eid],
+      'select distinct period from v_pl_monthly where legal_entity_id = any($1::uuid[]) order by period desc limit 12',
+      [entityIds],
     ),
     query<{ id: string; name: string }>('select id, name from suppliers where is_active order by name'),
     // Управлінська оцінка: скільки цех коштує на одиницю випуску цього місяця.
@@ -130,9 +145,9 @@ export default async function ProfitAndLossPage({
               coalesce(sum(ac.material_cost), 0) as material_cost
          from production_orders po
          join v_production_actual_cost ac on ac.production_order_id = po.id
-        where po.legal_entity_id = $1 and po.status = 'done'
+        where po.legal_entity_id = any($1::uuid[]) and po.status = 'done'
           and po.finished_at >= $2::date and po.finished_at < ($2::date + interval '1 month')`,
-      [session.eid, from],
+      [entityIds, from],
     ),
   ]);
 
@@ -164,8 +179,27 @@ export default async function ProfitAndLossPage({
     <>
       <PageHeader
         title="Фінансовий результат"
-        subtitle={`${session.ename} · ${monthFmt.format(new Date(from))}. Дохід і витрати — без ПДВ`}
+        subtitle={`${groupScope ? 'Вся група разом' : session.ename} · ${monthFmt.format(new Date(from))}. Дохід і витрати — без ПДВ`}
       />
+
+      <div className="mb-4 flex flex-wrap gap-2">
+        <Link
+          href={`/pl?period=${current}`}
+          className={`rounded-full px-4 py-2 text-sm font-semibold ${
+            !groupScope ? 'bg-emerald-700 text-white' : 'border border-emerald-900/15 bg-white text-emerald-900'
+          }`}
+        >
+          По юрособі
+        </Link>
+        <Link
+          href={`/pl?period=${current}&scope=group`}
+          className={`rounded-full px-4 py-2 text-sm font-semibold ${
+            groupScope ? 'bg-emerald-700 text-white' : 'border border-emerald-900/15 bg-white text-emerald-900'
+          }`}
+        >
+          Вся група разом
+        </Link>
+      </div>
 
       {periods.length > 0 && (
         <div className="mb-4 flex flex-wrap gap-2">
@@ -174,7 +208,7 @@ export default async function ProfitAndLossPage({
             return (
               <Link
                 key={key}
-                href={`/pl?period=${key}`}
+                href={`/pl?period=${key}${groupScope ? '&scope=group' : ''}`}
                 className={`rounded-full px-4 py-2 text-sm font-semibold ${
                   key === current
                     ? 'bg-emerald-700 text-white'

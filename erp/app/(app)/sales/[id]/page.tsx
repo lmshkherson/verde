@@ -18,7 +18,7 @@ const statusTone: Record<string, 'gray' | 'amber' | 'green' | 'red'> = {
 };
 
 export default async function SalesOrderPage({ params }: { params: Promise<{ id: string }> }) {
-  const session = await requireRole('sales');
+  await requireRole('sales');
   const { id } = await params;
 
   const order = await queryOne<{
@@ -42,10 +42,14 @@ export default async function SalesOrderPage({ params }: { params: Promise<{ id:
     paid_amount: number;
     balance_due: number;
     due_date: string | null;
+    legal_entity_id: string;
+    entity_name: string;
+    seller_is_vat_payer: boolean;
   }>(
-    `select f.*, c.price_level
+    `select f.*, c.price_level, e.short_name as entity_name, e.is_vat_payer as seller_is_vat_payer
        from v_sales_orders_full f
        join customers c on c.id = f.customer_id
+       join legal_entities e on e.id = f.legal_entity_id
       where f.id = $1`,
     [id],
   );
@@ -71,7 +75,7 @@ export default async function SalesOrderPage({ params }: { params: Promise<{ id:
          left join v_item_available a on a.item_id = l.item_id and a.legal_entity_id = $2
         where l.so_id = $1
         order by i.name`,
-      [id, session.eid],
+      [id, order.legal_entity_id],
     ),
     query<{
       id: string;
@@ -91,7 +95,7 @@ export default async function SalesOrderPage({ params }: { params: Promise<{ id:
          join items i on i.id = a.item_id
         where a.kind = 'finished' and i.is_active and a.legal_entity_id = $1
         order by a.name`,
-      [session.eid],
+      [order.legal_entity_id],
     ),
     query<{ id: string; number: string; shipped_on: string; ttn_number: string | null; carrier: string | null }>(
       'select id, number, shipped_on, ttn_number, carrier from shipments where so_id = $1 order by shipped_on',
@@ -111,7 +115,7 @@ export default async function SalesOrderPage({ params }: { params: Promise<{ id:
     <>
       <PageHeader
         title={`Замовлення ${order.number}`}
-        subtitle={`${order.customer_name} · ${PRICE_LEVELS[order.price_level]} · від ${fmtDate(order.ordered_on)}`}
+        subtitle={`${order.entity_name} → ${order.customer_name} · ${PRICE_LEVELS[order.price_level]} · від ${fmtDate(order.ordered_on)}`}
         action={<LinkButton href="/sales">← До списку</LinkButton>}
       />
 
@@ -232,7 +236,7 @@ export default async function SalesOrderPage({ params }: { params: Promise<{ id:
                 kind: 'finished',
                 // Неплатник ПДВ не нараховує податок — колонки «з ПДВ»
                 // просто збігаються з «без ПДВ».
-                vat_rate: session.vat ? Number(a.vat_rate) : 0,
+                vat_rate: order.seller_is_vat_payer ? Number(a.vat_rate) : 0,
                 barcode: a.barcode,
                 defaultPrice:
                   order.price_level === 'rrp'

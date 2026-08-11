@@ -39,6 +39,7 @@ export default async function PurchaseOrderPage({ params }: { params: Promise<{ 
     prices_include_vat: boolean;
     buyer_is_vat_payer: boolean;
     supplier_is_vat_payer: boolean;
+    entity_name: string;
   }>(
     `select p.id, p.number, p.status, p.ordered_on, p.expected_on, p.note,
             s.name as supplier, s.payment_terms_days,
@@ -46,7 +47,7 @@ export default async function PurchaseOrderPage({ params }: { params: Promise<{ 
             a.net_amount, a.gross_amount, a.received_net, a.received_gross,
             coalesce((select sum(sp.amount) from supplier_payments sp where sp.po_id = p.id), 0) as paid_amount,
             p.prices_include_vat, s.is_vat_payer as supplier_is_vat_payer,
-            e.is_vat_payer as buyer_is_vat_payer
+            e.is_vat_payer as buyer_is_vat_payer, e.short_name as entity_name
        from purchase_orders p
        join suppliers s on s.id = p.supplier_id
        join legal_entities e on e.id = p.legal_entity_id
@@ -98,7 +99,7 @@ export default async function PurchaseOrderPage({ params }: { params: Promise<{ 
     <>
       <PageHeader
         title={`Заявка ${po.number}`}
-        subtitle={`${po.supplier} · від ${fmtDate(po.ordered_on)}`}
+        subtitle={`${po.entity_name} ← ${po.supplier} · від ${fmtDate(po.ordered_on)}`}
         action={
           <div className="flex gap-2">
             <LinkButton href={`/movements/${po.id}`}>Дт/Кт</LinkButton>

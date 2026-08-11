@@ -18,7 +18,7 @@ const statusTone: Record<string, 'gray' | 'amber' | 'green' | 'red' | 'blue'> = 
 export default async function SalesPage() {
   const session = await requireRole('sales');
 
-  const [orders, customers] = await Promise.all([
+  const [orders, customers, entities] = await Promise.all([
     query<{
       id: string;
       number: string;
@@ -42,6 +42,9 @@ export default async function SalesPage() {
     `, [session.eid]),
     query<{ id: string; name: string }>(
       'select id, name from customers where is_active order by name',
+    ),
+    query<{ id: string; short_name: string; is_vat_payer: boolean }>(
+      `select id, short_name, is_vat_payer from legal_entities where is_active order by short_name`,
     ),
   ]);
 
@@ -112,6 +115,15 @@ export default async function SalesPage() {
             </Empty>
           ) : (
             <ActionForm action={createSalesOrder} submitLabel="Створити замовлення">
+                <Field label="Юрособа" hint="від кого продаємо — накладні й ПДВ підуть від неї">
+                  <select name="entity_id" className={inputClass} defaultValue={session.eid}>
+                    {entities.map((e) => (
+                      <option key={e.id} value={e.id}>
+                        {e.short_name} · {e.is_vat_payer ? 'з ПДВ' : 'без ПДВ'}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
               <Field label="Клієнт">
                 <select name="customer_id" required className={inputClass} defaultValue="">
                   <option value="" disabled>

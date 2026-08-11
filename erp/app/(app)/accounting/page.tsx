@@ -24,32 +24,40 @@ const BOOKS = [
 export default async function AccountingPage({
   searchParams,
 }: {
-  searchParams: Promise<{ period?: string; book?: string }>;
+  searchParams: Promise<{ period?: string; book?: string; scope?: string }>;
 }) {
   const session = await requireRole(); // лише власник
-  const { period, book = 'accounting' } = await searchParams;
+  const { period, book = 'accounting', scope } = await searchParams;
 
   const now = new Date();
   const current = period ?? `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   const from = `${current}-01`;
+
+  // «Вся група» — управлінський погляд: юрособи складаються в один котел.
+  // Бухгалтерська книга навмисно завжди по одній юрособі: це різні платники.
+  const groupScope = scope === 'group' && book === 'management';
+  const entityIds = groupScope
+    ? (await query<{ id: string }>('select id from legal_entities where is_active')).map((e) => e.id)
+    : [session.eid];
 
   const [rows, opening, run, accounts, periods] = await Promise.all([
     query<{ code: string; name: string; kind: string; debit: number; credit: number }>(
       `select t.code, a.name, a.kind, sum(t.debit) as debit, sum(t.credit) as credit
          from v_account_turnover t
          join chart_of_accounts a on a.code = t.code
-        where t.legal_entity_id = $1 and t.book = $3
+        where t.legal_entity_id = any($1::uuid[]) and t.book = $3
           and t.posted_on >= $2::date and t.posted_on < ($2::date + interval '1 month')
         group by t.code, a.name, a.kind
         order by t.code`,
-      [session.eid, from, book],
+      [entityIds, from, book],
     ),
     query<{ code: string; name: string; debit: number; credit: number }>(
-      `select o.code, a.name, o.debit, o.credit
+      `select o.code, a.name, sum(o.debit) as debit, sum(o.credit) as credit
          from opening_balances o join chart_of_accounts a on a.code = o.code
-        where o.legal_entity_id = $1 and o.as_of <= $2::date
+        where o.legal_entity_id = any($1::uuid[]) and o.as_of <= $2::date
+        group by o.code, a.name
         order by o.code`,
-      [session.eid, from],
+      [entityIds, from],
     ),
     queryOne<{ generated_at: string; postings_count: number; author: string | null }>(
       `select r.generated_at, r.postings_count, u.full_name as author
@@ -79,7 +87,7 @@ export default async function AccountingPage({
     <>
       <PageHeader
         title="Оборотно-сальдова відомість"
-        subtitle={`${session.ename} · ${monthFmt.format(new Date(from))}`}
+        subtitle={`${groupScope ? 'Вся група разом' : session.ename} · ${monthFmt.format(new Date(from))}`}
         action={
           <div className="flex gap-2">
             <LinkButton href={`/accounting/postings?period=${current}&book=${book}`}>Проводки</LinkButton>
@@ -99,7 +107,7 @@ export default async function AccountingPage({
             key={b.key}
             href={`/accounting?period=${current}&book=${b.key}`}
             className={`rounded-full px-4 py-2 text-sm font-semibold ${
-              book === b.key
+              book === b.key && !groupScope
                 ? 'bg-emerald-700 text-white'
                 : 'border border-emerald-900/15 bg-white text-emerald-900'
             }`}
@@ -107,6 +115,16 @@ export default async function AccountingPage({
             {b.label} облік
           </Link>
         ))}
+        <Link
+          href={`/accounting?period=${current}&book=management&scope=group`}
+          className={`rounded-full px-4 py-2 text-sm font-semibold ${
+            groupScope
+              ? 'bg-emerald-700 text-white'
+              : 'border border-emerald-900/15 bg-white text-emerald-900'
+          }`}
+        >
+          Управлінський · вся група
+        </Link>
         {periods.map((p) => {
           const key = String(p.period).slice(0, 7);
           return (

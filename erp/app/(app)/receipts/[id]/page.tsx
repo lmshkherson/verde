@@ -37,7 +37,7 @@ const STATUS: Record<string, string> = {
 };
 
 export default async function ReceiptPage({ params }: { params: Promise<{ id: string }> }) {
-  const session = await requireRole('warehouse');
+  await requireRole('warehouse');
   const { id } = await params;
 
   const doc = await queryOne<{
@@ -58,16 +58,21 @@ export default async function ReceiptPage({ params }: { params: Promise<{ id: st
     goods_lines: number;
     service_lines: number;
     warehouse_id: string | null;
+    entity_name: string;
+    buyer_is_vat_payer: boolean;
   }>(
+    // Документ живе у своїй юрособі й відкривається незалежно від перемикача.
     `select r.id, r.number, r.received_on, r.status, s.name as supplier, s.id as supplier_id,
             s.is_vat_payer as supplier_is_vat_payer, r.warehouse_id,
             r.supplier_doc_number, r.supplier_doc_date, r.prices_include_vat, r.note,
-            a.net_amount, a.vat_amount, a.gross_amount, a.goods_lines, a.service_lines
+            a.net_amount, a.vat_amount, a.gross_amount, a.goods_lines, a.service_lines,
+            e.short_name as entity_name, e.is_vat_payer as buyer_is_vat_payer
        from receipts r
        join suppliers s on s.id = r.supplier_id
+       join legal_entities e on e.id = r.legal_entity_id
        join v_receipt_amounts a on a.receipt_id = r.id
-      where r.id = $1 and r.legal_entity_id = $2`,
-    [id, session.eid],
+      where r.id = $1`,
+    [id],
   );
   if (!doc) notFound();
 
@@ -116,7 +121,7 @@ export default async function ReceiptPage({ params }: { params: Promise<{ id: st
     <>
       <PageHeader
         title={`Надходження ${doc.number}`}
-        subtitle={`${doc.supplier} · ${fmtDate(doc.received_on)}${
+        subtitle={`${doc.entity_name} ← ${doc.supplier} · ${fmtDate(doc.received_on)}${
           doc.supplier_doc_number ? ` · їх документ № ${doc.supplier_doc_number}` : ''
         }`}
         action={
@@ -255,7 +260,7 @@ export default async function ReceiptPage({ params }: { params: Promise<{ id: st
                       <input name="amount" type="number" step="0.01" min="0" className={inputClass} />
                     </Field>
                     <Field label="Ставка ПДВ, %">
-                      <select name="vat_rate" className={inputClass} defaultValue={session.vat ? '20' : '0'}>
+                      <select name="vat_rate" className={inputClass} defaultValue={doc.buyer_is_vat_payer ? '20' : '0'}>
                         <option value="20">20</option>
                         <option value="7">7</option>
                         <option value="0">0 / без ПДВ</option>

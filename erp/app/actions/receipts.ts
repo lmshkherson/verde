@@ -6,6 +6,7 @@ import { transaction } from '@/lib/db';
 import { type ActionState, num, str, strOrNull, toMessage } from '@/lib/action-state';
 import { defaultWarehouseId, insertMoves, nextDocNumber, round2, round3 } from '@/lib/stock';
 import { calcPurchaseVat } from '@/lib/vat';
+import { resolveEntityId } from '@/lib/doc-entity';
 import { requireRole } from '@/lib/session';
 
 /**
@@ -28,7 +29,8 @@ export async function createReceipt(_prev: ActionState, formData: FormData): Pro
   let receiptId: string;
   try {
     receiptId = await transaction(async (c) => {
-      const number = await nextDocNumber(c, session.eid, 'НАД');
+      const entityId = await resolveEntityId(c, formData, session.eid);
+      const number = await nextDocNumber(c, entityId, 'НАД');
       const { rows } = await c.query<{ id: string }>(
         `insert into receipts
            (number, legal_entity_id, supplier_id, received_on, supplier_doc_number,
@@ -36,7 +38,7 @@ export async function createReceipt(_prev: ActionState, formData: FormData): Pro
          values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) returning id`,
         [
           number,
-          session.eid,
+          entityId,
           supplierId,
           str(formData, 'received_on') || new Date().toISOString().slice(0, 10),
           strOrNull(formData, 'supplier_doc_number'),
@@ -71,7 +73,7 @@ export async function updateReceiptHeader(_prev: ActionState, formData: FormData
         `update receipts set
            received_on = $2, supplier_doc_number = $3, supplier_doc_date = $4,
            prices_include_vat = $5, warehouse_id = $6, note = $7
-         where id = $1 and legal_entity_id = $8`,
+         where id = $1`,
         [
           receiptId,
           str(formData, 'received_on') || new Date().toISOString().slice(0, 10),
@@ -80,7 +82,6 @@ export async function updateReceiptHeader(_prev: ActionState, formData: FormData
           formData.get('prices_include_vat') === 'on',
           strOrNull(formData, 'warehouse_id'),
           strOrNull(formData, 'note'),
-          session.eid,
         ],
       );
     });
@@ -106,7 +107,7 @@ async function assertDraft(c: import('pg').PoolClient, receiptId: string) {
  * там статтю, поведінку і ставку ПДВ дає їхня картка.
  */
 export async function addServiceLine(_prev: ActionState, formData: FormData): Promise<ActionState> {
-  const session = await requireRole('warehouse');
+  await requireRole('warehouse');
   const receiptId = str(formData, 'receipt_id');
   const description = str(formData, 'description');
   const amount = num(formData, 'amount');
@@ -116,14 +117,20 @@ export async function addServiceLine(_prev: ActionState, formData: FormData): Pr
   if (!category) return { error: 'Оберіть статтю витрат' };
   if (amount <= 0) return { error: 'Вкажіть суму' };
 
-  const vatRate = num(formData, 'vat_rate', session.vat ? 20 : 0);
-  if (vatRate > 0 && !session.vat) {
-    return { error: 'Юрособа не платник ПДВ — податок їй не відшкодовується, вкажіть повну суму' };
-  }
-
   try {
     await transaction(async (c) => {
       await assertDraft(c, receiptId);
+      // Статус платника — від юрособи самого документа, не від перемикача.
+      const { rows: ent } = await c.query<{ is_vat_payer: boolean }>(
+        `select e.is_vat_payer from receipts r join legal_entities e on e.id = r.legal_entity_id
+          where r.id = $1`,
+        [receiptId],
+      );
+      const buyerVat = ent[0]?.is_vat_payer ?? false;
+      const vatRate = num(formData, 'vat_rate', buyerVat ? 20 : 0);
+      if (vatRate > 0 && !buyerVat) {
+        throw new Error('Юрособа документа не платник ПДВ — податок їй не відшкодовується, вкажіть повну суму');
+      }
       await c.query(
         `insert into receipt_lines
            (receipt_id, kind, description, category, cost_behavior, qty, unit_price, vat_rate)

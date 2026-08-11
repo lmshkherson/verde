@@ -17,7 +17,7 @@ const STATUS: Record<string, string> = {
 export default async function ReceiptsPage() {
   const session = await requireRole('warehouse');
 
-  const [docs, suppliers, warehouses] = await Promise.all([
+  const [docs, suppliers, warehouses, entities] = await Promise.all([
     query<{
       id: string;
       number: string;
@@ -45,6 +45,9 @@ export default async function ReceiptsPage() {
     query<{ id: string; name: string; is_default: boolean }>(
       `select id, name, is_default from warehouses
         where is_active order by is_default desc, code`,
+    ),
+    query<{ id: string; short_name: string; is_vat_payer: boolean }>(
+      `select id, short_name, is_vat_payer from legal_entities where is_active order by short_name`,
     ),
   ]);
 
@@ -125,6 +128,15 @@ export default async function ReceiptsPage() {
               <Empty>Спершу додайте постачальника</Empty>
             ) : (
               <ActionForm action={createReceipt} submitLabel="Створити">
+                <Field label="Юрособа" hint="від кого оформлюється документ — визначає номер і ПДВ">
+                  <select name="entity_id" className={inputClass} defaultValue={session.eid}>
+                    {entities.map((e) => (
+                      <option key={e.id} value={e.id}>
+                        {e.short_name} · {e.is_vat_payer ? 'з ПДВ' : 'без ПДВ'}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
                 <Field label="Постачальник">
                   <select name="supplier_id" required className={inputClass} defaultValue="">
                     <option value="" disabled>

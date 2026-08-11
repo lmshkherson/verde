@@ -6,6 +6,7 @@ import { transaction } from '@/lib/db';
 import { type ActionState, num, str, strOrNull, toMessage } from '@/lib/action-state';
 import { defaultWarehouseId, insertMoves, nextDocNumber, round2, round3 } from '@/lib/stock';
 import { calcPurchaseVat } from '@/lib/vat';
+import { resolveEntityId } from '@/lib/doc-entity';
 import { requireRole } from '@/lib/session';
 import { normalizeIban } from '@/lib/bank';
 
@@ -137,14 +138,15 @@ export async function createPurchaseOrder(_prev: ActionState, formData: FormData
   let poId: string;
   try {
     poId = await transaction(async (c) => {
-      const number = await nextDocNumber(c, session.eid, 'ЗАК');
+      const entityId = await resolveEntityId(c, formData, session.eid);
+      const number = await nextDocNumber(c, entityId, 'ЗАК');
       const { rows } = await c.query<{ id: string }>(
         `insert into purchase_orders
            (number, legal_entity_id, supplier_id, expected_on, note, prices_include_vat, created_by)
          values ($1, $2, $3, $4, $5, $6, $7) returning id`,
         [
           number,
-          session.eid,
+          entityId,
           supplierId,
           strOrNull(formData, 'expected_on'),
           strOrNull(formData, 'note'),

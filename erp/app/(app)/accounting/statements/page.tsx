@@ -16,14 +16,21 @@ const BOOKS = [
 export default async function StatementsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ period?: string; book?: string }>;
+  searchParams: Promise<{ period?: string; book?: string; scope?: string }>;
 }) {
   const session = await requireRole();
-  const { period, book = 'accounting' } = await searchParams;
+  const { period, book = 'accounting', scope } = await searchParams;
 
   const now = new Date();
   const current = period ?? `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   const from = `${current}-01`;
+
+  // «Вся група» — консолідований управлінський баланс: гроші, запаси й борги
+  // всіх юросіб однією сумою. Бухгалтерська звітність — завжди по одній.
+  const groupScope = scope === 'group' && book === 'management';
+  const entityIds = groupScope
+    ? (await query<{ id: string }>('select id from legal_entities where is_active')).map((e) => e.id)
+    : [session.eid];
 
   const [balances, pl] = await Promise.all([
     // Баланс — накопичені залишки на кінець періоду: вхідні плюс усі оберти.
@@ -31,14 +38,14 @@ export default async function StatementsPage({
       `with turnover as (
          select code, sum(debit) - sum(credit) as balance
            from v_account_turnover
-          where legal_entity_id = $1 and book = $3
+          where legal_entity_id = any($1::uuid[]) and book = $3
             and posted_on < ($2::date + interval '1 month')
           group by code
        ),
        opening as (
          select code, sum(debit) - sum(credit) as balance
            from opening_balances
-          where legal_entity_id = $1 and as_of < ($2::date + interval '1 month')
+          where legal_entity_id = any($1::uuid[]) and as_of < ($2::date + interval '1 month')
           group by code
        ),
        merged as (
@@ -50,7 +57,7 @@ export default async function StatementsPage({
          from merged m join chart_of_accounts a on a.code = m.code
         where abs(m.balance) > 0.005 and a.kind in ('asset','liability','equity')
         order by m.code`,
-      [session.eid, from, book],
+      [entityIds, from, book],
     ),
     // Звіт про фінансові результати — оберти доходів і витрат без закриття періоду.
     query<{ code: string; name: string; kind: string; amount: number }>(
@@ -62,13 +69,13 @@ export default async function StatementsPage({
            union all select p.credit_code, 0::numeric, p.amount
          ) t on true
          join chart_of_accounts a on a.code = t.code
-        where p.legal_entity_id = $1 and p.book = $3
+        where p.legal_entity_id = any($1::uuid[]) and p.book = $3
           and p.posted_on >= $2::date and p.posted_on < ($2::date + interval '1 month')
           and b.doc_type <> 'period_close'
           and a.kind in ('income','expense')
         group by t.code, a.name, a.kind
         order by a.kind desc, t.code`,
-      [session.eid, from, book],
+      [entityIds, from, book],
     ),
   ]);
 
@@ -91,7 +98,7 @@ export default async function StatementsPage({
     <>
       <PageHeader
         title="Фінансова звітність"
-        subtitle={`${session.ename} · ${monthFmt.format(new Date(from))}`}
+        subtitle={`${groupScope ? 'Вся група разом' : session.ename} · ${monthFmt.format(new Date(from))}`}
         action={<LinkButton href={`/accounting?period=${current}&book=${book}`}>← До оборотки</LinkButton>}
       />
 
@@ -101,7 +108,7 @@ export default async function StatementsPage({
             key={b.key}
             href={`/accounting/statements?period=${current}&book=${b.key}`}
             className={`rounded-full px-4 py-2 text-sm font-semibold ${
-              book === b.key
+              book === b.key && !groupScope
                 ? 'bg-emerald-700 text-white'
                 : 'border border-emerald-900/15 bg-white text-emerald-900'
             }`}
@@ -109,6 +116,16 @@ export default async function StatementsPage({
             {b.label} облік
           </Link>
         ))}
+        <Link
+          href={`/accounting/statements?period=${current}&book=management&scope=group`}
+          className={`rounded-full px-4 py-2 text-sm font-semibold ${
+            groupScope
+              ? 'bg-emerald-700 text-white'
+              : 'border border-emerald-900/15 bg-white text-emerald-900'
+          }`}
+        >
+          Управлінський · вся група
+        </Link>
       </div>
 
       <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
