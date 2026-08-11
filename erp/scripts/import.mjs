@@ -119,27 +119,67 @@ const handlers = {
           kind === 'service' ? str(r['стаття_витрат']) || 'services' : null,
         ],
       );
+
+      // Прайс по каналах: нові колонки мають пріоритет, легасі
+      // (ціна_дистриб/ціна_мережа/ррц) мапляться на відповідні канали.
+      const CHANNEL_COLUMNS = [
+        ['site', ['ціна_сайт', 'ррц']],
+        ['small_wholesale', ['ціна_гурт', 'ціна_дрібний_гурт']],
+        ['offices', ['ціна_офіси']],
+        ['supermarkets', ['ціна_супермаркети', 'ціна_мережа']],
+        ['distributors', ["ціна_дистриб'ютори", 'ціна_дистриб']],
+        ['private_label', ['ціна_private_label', 'ціна_private']],
+      ];
+      for (const [channel, columns] of CHANNEL_COLUMNS) {
+        const raw = columns.map((col) => str(r[col])).find((v) => v !== '');
+        if (raw === undefined) continue;
+        const price = num(raw);
+        if (price > 0) {
+          await client.query(
+            `insert into item_prices (item_id, channel, price)
+             select id, $2, $3 from items where sku = $1
+             on conflict (item_id, channel) do update set price = excluded.price`,
+            [sku, channel, price],
+          );
+        }
+      }
       count += 1;
     }
     return count;
   },
 
-  // назва;тип;єдрпоу;іпн;платник_пдв;контакт;телефон;прайс;відтермінування;кредитний_ліміт;адреса
+  // назва;канал;єдрпоу;іпн;платник_пдв;контакт;телефон;відтермінування;кредитний_ліміт;адреса
+  // «канал»: сайт / дрібний гурт / офіси / супермаркети / дистриб'ютори / private label.
+  // Легасі-колонки тип+прайс теж читаються й мапляться на канал.
   async customers() {
     let count = 0;
     for (const r of rows) {
       const name = str(r['назва']);
       if (!name) continue;
       const { rows: exists } = await client.query('select id from customers where name = $1', [name]);
+
+      const CHANNEL_ALIASES = {
+        'сайт': 'site', site: 'site',
+        'дрібний гурт': 'small_wholesale', 'гурт': 'small_wholesale', small_wholesale: 'small_wholesale',
+        'офіси': 'offices', offices: 'offices',
+        'супермаркети': 'supermarkets', 'мережа': 'supermarkets', supermarkets: 'supermarkets',
+        "дистриб'ютори": 'distributors', 'дистрибютори': 'distributors', distributors: 'distributors',
+        'private label': 'private_label', private_label: 'private_label',
+      };
+      const LEGACY_PRICE = { rrp: 'site', network: 'supermarkets', distributor: 'distributors' };
+      const channel =
+        CHANNEL_ALIASES[str(r['канал']).toLowerCase()] ??
+        LEGACY_PRICE[str(r['прайс']).toLowerCase()] ??
+        'small_wholesale';
+
       const params = [
         name,
-        str(r['тип']) || 'network',
+        channel,
         strOrNull(r['єдрпоу']),
         strOrNull(r['іпн']),
         str(r['платник_пдв']).toLowerCase() !== 'ні',
         strOrNull(r['контакт']),
         strOrNull(r['телефон']),
-        str(r['прайс']) || 'distributor',
         num(r['відтермінування']),
         num(r['кредитний_ліміт']),
         strOrNull(r['адреса']),
@@ -149,20 +189,20 @@ const handlers = {
       ];
       if (exists[0]) {
         await client.query(
-          `update customers set name=$1, kind=$2, edrpou=$3, ipn=$4, is_vat_payer=$5, contact=$6,
-                                phone=$7, price_level=$8, payment_terms_days=$9, credit_limit=$10,
-                                address=coalesce($11, address),
-                                delivery_address=coalesce($12, delivery_address),
-                                iban=coalesce($13, iban), bank_name=coalesce($14, bank_name)
-            where id = $15`,
+          `update customers set name=$1, channel=$2, edrpou=$3, ipn=$4, is_vat_payer=$5, contact=$6,
+                                phone=$7, payment_terms_days=$8, credit_limit=$9,
+                                address=coalesce($10, address),
+                                delivery_address=coalesce($11, delivery_address),
+                                iban=coalesce($12, iban), bank_name=coalesce($13, bank_name)
+            where id = $14`,
           [...params, exists[0].id],
         );
       } else {
         await client.query(
-          `insert into customers (name, kind, edrpou, ipn, is_vat_payer, contact, phone,
-                                  price_level, payment_terms_days, credit_limit, address,
+          `insert into customers (name, channel, edrpou, ipn, is_vat_payer, contact, phone,
+                                  payment_terms_days, credit_limit, address,
                                   delivery_address, iban, bank_name)
-           values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+           values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
           params,
         );
       }

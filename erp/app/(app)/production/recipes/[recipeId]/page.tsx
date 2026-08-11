@@ -27,7 +27,8 @@ export default async function RecipePage({ params }: { params: Promise<{ recipeI
     is_current: boolean;
     batches: number;
   }>(
-    `select r.id, r.version, r.output_qty, r.notes, i.name as product, i.sku, i.price_distributor,
+    `select r.id, r.version, r.output_qty, r.notes, i.name as product, i.sku,
+            (select price from item_prices ip where ip.item_id = i.id and ip.channel = 'distributors') as price_distributor,
             rc.batch_material_cost, rc.unit_material_cost,
             r.effective_from, r.approved_at,
             (cr.id is not null) as is_current,

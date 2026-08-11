@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { transaction } from '@/lib/db';
 import { type ActionState, num, str, strOrNull, toMessage } from '@/lib/action-state';
-import { EXPENSE_CATEGORIES } from '@/lib/format';
+import { EXPENSE_CATEGORIES, SALES_CHANNELS } from '@/lib/format';
 import { requireRole } from '@/lib/session';
 import { normalizeEan } from '@/lib/barcode.mjs';
 
@@ -74,11 +74,11 @@ export async function createItem(_prev: ActionState, formData: FormData): Promis
       c.query(
         `insert into items
            (sku, name, kind, unit, shelf_life_days, min_stock, weight_g, pcs_per_box,
-            price_distributor, price_network, price_rrp, uktzed, uom_code, note, barcode,
+            uktzed, uom_code, note, barcode,
             temp_min_c, temp_max_c, temp_note, quality_control, acceptance_spec,
             vat_rate, expense_category, cost_behavior)
          values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18,
-                 $19, $20, $21, $22, $23)`,
+                 $19, $20)`,
         [
           sku,
           name,
@@ -88,9 +88,6 @@ export async function createItem(_prev: ActionState, formData: FormData): Promis
           num(formData, 'min_stock'),
           num(formData, 'weight_g') || null,
           num(formData, 'pcs_per_box') || null,
-          num(formData, 'price_distributor') || null,
-          num(formData, 'price_network') || null,
-          num(formData, 'price_rrp') || null,
           strOrNull(formData, 'uktzed'),
           strOrNull(formData, 'uom_code'),
           strOrNull(formData, 'note'),
@@ -186,11 +183,10 @@ export async function updateItem(_prev: ActionState, formData: FormData): Promis
         `update items set
            sku = $2, name = $3, kind = $4, unit = $5,
            shelf_life_days = $6, min_stock = $7, weight_g = $8, pcs_per_box = $9,
-           price_distributor = $10, price_network = $11, price_rrp = $12,
-           uktzed = $13, uom_code = $14, note = $15, vat_rate = $16, barcode = $17,
-           temp_min_c = $18, temp_max_c = $19, temp_note = $20,
-           quality_control = $21, acceptance_spec = $22,
-           expense_category = $23, cost_behavior = $24
+           uktzed = $10, uom_code = $11, note = $12, vat_rate = $13, barcode = $14,
+           temp_min_c = $15, temp_max_c = $16, temp_note = $17,
+           quality_control = $18, acceptance_spec = $19,
+           expense_category = $20, cost_behavior = $21
          where id = $1`,
         [
           id,
@@ -202,9 +198,6 @@ export async function updateItem(_prev: ActionState, formData: FormData): Promis
           num(formData, 'min_stock'),
           num(formData, 'weight_g') || null,
           num(formData, 'pcs_per_box') || null,
-          num(formData, 'price_distributor') || null,
-          num(formData, 'price_network') || null,
-          num(formData, 'price_rrp') || null,
           strOrNull(formData, 'uktzed'),
           strOrNull(formData, 'uom_code'),
           strOrNull(formData, 'note'),
@@ -241,6 +234,43 @@ export async function updateItem(_prev: ActionState, formData: FormData): Promis
  * документи, партії й проводки з нею лишаються цілими. Видалення тут не
  * передбачене свідомо — воно зруйнувало б історію складу й проводки.
  */
+
+/**
+ * Прайс позиції по каналах продажу. Порожнє поле — «ціни для каналу немає»:
+ * рядок видаляється, і замовлення цього каналу чесно попросить ціну, а не
+ * підставить нуль.
+ */
+export async function saveItemPrices(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  await requireRole('production', 'sales', 'warehouse');
+  const id = str(formData, 'item_id');
+  if (!id) return { error: 'Не вказано номенклатуру' };
+
+  try {
+    await transaction(async (c) => {
+      for (const channel of Object.keys(SALES_CHANNELS)) {
+        const raw = str(formData, `price_${channel}`);
+        if (raw === '') {
+          await c.query('delete from item_prices where item_id = $1 and channel = $2', [id, channel]);
+          continue;
+        }
+        const price = num(formData, `price_${channel}`);
+        if (price < 0) throw new Error('Ціна не може бути від’ємною');
+        await c.query(
+          `insert into item_prices (item_id, channel, price) values ($1, $2, $3)
+           on conflict (item_id, channel) do update set price = excluded.price`,
+          [id, channel, price],
+        );
+      }
+    });
+  } catch (err) {
+    return { error: toMessage(err) };
+  }
+
+  revalidatePath(`/catalog/${id}`);
+  revalidatePath('/catalog');
+  return { ok: 'Прайс збережено' };
+}
+
 export async function setItemActive(_prev: ActionState, formData: FormData): Promise<ActionState> {
   await requireRole('production', 'sales', 'warehouse');
   const id = str(formData, 'item_id');

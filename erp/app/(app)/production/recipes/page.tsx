@@ -27,7 +27,8 @@ export default async function RecipesPage() {
     }>(`
       select r.id, i.name as product, i.sku, r.version, r.output_qty,
              (select count(*) from recipe_lines rl where rl.recipe_id = r.id)::int as lines,
-             rc.unit_material_cost, i.price_distributor,
+             rc.unit_material_cost,
+             (select price from item_prices ip where ip.item_id = i.id and ip.channel = 'distributors') as price_distributor,
              r.effective_from, r.approved_at,
              (cr.id is not null) as is_current
         from recipes r

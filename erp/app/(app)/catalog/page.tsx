@@ -26,15 +26,16 @@ export default async function CatalogPage({
     min_stock: number;
     shelf_life_days: number | null;
     pcs_per_box: number | null;
-    price_distributor: number | null;
-    price_network: number | null;
-    price_rrp: number | null;
+    price_site: number | null;
+    prices_count: number;
     is_active: boolean;
     barcode: string | null;
     qty: number;
   }>(
     `select i.id, i.sku, i.name, i.kind, i.unit, i.min_stock, i.shelf_life_days, i.pcs_per_box,
-            i.price_distributor, i.price_network, i.price_rrp, i.is_active, i.barcode,
+            (select price from item_prices ip where ip.item_id = i.id and ip.channel = 'site') as price_site,
+            (select count(*) from item_prices ip where ip.item_id = i.id)::int as prices_count,
+            i.is_active, i.barcode,
             coalesce(s.qty, 0) as qty
        from items i
        left join v_item_stock s on s.item_id = i.id and s.legal_entity_id = $2
@@ -115,11 +116,10 @@ export default async function CatalogPage({
                     {i.kind !== 'service' && i.min_stock > 0 ? fmtQty(i.min_stock, unitLabel(i.unit)) : '—'}
                   </Cell>
                   <Cell align="right">
-                    {i.price_distributor ? (
+                    {i.prices_count > 0 ? (
                       <div className="text-xs">
-                        <div>дистр. {fmtMoney(i.price_distributor)}</div>
-                        {i.price_network && <div>мережа {fmtMoney(i.price_network)}</div>}
-                        {i.price_rrp && <div className="text-emerald-800/50">РРЦ {fmtMoney(i.price_rrp)}</div>}
+                        {i.price_site ? <div>сайт {fmtMoney(i.price_site)}</div> : null}
+                        <div className="text-emerald-800/50">цін по каналах: {i.prices_count}</div>
                       </div>
                     ) : (
                       '—'
@@ -176,15 +176,6 @@ export default async function CatalogPage({
                 <input name="pcs_per_box" type="number" min="0" className={inputClass} />
               </Field>
             </div>
-            <Field label="Ціна дистриб'ютора">
-              <input name="price_distributor" type="number" step="0.01" min="0" className={inputClass} />
-            </Field>
-            <Field label="Ціна на мережу">
-              <input name="price_network" type="number" step="0.01" min="0" className={inputClass} />
-            </Field>
-            <Field label="РРЦ">
-              <input name="price_rrp" type="number" step="0.01" min="0" className={inputClass} />
-            </Field>
             <div className="grid grid-cols-2 gap-3">
               <Field label="Темп. від, °C">
                 <input name="temp_min_c" type="number" step="0.1" className={inputClass} />

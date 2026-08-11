@@ -94,7 +94,8 @@ export default async function ReturnPage({ params }: { params: Promise<{ id: str
         )
       : Promise.resolve([]),
     query<{ id: string; name: string; unit: string; avg_cost: number; price: number | null }>(
-      `select i.id, i.name, i.unit, coalesce(s.avg_cost, 0) as avg_cost, i.price_distributor as price
+      `select i.id, i.name, i.unit, coalesce(s.avg_cost, 0) as avg_cost,
+              (select price from item_prices ip where ip.item_id = i.id and ip.channel = 'distributors') as price
          from items i
          left join v_item_stock s on s.item_id = i.id and s.legal_entity_id = $1
         where i.is_active and i.kind = 'finished'

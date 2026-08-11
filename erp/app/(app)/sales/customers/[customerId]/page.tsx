@@ -4,7 +4,7 @@ import { setCustomerActive, updateCustomer } from '@/app/actions/sales';
 import { ActionForm } from '@/components/action-form';
 import { Alert, Badge, Card, Cell, Empty, Field, inputClass, LinkButton, PageHeader, Row, Stat, Table } from '@/components/ui';
 import { query, queryOne } from '@/lib/db';
-import { CUSTOMER_KINDS, fmtDate, fmtMoney, PRICE_LEVELS, SO_STATUS } from '@/lib/format';
+import { SALES_CHANNELS, fmtDate, fmtMoney, SO_STATUS } from '@/lib/format';
 import { requireRole } from '@/lib/session';
 
 export const dynamic = 'force-dynamic';
@@ -20,13 +20,12 @@ export default async function CustomerEditPage({
   const customer = await queryOne<{
     id: string;
     name: string;
-    kind: string;
+    channel: string;
     edrpou: string | null;
     ipn: string | null;
     is_vat_payer: boolean;
     contact: string | null;
     phone: string | null;
-    price_level: string;
     payment_terms_days: number;
     credit_limit: number;
     address: string | null;
@@ -73,7 +72,7 @@ export default async function CustomerEditPage({
     <>
       <PageHeader
         title={customer.name}
-        subtitle={`${CUSTOMER_KINDS[customer.kind]} · ${PRICE_LEVELS[customer.price_level]}`}
+        subtitle={SALES_CHANNELS[customer.channel] ?? customer.channel}
         action={<LinkButton href="/sales/customers">← До клієнтів</LinkButton>}
       />
 
@@ -124,26 +123,18 @@ export default async function CustomerEditPage({
                 <input name="name" required defaultValue={customer.name} className={inputClass} />
               </Field>
 
-              <div className="grid gap-3 sm:grid-cols-2">
-                <Field label="Тип">
-                  <select name="kind" defaultValue={customer.kind} className={inputClass}>
-                    {Object.entries(CUSTOMER_KINDS).map(([key, label]) => (
-                      <option key={key} value={key}>
-                        {label}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-                <Field label="Рівень цін" hint="діє на нові замовлення">
-                  <select name="price_level" defaultValue={customer.price_level} className={inputClass}>
-                    {Object.entries(PRICE_LEVELS).map(([key, label]) => (
-                      <option key={key} value={key}>
-                        {label}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-              </div>
+              <Field
+                label="Канал продажу"
+                hint="і аналітика, і прайс: ціни в номенклатурі діляться по каналах; діє на нові замовлення"
+              >
+                <select name="channel" defaultValue={customer.channel} className={inputClass}>
+                  {Object.entries(SALES_CHANNELS).map(([key, label]) => (
+                    <option key={key} value={key}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </Field>
 
               <div className="grid gap-3 sm:grid-cols-2">
                 <Field label="ЄДРПОУ / РНОКПП">

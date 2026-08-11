@@ -3,7 +3,7 @@ import { createCustomer } from '@/app/actions/sales';
 import { ActionForm } from '@/components/action-form';
 import { Badge, Card, Cell, Empty, Field, inputClass, LinkButton, PageHeader, Row, Table } from '@/components/ui';
 import { query } from '@/lib/db';
-import { CUSTOMER_KINDS, fmtMoney, PRICE_LEVELS } from '@/lib/format';
+import { SALES_CHANNELS, fmtMoney } from '@/lib/format';
 import { requireRole } from '@/lib/session';
 
 export const dynamic = 'force-dynamic';
@@ -19,10 +19,9 @@ export default async function CustomersPage({
   const customers = await query<{
     id: string;
     name: string;
-    kind: string;
+    channel: string;
     contact: string | null;
     phone: string | null;
-    price_level: string;
     payment_terms_days: number;
     credit_limit: number;
     is_active: boolean;
@@ -30,7 +29,7 @@ export default async function CustomersPage({
     paid_amount: number;
     balance_due: number;
   }>(
-    `select c.id, c.name, c.kind, c.contact, c.phone, c.price_level,
+    `select c.id, c.name, c.channel, c.contact, c.phone,
             c.payment_terms_days, c.credit_limit, c.is_active,
             b.shipped_amount, b.paid_amount, b.balance_due
        from customers c
@@ -78,7 +77,7 @@ export default async function CustomersPage({
                       </div>
                     </Cell>
                     <Cell>
-                      <Badge>{CUSTOMER_KINDS[c.kind]}</Badge>
+                      <Badge>{SALES_CHANNELS[c.channel] ?? c.channel}</Badge>
                       {!c.is_active && (
                         <div className="mt-0.5">
                           <Badge tone="amber">деактивований</Badge>
@@ -86,7 +85,7 @@ export default async function CustomersPage({
                       )}
                     </Cell>
                     <Cell>
-                      <div className="text-xs">{PRICE_LEVELS[c.price_level]}</div>
+                      
                       {c.payment_terms_days > 0 && (
                         <div className="text-xs text-emerald-800/50">
                           відтермінування {c.payment_terms_days} дн.
@@ -119,18 +118,9 @@ export default async function CustomersPage({
             <Field label="Назва">
               <input name="name" required className={inputClass} placeholder="АТБ-Маркет" />
             </Field>
-            <Field label="Тип">
-              <select name="kind" className={inputClass} defaultValue="network">
-                {Object.entries(CUSTOMER_KINDS).map(([key, label]) => (
-                  <option key={key} value={key}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <Field label="Рівень цін">
-              <select name="price_level" className={inputClass} defaultValue="distributor">
-                {Object.entries(PRICE_LEVELS).map(([key, label]) => (
+            <Field label="Канал продажу" hint="визначає і аналітику, і прайс — ціни в номенклатурі діляться по каналах">
+              <select name="channel" className={inputClass} defaultValue="small_wholesale">
+                {Object.entries(SALES_CHANNELS).map(([key, label]) => (
                   <option key={key} value={key}>
                     {label}
                   </option>

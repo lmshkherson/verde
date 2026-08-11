@@ -57,18 +57,18 @@ export const UNITS: Record<string, string> = {
   pack: 'уп',
 };
 
-export const CUSTOMER_KINDS: Record<string, string> = {
-  network: 'Мережа',
-  distributor: "Дистриб'ютор",
-  pharmacy: 'Аптека',
-  horeca: 'HoReCa',
-  retail: 'Роздріб',
-};
-
-export const PRICE_LEVELS: Record<string, string> = {
-  distributor: "Ціна дистриб'ютора",
-  network: 'Ціна на мережу',
-  rrp: 'РРЦ',
+/**
+ * Канал продажу — і хто клієнт, і за якою ціною йому продаємо: одне поняття
+ * замість окремих «типу» і «рівня цін». Ціни в номенклатурі діляться саме
+ * по цих каналах.
+ */
+export const SALES_CHANNELS: Record<string, string> = {
+  site: 'Сайт',
+  small_wholesale: 'Дрібний гурт',
+  offices: 'Офіси',
+  supermarkets: 'Супермаркети',
+  distributors: "Дистриб'ютори",
+  private_label: 'Private Label',
 };
 
 export const PO_STATUS: Record<string, string> = {

@@ -1,12 +1,12 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { setItemActive, updateItem } from '@/app/actions/catalog';
+import { saveItemPrices, setItemActive, updateItem } from '@/app/actions/catalog';
 import { saveAllergens, saveNutrition } from '@/app/actions/labeling';
 import { Barcode } from '@/components/barcode';
 import { ActionForm } from '@/components/action-form';
 import { Alert, Badge, Card, Cell, Empty, Field, inputClass, LinkButton, PageHeader, Row, Table } from '@/components/ui';
 import { query, queryOne } from '@/lib/db';
-import { EXPENSE_CATEGORIES, fmtDate, fmtMoney, fmtQty, ITEM_KINDS, STOCK_ITEM_KINDS, UNITS, unitLabel } from '@/lib/format';
+import { EXPENSE_CATEGORIES, fmtDate, fmtMoney, fmtQty, ITEM_KINDS, SALES_CHANNELS, STOCK_ITEM_KINDS, UNITS, unitLabel } from '@/lib/format';
 import { requireRole } from '@/lib/session';
 
 export const dynamic = 'force-dynamic';
@@ -25,9 +25,6 @@ export default async function ItemEditPage({ params }: { params: Promise<{ itemI
     min_stock: number;
     weight_g: number | null;
     pcs_per_box: number | null;
-    price_distributor: number | null;
-    price_network: number | null;
-    price_rrp: number | null;
     vat_rate: number;
     uktzed: string | null;
     uom_code: string | null;
@@ -210,6 +207,12 @@ export default async function ItemEditPage({ params }: { params: Promise<{ itemI
     );
   }
 
+  const channelPrices = await query<{ channel: string; price: number }>(
+    'select channel, price from item_prices where item_id = $1',
+    [itemId],
+  );
+  const priceOf = new Map(channelPrices.map((p) => [p.channel, Number(p.price)]));
+
   const allergens = await query<{ code: string; name: string; kind: string | null }>(
     `select a.code, a.name, ia.kind
        from allergens a
@@ -355,38 +358,6 @@ export default async function ItemEditPage({ params }: { params: Promise<{ itemI
               </Field>
             </div>
 
-            <div className="grid gap-3 sm:grid-cols-3">
-              <Field label="Ціна дистриб'ютора" hint="без ПДВ">
-                <input
-                  name="price_distributor"
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  defaultValue={item.price_distributor ?? ''}
-                  className={inputClass}
-                />
-              </Field>
-              <Field label="Ціна на мережу" hint="без ПДВ">
-                <input
-                  name="price_network"
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  defaultValue={item.price_network ?? ''}
-                  className={inputClass}
-                />
-              </Field>
-              <Field label="РРЦ" hint="без ПДВ">
-                <input
-                  name="price_rrp"
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  defaultValue={item.price_rrp ?? ''}
-                  className={inputClass}
-                />
-              </Field>
-            </div>
 
             <div className="grid gap-3 sm:grid-cols-3">
               <Field label="Ставка ПДВ, %" hint="діє на нові документи">
@@ -485,6 +456,33 @@ export default async function ItemEditPage({ params }: { params: Promise<{ itemI
             </Field>
           </ActionForm>
         </Card>
+
+        {item.kind !== 'service' && (
+          <Card title="Ціни по каналах продажу">
+            <p className="mb-3 text-sm text-emerald-800/70">
+              Ціни без ПДВ. Канал клієнта визначає, яка з них підставиться в замовлення.
+              Порожнє поле — «для цього каналу ціни немає»: замовлення такого каналу попросить
+              ціну, а не підставить нуль.
+            </p>
+            <ActionForm action={saveItemPrices} submitLabel="Зберегти прайс" variant="ghost">
+              <input type="hidden" name="item_id" value={item.id} />
+              <div className="grid gap-3 sm:grid-cols-3">
+                {Object.entries(SALES_CHANNELS).map(([key, label]) => (
+                  <Field key={key} label={label}>
+                    <input
+                      name={`price_${key}`}
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      defaultValue={priceOf.get(key) ?? ''}
+                      className={inputClass}
+                    />
+                  </Field>
+                ))}
+              </div>
+            </ActionForm>
+          </Card>
+        )}
 
         <Card title="Поживна цінність на 100 г">
           <p className="mb-3 text-sm text-emerald-800/70">

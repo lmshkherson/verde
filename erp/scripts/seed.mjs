@@ -361,6 +361,15 @@ try {
     );
   }
 
+  // Прайс по каналах: РРЦ — сайт, мережа — супермаркети, дистриб'ютори.
+  await client.query(`
+    insert into item_prices (item_id, channel, price)
+    select id, 'site', price_rrp from items where price_rrp > 0
+    union all select id, 'supermarkets', price_network from items where price_network > 0
+    union all select id, 'distributors', price_distributor from items where price_distributor > 0
+    on conflict (item_id, channel) do update set price = excluded.price
+  `);
+
   // Послуги: картки для повторюваних витрат, щоб у надходженні їх обирали зі
   // списку, а звіти бачили витрати в розрізі кожної послуги.
   const SERVICES = [
@@ -433,11 +442,12 @@ try {
     if (rows.length === 0) {
       await client.query(
         `insert into customers
-           (name, kind, edrpou, contact, phone, price_level, payment_terms_days, credit_limit,
+           (name, kind, edrpou, contact, phone, price_level, channel, payment_terms_days, credit_limit,
             ipn, is_vat_payer, address, delivery_address, iban, bank_name)
-         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
-        [name, kind, edrpou, contact, phone, level, terms, limit, ipn, isVat, address,
-         delivery, iban, bank],
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
+        [name, kind, edrpou, contact, phone, level,
+         level === 'rrp' ? 'site' : level === 'network' ? 'supermarkets' : 'distributors',
+         terms, limit, ipn, isVat, address, delivery, iban, bank],
       );
     } else {
       await client.query(

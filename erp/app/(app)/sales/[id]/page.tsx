@@ -5,7 +5,7 @@ import { ActionForm } from '@/components/action-form';
 import { LinesEntry } from '@/components/lines-entry';
 import { Badge, Button, Card, Cell, Empty, Field, inputClass, LinkButton, PageHeader, Row, Stat, Table } from '@/components/ui';
 import { query, queryOne } from '@/lib/db';
-import { fmtDate, fmtMoney, fmtQty, PRICE_LEVELS, SO_STATUS, unitLabel } from '@/lib/format';
+import { fmtDate, fmtMoney, fmtQty, SALES_CHANNELS, SO_STATUS, unitLabel } from '@/lib/format';
 import { requireRole } from '@/lib/session';
 
 export const dynamic = 'force-dynamic';
@@ -29,7 +29,7 @@ export default async function SalesOrderPage({ params }: { params: Promise<{ id:
     ship_by: string | null;
     customer_id: string;
     customer_name: string;
-    price_level: string;
+    channel: string;
     payment_terms_days: number;
     net_amount: number;
     vat_amount: number;
@@ -46,7 +46,7 @@ export default async function SalesOrderPage({ params }: { params: Promise<{ id:
     entity_name: string;
     seller_is_vat_payer: boolean;
   }>(
-    `select f.*, c.price_level, e.short_name as entity_name, e.is_vat_payer as seller_is_vat_payer
+    `select f.*, c.channel, e.short_name as entity_name, e.is_vat_payer as seller_is_vat_payer
        from v_sales_orders_full f
        join customers c on c.id = f.customer_id
        join legal_entities e on e.id = f.legal_entity_id
@@ -85,17 +85,16 @@ export default async function SalesOrderPage({ params }: { params: Promise<{ id:
       unit: string;
       vat_rate: number;
       barcode: string | null;
-      price_distributor: number | null;
-      price_network: number | null;
-      price_rrp: number | null;
+      channel_price: number | null;
     }>(
       `select a.item_id as id, a.sku, a.name, a.available_qty, a.unit,
-              i.vat_rate, i.barcode, i.price_distributor, i.price_network, i.price_rrp
+              i.vat_rate, i.barcode, ip.price as channel_price
          from v_item_available a
          join items i on i.id = a.item_id
+         left join item_prices ip on ip.item_id = a.item_id and ip.channel = $2
         where a.kind = 'finished' and i.is_active and a.legal_entity_id = $1
         order by a.name`,
-      [order.legal_entity_id],
+      [order.legal_entity_id, order.channel],
     ),
     query<{ id: string; number: string; shipped_on: string; ttn_number: string | null; carrier: string | null }>(
       'select id, number, shipped_on, ttn_number, carrier from shipments where so_id = $1 order by shipped_on',
@@ -115,7 +114,7 @@ export default async function SalesOrderPage({ params }: { params: Promise<{ id:
     <>
       <PageHeader
         title={`Замовлення ${order.number}`}
-        subtitle={`${order.entity_name} → ${order.customer_name} · ${PRICE_LEVELS[order.price_level]} · від ${fmtDate(order.ordered_on)}`}
+        subtitle={`${order.entity_name} → ${order.customer_name} · ${SALES_CHANNELS[order.channel] ?? order.channel} · від ${fmtDate(order.ordered_on)}`}
         action={<LinkButton href="/sales">← До списку</LinkButton>}
       />
 
@@ -222,7 +221,7 @@ export default async function SalesOrderPage({ params }: { params: Promise<{ id:
           <Card title="Введення замовлення">
             <p className="mb-3 text-sm text-emerald-800/70">
               Заповнюйте рядки як із бланка замовлення: товар шукається за назвою, артикулом або
-              штрихкодом, ціна без ПДВ підставляється з прайсу клієнта ({PRICE_LEVELS[order.price_level]})
+              штрихкодом, ціна без ПДВ підставляється з прайсу каналу «{SALES_CHANNELS[order.channel] ?? order.channel}»
               — за потреби перекрийте будь-яку з чотирьох сум, решта перерахуються.
             </p>
             <LinesEntry
@@ -238,12 +237,7 @@ export default async function SalesOrderPage({ params }: { params: Promise<{ id:
                 // просто збігаються з «без ПДВ».
                 vat_rate: order.seller_is_vat_payer ? Number(a.vat_rate) : 0,
                 barcode: a.barcode,
-                defaultPrice:
-                  order.price_level === 'rrp'
-                    ? a.price_rrp
-                    : order.price_level === 'network'
-                      ? a.price_network
-                      : a.price_distributor,
+                defaultPrice: a.channel_price,
                 hint: `доступно ${fmtQty(a.available_qty, unitLabel(a.unit))}`,
               }))}
               pricesIncludeVat={false}

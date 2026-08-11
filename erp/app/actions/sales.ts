@@ -6,6 +6,7 @@ import { transaction } from '@/lib/db';
 import { type ActionState, num, str, strOrNull, toMessage } from '@/lib/action-state';
 import { allocateFefo, defaultWarehouseId, insertMoves, nextDocNumber, round2, round3 } from '@/lib/stock';
 import { calcPurchaseVat, saleVatRate } from '@/lib/vat';
+import { SALES_CHANNELS } from '@/lib/format';
 import { resolveEntityId } from '@/lib/doc-entity';
 import { requireRole } from '@/lib/session';
 import { logAutoPoint } from '@/lib/haccp';
@@ -19,15 +20,14 @@ export async function createCustomer(_prev: ActionState, formData: FormData): Pr
   try {
     await transaction((c) =>
       c.query(
-        `insert into customers (name, kind, edrpou, contact, phone, price_level, payment_terms_days, credit_limit, note)
-         values ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+        `insert into customers (name, channel, edrpou, contact, phone, payment_terms_days, credit_limit, note)
+         values ($1, $2, $3, $4, $5, $6, $7, $8)`,
         [
           name,
-          str(formData, 'kind') || 'network',
+          SALES_CHANNELS[str(formData, 'channel')] ? str(formData, 'channel') : 'small_wholesale',
           strOrNull(formData, 'edrpou'),
           strOrNull(formData, 'contact'),
           strOrNull(formData, 'phone'),
-          str(formData, 'price_level') || 'distributor',
           num(formData, 'payment_terms_days'),
           num(formData, 'credit_limit'),
           strOrNull(formData, 'note'),
@@ -62,21 +62,20 @@ export async function updateCustomer(_prev: ActionState, formData: FormData): Pr
     await transaction((c) =>
       c.query(
         `update customers set
-           name = $2, kind = $3, edrpou = $4, ipn = $5, is_vat_payer = $6,
-           contact = $7, phone = $8, price_level = $9,
-           payment_terms_days = $10, credit_limit = $11, note = $12, address = $13,
-           delivery_address = $14, iban = $15, bank_name = $16
+           name = $2, channel = $3, edrpou = $4, ipn = $5, is_vat_payer = $6,
+           contact = $7, phone = $8,
+           payment_terms_days = $9, credit_limit = $10, note = $11, address = $12,
+           delivery_address = $13, iban = $14, bank_name = $15
          where id = $1`,
         [
           id,
           name,
-          str(formData, 'kind') || 'network',
+          SALES_CHANNELS[str(formData, 'channel')] ? str(formData, 'channel') : 'small_wholesale',
           strOrNull(formData, 'edrpou'),
           strOrNull(formData, 'ipn'),
           formData.get('is_vat_payer') === 'on',
           strOrNull(formData, 'contact'),
           strOrNull(formData, 'phone'),
-          str(formData, 'price_level') || 'distributor',
           num(formData, 'payment_terms_days'),
           num(formData, 'credit_limit'),
           strOrNull(formData, 'note'),
@@ -183,10 +182,10 @@ export async function addSalesLine(_prev: ActionState, formData: FormData): Prom
     await transaction(async (c) => {
       const { rows: orderRows } = await c.query<{
         status: string;
-        price_level: string;
+        channel: string;
         seller_is_vat_payer: boolean;
       }>(
-        `select o.status, c.price_level, e.is_vat_payer as seller_is_vat_payer
+        `select o.status, c.channel, e.is_vat_payer as seller_is_vat_payer
            from sales_orders o
            join customers c on c.id = o.customer_id
            join legal_entities e on e.id = o.legal_entity_id
@@ -197,25 +196,25 @@ export async function addSalesLine(_prev: ActionState, formData: FormData): Prom
       if (!order) throw new Error('Замовлення не знайдено');
       if (order.status !== 'draft') throw new Error('Позиції можна додавати лише в чернетку');
 
-      const { rows: itemRows } = await c.query<{
-        price_distributor: number | null;
-        price_network: number | null;
-        price_rrp: number | null;
-        vat_rate: number;
-      }>('select price_distributor, price_network, price_rrp, vat_rate from items where id = $1', [itemId]);
+      const { rows: itemRows } = await c.query<{ vat_rate: number; channel_price: number | null }>(
+        `select i.vat_rate, ip.price as channel_price
+           from items i
+           left join item_prices ip on ip.item_id = i.id and ip.channel = $2
+          where i.id = $1`,
+        [itemId, order.channel],
+      );
       const item = itemRows[0];
       if (!item) throw new Error('Товар не знайдено');
 
       // Ціни в прайсі зберігаються без ПДВ; менеджер може перекрити їх вручну.
       let price = num(formData, 'unit_price', 0);
       if (price <= 0) {
-        price =
-          (order.price_level === 'rrp'
-            ? item.price_rrp
-            : order.price_level === 'network'
-              ? item.price_network
-              : item.price_distributor) ?? 0;
-        if (price <= 0) throw new Error('Для цього товару не заданий прайс — вкажіть ціну вручну');
+        price = Number(item.channel_price ?? 0);
+        if (price <= 0) {
+          throw new Error(
+            `Для каналу «${SALES_CHANNELS[order.channel] ?? order.channel}» не задана ціна цього товару — заповніть її в картці або вкажіть вручну`,
+          );
+        }
       }
 
       // Неплатник ПДВ не нараховує податок узагалі, тож у рядку буде нуль.
@@ -257,10 +256,10 @@ export async function addSalesLines(_prev: ActionState, formData: FormData): Pro
     await transaction(async (c) => {
       const { rows: orderRows } = await c.query<{
         status: string;
-        price_level: string;
+        channel: string;
         seller_is_vat_payer: boolean;
       }>(
-        `select o.status, c.price_level, e.is_vat_payer as seller_is_vat_payer
+        `select o.status, c.channel, e.is_vat_payer as seller_is_vat_payer
            from sales_orders o
            join customers c on c.id = o.customer_id
            join legal_entities e on e.id = o.legal_entity_id
@@ -279,14 +278,14 @@ export async function addSalesLines(_prev: ActionState, formData: FormData): Pro
 
         const { rows: itemRows } = await c.query<{
           kind: string;
-          price_distributor: number | null;
-          price_network: number | null;
-          price_rrp: number | null;
           vat_rate: number;
+          channel_price: number | null;
         }>(
-          `select kind, price_distributor, price_network, price_rrp, vat_rate
-             from items where id = $1 and is_active`,
-          [line.item_id],
+          `select i.kind, i.vat_rate, ip.price as channel_price
+             from items i
+             left join item_prices ip on ip.item_id = i.id and ip.channel = $2
+            where i.id = $1 and i.is_active`,
+          [line.item_id, order.channel],
         );
         const item = itemRows[0];
         if (!item) throw new Error(`Рядок ${row}: товар не знайдено`);
@@ -294,13 +293,12 @@ export async function addSalesLines(_prev: ActionState, formData: FormData): Pro
 
         let price = Number(line.unit_price) || 0;
         if (price <= 0) {
-          price =
-            (order.price_level === 'rrp'
-              ? item.price_rrp
-              : order.price_level === 'network'
-                ? item.price_network
-                : item.price_distributor) ?? 0;
-          if (price <= 0) throw new Error(`Рядок ${row}: для товару не заданий прайс — вкажіть ціну`);
+          price = Number(item.channel_price ?? 0);
+          if (price <= 0) {
+            throw new Error(
+              `Рядок ${row}: для каналу «${SALES_CHANNELS[order.channel] ?? order.channel}» не задана ціна — заповніть у картці товару`,
+            );
+          }
         }
 
         await c.query(
@@ -656,8 +654,8 @@ async function ensureGroupStock(
   if (shortages.length === 0) return [];
 
   // Внутрішній клієнт, що представляє юрособу документа в чужих продажах.
-  const { rows: internalCust } = await c.query<{ id: string; price_level: string }>(
-    'select id, price_level from customers where legal_entity_id = $1 and is_active limit 1',
+  const { rows: internalCust } = await c.query<{ id: string; channel: string }>(
+    'select id, channel from customers where legal_entity_id = $1 and is_active limit 1',
     [order.legal_entity_id],
   );
   if (!internalCust[0]) {
@@ -712,23 +710,17 @@ async function ensureGroupStock(
     );
 
     for (const it of items) {
-      const { rows: itemRows } = await c.query<{
-        price_distributor: number | null;
-        price_network: number | null;
-        price_rrp: number | null;
-        vat_rate: number;
-      }>('select price_distributor, price_network, price_rrp, vat_rate from items where id = $1', [
-        it.itemId,
-      ]);
-      const price =
-        (internalCust[0].price_level === 'rrp'
-          ? itemRows[0].price_rrp
-          : internalCust[0].price_level === 'network'
-            ? itemRows[0].price_network
-            : itemRows[0].price_distributor) ?? 0;
+      const { rows: itemRows } = await c.query<{ vat_rate: number; channel_price: number | null }>(
+        `select i.vat_rate, ip.price as channel_price
+           from items i
+           left join item_prices ip on ip.item_id = i.id and ip.channel = $2
+          where i.id = $1`,
+        [it.itemId, internalCust[0].channel],
+      );
+      const price = Number(itemRows[0]?.channel_price ?? 0);
       if (price <= 0) {
         throw new Error(
-          `«${it.name}»: для автоматичної внутрішньої реалізації потрібен прайс — заповніть ціну в картці товару`,
+          `«${it.name}»: для автоматичної внутрішньої реалізації потрібна ціна каналу «${SALES_CHANNELS[internalCust[0].channel] ?? internalCust[0].channel}» — заповніть її в картці товару`,
         );
       }
       await c.query(
