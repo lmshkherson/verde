@@ -1,9 +1,9 @@
 import { notFound } from 'next/navigation';
-import { addRecipeLine, removeRecipeLine } from '@/app/actions/production';
+import { addRecipeLine, approveRecipe, cloneRecipe, removeRecipeLine } from '@/app/actions/production';
 import { ActionForm } from '@/components/action-form';
-import { Button, Card, Cell, Empty, Field, inputClass, LinkButton, PageHeader, Row, Stat, Table } from '@/components/ui';
+import { Badge, Button, Card, Cell, Empty, Field, inputClass, LinkButton, PageHeader, Row, Stat, Table } from '@/components/ui';
 import { query, queryOne } from '@/lib/db';
-import { fmtMoney, fmtQty, unitLabel } from '@/lib/format';
+import { fmtDate, fmtMoney, fmtQty, isoDay, unitLabel } from '@/lib/format';
 import { requireRole } from '@/lib/session';
 
 export const dynamic = 'force-dynamic';
@@ -22,16 +22,25 @@ export default async function RecipePage({ params }: { params: Promise<{ recipeI
     price_distributor: number | null;
     batch_material_cost: number | null;
     unit_material_cost: number | null;
+    effective_from: string | Date | null;
+    approved_at: string | null;
+    is_current: boolean;
+    batches: number;
   }>(
     `select r.id, r.version, r.output_qty, r.notes, i.name as product, i.sku, i.price_distributor,
-            rc.batch_material_cost, rc.unit_material_cost
+            rc.batch_material_cost, rc.unit_material_cost,
+            r.effective_from, r.approved_at,
+            (cr.id is not null) as is_current,
+            (select count(*) from production_orders po where po.recipe_id = r.id)::int as batches
        from recipes r
        join items i on i.id = r.product_item_id
        left join v_recipe_cost rc on rc.recipe_id = r.id and rc.legal_entity_id = $2
+       left join v_current_recipes cr on cr.id = r.id
       where r.id = $1`,
     [recipeId, session.eid],
   );
   if (!recipe) notFound();
+  const approved = Boolean(recipe.approved_at);
 
   const [lines, materials] = await Promise.all([
     query<{
@@ -69,7 +78,22 @@ export default async function RecipePage({ params }: { params: Promise<{ recipeI
       <PageHeader
         title={`${recipe.product} — v${recipe.version}`}
         subtitle={`${recipe.sku} · вихід ${fmtQty(recipe.output_qty)} шт із варки`}
-        action={<LinkButton href="/production/recipes">← До рецептур</LinkButton>}
+        action={
+          <div className="flex flex-wrap items-center gap-2">
+            {!approved ? (
+              <Badge tone="amber">чернетка — у виробництві не бере участі</Badge>
+            ) : recipe.is_current ? (
+              <Badge tone="green">діє з {fmtDate(recipe.effective_from)}</Badge>
+            ) : (
+              <Badge tone="gray">
+                {recipe.effective_from && new Date(recipe.effective_from) > new Date()
+                  ? `набере чинності ${fmtDate(recipe.effective_from)}`
+                  : `архівна версія · діяла з ${fmtDate(recipe.effective_from)}`}
+              </Badge>
+            )}
+            <LinkButton href="/production/recipes">← До рецептур</LinkButton>
+          </div>
+        }
       />
 
       <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
@@ -108,13 +132,15 @@ export default async function RecipePage({ params }: { params: Promise<{ recipeI
                       {fmtMoney(effective * l.avg_cost)}
                     </Cell>
                     <Cell align="right">
-                      <form action={removeRecipeLine}>
-                        <input type="hidden" name="line_id" value={l.id} />
-                        <input type="hidden" name="recipe_id" value={recipe.id} />
-                        <Button variant="ghost" className="!min-h-9 !px-3 text-xs">
-                          Видалити
-                        </Button>
-                      </form>
+                      {!approved && (
+                        <form action={removeRecipeLine}>
+                          <input type="hidden" name="line_id" value={l.id} />
+                          <input type="hidden" name="recipe_id" value={recipe.id} />
+                          <Button variant="ghost" className="!min-h-9 !px-3 text-xs">
+                            Видалити
+                          </Button>
+                        </form>
+                      )}
                     </Cell>
                   </Row>
                 );
@@ -128,32 +154,68 @@ export default async function RecipePage({ params }: { params: Promise<{ recipeI
           )}
         </Card>
 
-        <Card title="Додати компонент">
-          <ActionForm action={addRecipeLine} submitLabel="Зберегти компонент">
-            <input type="hidden" name="recipe_id" value={recipe.id} />
-            <Field label="Сировина або пакування">
-              <select name="item_id" required className={inputClass} defaultValue="">
-                <option value="" disabled>
-                  Оберіть позицію…
-                </option>
-                {materials.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.name} ({unitLabel(m.unit)})
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <Field label="Кількість на варку">
-              <input name="qty_per_batch" type="number" step="0.0001" min="0" required className={inputClass} />
-            </Field>
-            <Field label="Технологічні втрати, %" hint="Усушка, налипання, обрізки">
-              <input name="loss_pct" type="number" step="0.1" min="0" max="99" defaultValue="0" className={inputClass} />
-            </Field>
-          </ActionForm>
-          <p className="mt-3 text-xs text-emerald-800/60">
-            Повторне додавання тієї самої позиції оновлює її норму.
-          </p>
-        </Card>
+        <div className="space-y-4">
+          {!approved ? (
+            <>
+              <Card title="Додати компонент">
+                <ActionForm action={addRecipeLine} submitLabel="Зберегти компонент">
+                  <input type="hidden" name="recipe_id" value={recipe.id} />
+                  <Field label="Сировина або пакування">
+                    <select name="item_id" required className={inputClass} defaultValue="">
+                      <option value="" disabled>
+                        Оберіть позицію…
+                      </option>
+                      {materials.map((m) => (
+                        <option key={m.id} value={m.id}>
+                          {m.name} ({unitLabel(m.unit)})
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                  <Field label="Кількість на варку">
+                    <input name="qty_per_batch" type="number" step="0.0001" min="0" required className={inputClass} />
+                  </Field>
+                  <Field label="Технологічні втрати, %" hint="Усушка, налипання, обрізки">
+                    <input name="loss_pct" type="number" step="0.1" min="0" max="99" defaultValue="0" className={inputClass} />
+                  </Field>
+                </ActionForm>
+                <p className="mt-3 text-xs text-emerald-800/60">
+                  Повторне додавання тієї самої позиції оновлює її норму.
+                </p>
+              </Card>
+
+              <Card title="Проведення">
+                <p className="mb-3 text-sm text-emerald-800/70">
+                  Проведена версія фіксується назавжди: з дати «діє з» нові варки рахуються за
+                  нею, а все, що зварено раніше, лишається на попередніх версіях.
+                </p>
+                <ActionForm action={approveRecipe} submitLabel="Провести версію">
+                  <input type="hidden" name="recipe_id" value={recipe.id} />
+                  <Field label="Діє з">
+                    <input
+                      name="effective_from"
+                      type="date"
+                      required
+                      defaultValue={isoDay(new Date()) ?? ''}
+                      className={inputClass}
+                    />
+                  </Field>
+                </ActionForm>
+              </Card>
+            </>
+          ) : (
+            <Card title="Нова версія">
+              <p className="mb-3 text-sm text-emerald-800/70">
+                Ця версія проведена й зафіксована{recipe.batches > 0 ? ` — за нею вже ${recipe.batches} варок` : ''}.
+                Щоб замінити інгредієнт чи норму, створіть нову версію: склад скопіюється,
+                відредагуйте його і проведіть з потрібної дати.
+              </p>
+              <ActionForm action={cloneRecipe} submitLabel="Нова версія на основі цієї" variant="ghost">
+                <input type="hidden" name="recipe_id" value={recipe.id} />
+              </ActionForm>
+            </Card>
+          )}
+        </div>
       </div>
     </>
   );

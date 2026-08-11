@@ -387,9 +387,10 @@ try {
 
     let recipeId = exists[0]?.id;
     if (!recipeId) {
+      // Демо-рецептури одразу проведені й чинні: сід має давати робочий цех.
       const { rows } = await client.query(
-        `insert into recipes (product_item_id, version, output_qty, notes)
-         values ((select id from items where sku = $1), 1, $2, $3) returning id`,
+        `insert into recipes (product_item_id, version, output_qty, notes, effective_from, approved_at)
+         values ((select id from items where sku = $1), 1, $2, $3, current_date - 90, now()) returning id`,
         [recipe.product, recipe.output, recipe.notes],
       );
       recipeId = rows[0].id;

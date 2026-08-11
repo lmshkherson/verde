@@ -43,6 +43,103 @@ export async function createRecipe(_prev: ActionState, formData: FormData): Prom
   redirect(`/production/recipes/${recipeId}`);
 }
 
+/** Проведені версії недоторканні: історія варок мусить читатися як була. */
+async function assertRecipeDraft(c: import('pg').PoolClient, recipeId: string) {
+  const { rows } = await c.query<{ approved_at: string | null }>(
+    'select approved_at from recipes where id = $1',
+    [recipeId],
+  );
+  if (!rows[0]) throw new Error('Рецептуру не знайдено');
+  if (rows[0].approved_at) {
+    throw new Error(
+      'Цю версію вже проведено — вона зафіксована. Створіть нову версію на її основі.',
+    );
+  }
+}
+
+/**
+ * Нова версія на основі наявної: копіює вихід, примітки й усі компоненти в
+ * чернетку. Саме так змінюють діючу карту — замінили інгредієнт у копії,
+ * провели з дати, і з того дня виробництво рахується по-новому.
+ */
+export async function cloneRecipe(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  await requireRole('production');
+  const sourceId = str(formData, 'recipe_id');
+
+  let recipeId: string;
+  try {
+    recipeId = await transaction(async (c) => {
+      const { rows: src } = await c.query<{
+        product_item_id: string;
+        output_qty: number;
+        notes: string | null;
+      }>('select product_item_id, output_qty, notes from recipes where id = $1', [sourceId]);
+      if (!src[0]) throw new Error('Рецептуру не знайдено');
+
+      const { rows: verRows } = await c.query<{ next: number }>(
+        'select coalesce(max(version), 0) + 1 as next from recipes where product_item_id = $1',
+        [src[0].product_item_id],
+      );
+      const { rows } = await c.query<{ id: string }>(
+        `insert into recipes (product_item_id, version, output_qty, notes)
+         values ($1, $2, $3, $4) returning id`,
+        [src[0].product_item_id, verRows[0].next, src[0].output_qty, src[0].notes],
+      );
+      await c.query(
+        `insert into recipe_lines (recipe_id, item_id, qty_per_batch, loss_pct)
+         select $1, item_id, qty_per_batch, loss_pct from recipe_lines where recipe_id = $2`,
+        [rows[0].id, sourceId],
+      );
+      return rows[0].id;
+    });
+  } catch (err) {
+    return { error: toMessage(err) };
+  }
+
+  redirect(`/production/recipes/${recipeId}`);
+}
+
+/**
+ * Проведення версії. З дати «діє з» нові варки цього продукту беруть саме її;
+ * усе, що проведено раніше, назавжди лишається на попередніх версіях.
+ */
+export async function approveRecipe(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  const session = await requireRole('production');
+  const recipeId = str(formData, 'recipe_id');
+  const effectiveFrom = str(formData, 'effective_from');
+
+  if (!effectiveFrom) return { error: 'Вкажіть, з якої дати діє ця версія' };
+
+  try {
+    await transaction(async (c) => {
+      await assertRecipeDraft(c, recipeId);
+      const { rows: lines } = await c.query<{ n: number }>(
+        'select count(*)::int as n from recipe_lines where recipe_id = $1',
+        [recipeId],
+      );
+      if (lines[0].n === 0) throw new Error('У версії немає жодного компонента — проводити нічого');
+
+      await c.query(
+        `update recipes set effective_from = $2, approved_at = now(), approved_by = $3
+          where id = $1`,
+        [recipeId, effectiveFrom, session.uid],
+      );
+      await c.query(
+        `insert into audit_log (user_id, action, entity, entity_id, details)
+         values ($1, 'approve', 'recipe', $2, $3)`,
+        [session.uid, recipeId, JSON.stringify({ effective_from: effectiveFrom })],
+      );
+    });
+  } catch (err) {
+    return { error: toMessage(err) };
+  }
+
+  revalidatePath(`/production/recipes/${recipeId}`);
+  revalidatePath('/production/recipes');
+  revalidatePath('/production');
+  return { ok: 'Версію проведено — з цієї дати виробництво рахується за нею' };
+}
+
 export async function addRecipeLine(_prev: ActionState, formData: FormData): Promise<ActionState> {
   await requireRole('production');
   const recipeId = str(formData, 'recipe_id');
@@ -55,15 +152,16 @@ export async function addRecipeLine(_prev: ActionState, formData: FormData): Pro
   if (loss < 0 || loss >= 100) return { error: 'Відсоток втрат має бути від 0 до 99' };
 
   try {
-    await transaction((c) =>
-      c.query(
+    await transaction(async (c) => {
+      await assertRecipeDraft(c, recipeId);
+      await c.query(
         `insert into recipe_lines (recipe_id, item_id, qty_per_batch, loss_pct)
          values ($1, $2, $3, $4)
          on conflict (recipe_id, item_id) do update
            set qty_per_batch = excluded.qty_per_batch, loss_pct = excluded.loss_pct`,
         [recipeId, itemId, qty, loss],
-      ),
-    );
+      );
+    });
   } catch (err) {
     return { error: toMessage(err) };
   }
@@ -75,25 +173,41 @@ export async function addRecipeLine(_prev: ActionState, formData: FormData): Pro
 export async function removeRecipeLine(formData: FormData) {
   await requireRole('production');
   const recipeId = str(formData, 'recipe_id');
-  await transaction((c) => c.query('delete from recipe_lines where id = $1', [str(formData, 'line_id')]));
+  await transaction(async (c) => {
+    await assertRecipeDraft(c, recipeId);
+    await c.query('delete from recipe_lines where id = $1', [str(formData, 'line_id')]);
+  });
   revalidatePath(`/production/recipes/${recipeId}`);
 }
 
 export async function createProductionOrder(_prev: ActionState, formData: FormData): Promise<ActionState> {
   const session = await requireRole('production');
-  const recipeId = str(formData, 'recipe_id');
+  const productItemId = str(formData, 'product_item_id');
   const plannedQty = num(formData, 'planned_qty');
-  if (!recipeId) return { error: 'Оберіть рецептуру' };
+  if (!productItemId) return { error: 'Оберіть продукт' };
   if (plannedQty <= 0) return { error: 'Планова кількість має бути більшою за нуль' };
 
   let orderId: string;
   try {
     orderId = await transaction(async (c) => {
-      const { rows: recipeRows } = await c.query<{ product_item_id: string }>(
-        'select product_item_id from recipes where id = $1',
-        [recipeId],
+      const plannedFor = strOrNull(formData, 'planned_for');
+
+      // Версію техкарти обирає не людина, а дата виробництва: остання
+      // проведена, що діяла на цей день. Так «з цього дня рахуємо по-новому»
+      // виконується саме собою, а старі варки лишаються на своїх версіях.
+      const { rows: recipeRows } = await c.query<{ id: string; version: number }>(
+        `select id, version from recipes
+          where product_item_id = $1 and is_active and approved_at is not null
+            and effective_from <= coalesce($2::date, current_date)
+          order by effective_from desc, version desc
+          limit 1`,
+        [productItemId, plannedFor],
       );
-      if (!recipeRows[0]) throw new Error('Рецептуру не знайдено');
+      if (!recipeRows[0]) {
+        throw new Error(
+          'Немає проведеної техкарти, чинної на цю дату. Проведіть версію в «Рецептурах» або змініть дату виробництва.',
+        );
+      }
 
       const number = await nextDocNumber(c, session.eid, 'ВИР');
       const { rows } = await c.query<{ id: string }>(
@@ -103,10 +217,10 @@ export async function createProductionOrder(_prev: ActionState, formData: FormDa
         [
           number,
           session.eid,
-          recipeRows[0].product_item_id,
-          recipeId,
+          productItemId,
+          recipeRows[0].id,
           plannedQty,
-          strOrNull(formData, 'planned_for'),
+          plannedFor,
           strOrNull(formData, 'note'),
           session.uid,
         ],

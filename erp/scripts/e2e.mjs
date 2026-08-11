@@ -266,9 +266,9 @@ try {
   // Партія фісташки з другої поставки ще в карантині — варка має впертися саме в неї.
   const blocked = await session('iryna@v-verde.ua');
   await blocked.goto(`${BASE}/production`);
-  await selectByText(blocked, 'select[name="recipe_id"]', 'Фісташка');
+  await selectByText(blocked, 'select[name="product_item_id"]', 'Фісташка');
   await blocked.fill('input[name="planned_qty"]', '1000');
-  await blocked.click('form:has(select[name="recipe_id"]) button[type="submit"]');
+  await blocked.click('form:has(select[name="product_item_id"]) button[type="submit"]');
   await blocked.waitForURL(/\/production\/[0-9a-f-]{36}/);
   check(
     'потреба показує сировину як не допущену',
@@ -380,9 +380,9 @@ try {
   const production = await session('iryna@v-verde.ua');
 
   await production.goto(`${BASE}/production`);
-  await selectByText(production, 'select[name="recipe_id"]', 'Фісташка');
+  await selectByText(production, 'select[name="product_item_id"]', 'Фісташка');
   await production.fill('input[name="planned_qty"]', '1000');
-  await production.click('form:has(select[name="recipe_id"]) button[type="submit"]');
+  await production.click('form:has(select[name="product_item_id"]) button[type="submit"]');
   await production.waitForURL(/\/production\/[0-9a-f-]{36}/);
 
   check('сировини вистачає', (await production.locator('text=бракує').count()) === 0);
@@ -1858,16 +1858,43 @@ try {
     labelText.includes('ВЕРДЕ СВІТ'),
   );
 
-  // Змінили рецептуру — специфікація застаріла, і система це показує.
+  // Змінили рецептуру: чинну версію редагувати не можна — створюється нова
+  // версія на її основі, і лише після проведення вона набирає чинності.
   await tech2.goto(`${BASE}/production/recipes`);
-  await selectByText(tech2, 'select[name="product_item_id"]', 'Фісташка');
-  await tech2.fill('input[name="output_qty"]', '1000');
-  await tech2.click('form:has(select[name="product_item_id"]) button[type="submit"]');
+  await tech2.locator('a', { hasText: 'Фісташка' }).first().click();
   await tech2.waitForURL(/\/production\/recipes\/[0-9a-f-]{36}/);
+  const v1Url = tech2.url();
+  check(
+    'проведена версія зафіксована — компоненти не редагуються',
+    (await tech2.locator('input[name="qty_per_batch"]').count()) === 0,
+  );
+
+  await tech2.click('button:has-text("Нова версія на основі цієї")');
+  await tech2.waitForTimeout(1500);
+  check('клон відкрився окремою версією', tech2.url() !== v1Url, tech2.url());
+  const draftBody = (await tech2.locator('body').innerText()).replace(/[\s ]+/g, ' ');
+  check(
+    'нова версія — чернетка зі скопійованим складом',
+    draftBody.includes('чернетка') && (await tech2.locator('input[name="qty_per_batch"]').count()) > 0,
+  );
+
+  // Доки чернетку не провели, специфікація етикетки лишається чинною.
+  await tech2.goto(specUrl);
+  check(
+    'чернетка нової версії специфікацію не чіпає',
+    (await tech2.locator('text=використовувати не можна').count()) === 0,
+  );
+
+  await tech2.goBack();
+  await tech2.click('button:has-text("Провести версію")');
+  await tech2.waitForTimeout(1500);
+  await tech2.reload();
+  const approvedBody = (await tech2.locator('body').innerText()).replace(/[\s ]+/g, ' ');
+  check('версію проведено з датою', approvedBody.includes('діє з'));
 
   await tech2.goto(specUrl);
   check(
-    'після зміни рецептури специфікація позначена застарілою',
+    'після проведення нової версії специфікація позначена застарілою',
     (await tech2.locator('text=використовувати не можна').count()) > 0,
   );
   await tech2.goto(`${BASE}/labeling`);

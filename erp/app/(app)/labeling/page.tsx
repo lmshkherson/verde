@@ -22,7 +22,8 @@ export default async function LabelingPage() {
     }>(
       `select i.id, i.sku, i.name, i.weight_g,
               s.version as spec_version, s.approved_on, s.recipe_changed,
-              exists (select 1 from recipes r where r.product_item_id = i.id and r.is_active) as has_recipe
+              exists (select 1 from recipes r where r.product_item_id = i.id and r.is_active
+                        and r.approved_at is not null) as has_recipe
          from items i
          left join v_current_spec s on s.item_id = i.id
         where i.kind in ('finished', 'semi') and i.is_active

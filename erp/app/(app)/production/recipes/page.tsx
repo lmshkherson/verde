@@ -1,9 +1,9 @@
 import Link from 'next/link';
 import { createRecipe } from '@/app/actions/production';
 import { ActionForm } from '@/components/action-form';
-import { Card, Cell, Empty, Field, inputClass, LinkButton, PageHeader, Row, Table } from '@/components/ui';
+import { Badge, Card, Cell, Empty, Field, inputClass, LinkButton, PageHeader, Row, Table } from '@/components/ui';
 import { query } from '@/lib/db';
-import { fmtMoney, fmtQty } from '@/lib/format';
+import { fmtDate, fmtMoney, fmtQty } from '@/lib/format';
 import { requireRole } from '@/lib/session';
 
 export const dynamic = 'force-dynamic';
@@ -21,13 +21,19 @@ export default async function RecipesPage() {
       lines: number;
       unit_material_cost: number | null;
       price_distributor: number | null;
+      effective_from: string | Date | null;
+      approved_at: string | null;
+      is_current: boolean;
     }>(`
       select r.id, i.name as product, i.sku, r.version, r.output_qty,
              (select count(*) from recipe_lines rl where rl.recipe_id = r.id)::int as lines,
-             rc.unit_material_cost, i.price_distributor
+             rc.unit_material_cost, i.price_distributor,
+             r.effective_from, r.approved_at,
+             (cr.id is not null) as is_current
         from recipes r
         join items i on i.id = r.product_item_id
         left join v_recipe_cost rc on rc.recipe_id = r.id and rc.legal_entity_id = $1
+        left join v_current_recipes cr on cr.id = r.id
        order by i.name, r.version desc
     `, [session.eid]),
     query<{ id: string; sku: string; name: string }>(
@@ -48,7 +54,7 @@ export default async function RecipesPage() {
           {recipes.length === 0 ? (
             <Empty>Рецептур ще немає</Empty>
           ) : (
-            <Table head={['Продукт', 'Версія', 'Вихід', 'Компонентів', 'Сировина/од.', 'Маржа до ціни']}>
+            <Table head={['Продукт', 'Версія', 'Статус', 'Вихід', 'Компонентів', 'Сировина/од.', 'Маржа до ціни']}>
               {recipes.map((r) => {
                 const margin =
                   r.price_distributor && r.unit_material_cost
@@ -66,6 +72,19 @@ export default async function RecipesPage() {
                       <div className="text-xs text-emerald-800/50">{r.sku}</div>
                     </Cell>
                     <Cell>v{r.version}</Cell>
+                    <Cell>
+                      {!r.approved_at ? (
+                        <Badge tone="amber">чернетка</Badge>
+                      ) : r.is_current ? (
+                        <Badge tone="green">діє з {fmtDate(r.effective_from)}</Badge>
+                      ) : (
+                        <Badge tone="gray">
+                          {r.effective_from && new Date(r.effective_from) > new Date()
+                            ? `набере чинності ${fmtDate(r.effective_from)}`
+                            : `архів · діяла з ${fmtDate(r.effective_from)}`}
+                        </Badge>
+                      )}
+                    </Cell>
                     <Cell align="right">{fmtQty(r.output_qty, 'шт')}</Cell>
                     <Cell align="right">{r.lines}</Cell>
                     <Cell align="right">
@@ -101,8 +120,10 @@ export default async function RecipesPage() {
             </Field>
           </ActionForm>
           <p className="mt-3 text-xs text-emerald-800/60">
-            Нова рецептура на той самий продукт створюється як наступна версія — старі варки
-            зберігають свою.
+            Нова версія створюється чернеткою: наповніть склад і проведіть її з датою «діє з».
+            До проведення виробництво працює за попередньою версією, а старі варки назавжди
+            зберігають свою. Щоб змінити чинну карту, зручніше відкрити її і натиснути
+            «Нова версія на основі цієї».
           </p>
         </Card>
       </div>

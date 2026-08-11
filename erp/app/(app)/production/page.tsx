@@ -40,16 +40,16 @@ export default async function ProductionPage() {
          po.planned_for nulls last, po.created_at desc
        limit 100
     `, [session.eid]),
+    // Продукти з чинними техкартами: версію для варки обирає дата, а не людина.
     query<{ id: string; label: string; output_qty: number; unit_material_cost: number | null }>(`
-      select r.id,
-             i.name || ' — рецептура v' || r.version as label,
+      select r.product_item_id as id,
+             i.name || ' — техкарта v' || r.version || ' діє з ' || to_char(r.effective_from, 'DD.MM.YYYY') as label,
              r.output_qty,
              rc.unit_material_cost
-        from recipes r
+        from v_current_recipes r
         join items i on i.id = r.product_item_id
         left join v_recipe_cost rc on rc.recipe_id = r.id and rc.legal_entity_id = $1
-       where r.is_active
-       order by i.name, r.version desc
+       order by i.name
     `, [session.eid]),
   ]);
 
@@ -99,10 +99,10 @@ export default async function ProductionPage() {
             </Empty>
           ) : (
             <ActionForm action={createProductionOrder} submitLabel="Створити замовлення">
-              <Field label="Рецептура">
-                <select name="recipe_id" required className={inputClass} defaultValue="">
+              <Field label="Продукт" hint="версію техкарти визначає дата виробництва">
+                <select name="product_item_id" required className={inputClass} defaultValue="">
                   <option value="" disabled>
-                    Оберіть рецептуру…
+                    Оберіть продукт…
                   </option>
                   {recipes.map((r) => (
                     <option key={r.id} value={r.id}>

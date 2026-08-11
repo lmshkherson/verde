@@ -30,7 +30,8 @@ export async function loadRecipeForSpec(
   }>(
     `select id, version, output_qty from recipes
       where product_item_id = $1 and is_active
-      order by version desc limit 1`,
+        and approved_at is not null and effective_from <= current_date
+      order by effective_from desc, version desc limit 1`,
     [itemId],
   );
   if (!recipes[0]) return null;
