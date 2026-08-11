@@ -222,6 +222,25 @@
     footer{margin-bottom:0}
   }
 
+  /* ---------- MODAL ---------- */
+  .modal{position:fixed;inset:0;z-index:100;background:rgba(11,31,18,.55);
+    display:flex;align-items:center;justify-content:center;padding:1.2rem}
+  .modal[hidden]{display:none}
+  .modal-box{background:var(--white);border-radius:20px;padding:1.5rem;width:min(430px,100%);
+    box-shadow:0 30px 70px -25px rgba(11,61,30,.7)}
+  .modal-msg{font-weight:600;margin-bottom:1rem;line-height:1.45}
+  .modal .ctrl[hidden]{display:none}
+  .modal .btns{margin-top:1.1rem}
+  .modal input{
+    width:100%;border:0;background:transparent;outline:none;
+    font-family:'Montserrat',sans-serif;font-weight:700;font-size:1rem;color:var(--ink);
+    padding:.62rem .8rem;min-width:0;
+  }
+
+  .nostore{background:#FDECEA;border:1.5px solid #E39B92;color:#7A1710;border-radius:12px;
+    padding:.7rem .9rem;font-size:.82rem;margin-top:.9rem;line-height:1.45}
+  .nostore[hidden]{display:none}
+
   footer{background:var(--green-dark);color:#cfe9d8;padding:2rem 0;font-size:.85rem;text-align:center}
   footer b{color:var(--yellow)}
 </style>
@@ -258,6 +277,7 @@
       <button class="ghost" data-act="deleteClient">Видалити</button>
     </div>
   </div>
+  <div class="nostore" id="noStore" hidden></div>
 </div>
 
 <div class="tabs">
@@ -596,6 +616,18 @@
 </div>
 </main>
 
+<!-- власний діалог: системні prompt/confirm браузер блокує, коли сторінка у пісочниці -->
+<div class="modal" id="modal" hidden>
+  <div class="modal-box">
+    <div class="modal-msg" id="modalMsg"></div>
+    <div class="ctrl" id="modalField"><input id="modalInput" autocomplete="off"></div>
+    <div class="btns">
+      <button class="solid" id="modalOk" data-act="modalOk">Гаразд</button>
+      <button class="ghost" id="modalCancel" data-act="modalCancel">Скасувати</button>
+    </div>
+  </div>
+</div>
+
 <div class="mbar ok" id="mbar">
   <div><div class="mk">Маржа</div><div class="mv" id="mMargin">—</div></div>
   <div><div class="mk">Прибуток / од</div><div class="mv" id="mProfit">—</div></div>
@@ -636,6 +668,59 @@ const PRICELIST = [
   {g:'Набори батончиків', n:'Набір батончиків Мікс 5 смаків з вітамінами, 145 г',                   dist:129,   retail:135.6, rrp:199}
 ];
 
+/* ---------------- діалоги ----------------
+   Системні prompt/confirm/alert ігноруються, коли сторінку відкрито в пісочниці iframe,
+   тому всі запити до користувача йдуть через власне вікно. */
+let modalResolve = null;
+function ui(msg, opts){
+  opts = opts || {};
+  return new Promise(res => {
+    modalResolve = res;
+    el('modalMsg').textContent = msg;
+    el('modalField').hidden = !opts.input;
+    el('modalInput').value = opts.value || '';
+    el('modalOk').textContent = opts.ok || 'Гаразд';
+    el('modalCancel').hidden = opts.cancel === false;
+    el('modal').hidden = false;
+    if(opts.input) setTimeout(() => { el('modalInput').focus(); el('modalInput').select(); }, 30);
+  });
+}
+function modalClose(val){
+  el('modal').hidden = true;
+  const r = modalResolve; modalResolve = null;
+  if(r) r(val);
+}
+function modalOk(){ modalClose(el('modalField').hidden ? true : el('modalInput').value); }
+function modalCancel(){ modalClose(null); }
+const uiPrompt  = (msg, value) => ui(msg, {input:true, value:value || ''});
+const uiConfirm = msg => ui(msg).then(v => v !== null);
+const uiAlert   = msg => ui(msg, {cancel:false});
+
+/* ---------------- сховище ----------------
+   У пісочниці localStorage кидає SecurityError. Тоді працюємо в пам'яті:
+   інструмент лишається робочим у межах сеансу, а користувач бачить попередження. */
+let storageOK = true;
+const memStore = {};
+const store = {
+  get(k){
+    try{ return localStorage.getItem(k); }
+    catch(e){ storageOK = false; return k in memStore ? memStore[k] : null; }
+  },
+  set(k, v){
+    try{ localStorage.setItem(k, v); }
+    catch(e){ storageOK = false; memStore[k] = v; }
+  }
+};
+function checkStorage(){
+  try{ localStorage.setItem('__verde_t','1'); localStorage.removeItem('__verde_t'); }
+  catch(e){ storageOK = false; }
+  el('noStore').hidden = storageOK;
+  if(!storageOK) el('noStore').innerHTML =
+    'Це середовище не дозволяє зберігати дані в браузері — клієнти, прорахунки й портфелі ' +
+    'працюватимуть, але зникнуть після перезавантаження сторінки. ' +
+    'Для постійної роботи відкрий файл <b>calculator.html</b> у себе на комп\'ютері.';
+}
+
 /* ---------------- helpers ---------------- */
 const IDS = ['client','sku','channel','delivery','price','basePrice','ownLog','bRetro','bMkt','bLog','bPromo','bOther',
              'points','perPoint','fListing','fPromo','fOther','deferDays','moneyRate','vat',
@@ -675,8 +760,8 @@ function pMigrate(s){
 }
 function migrateStorage(){
   try{
-    const last = JSON.parse(localStorage.getItem(LAST_KEY) || 'null');
-    if(last) localStorage.setItem(LAST_KEY, JSON.stringify(migrate(last)));
+    const last = JSON.parse(store.get(LAST_KEY) || 'null');
+    if(last) store.set(LAST_KEY, JSON.stringify(migrate(last)));
 
     const deals = getDeals();
     if(deals.length){ deals.forEach(d => d.state = migrate(d.state)); setDeals(deals); }
@@ -685,7 +770,7 @@ function migrateStorage(){
     const ids = Object.keys(ports);
     if(ids.length){
       ids.forEach(id => ports[id] = pMigrate(ports[id]));
-      localStorage.setItem(PORT_KEY, JSON.stringify(ports));
+      store.set(PORT_KEY, JSON.stringify(ports));
     }
   }catch(e){}
 }
@@ -961,13 +1046,13 @@ function renderBar(m){
 /* ---------------- actions ---------------- */
 function applyMinPrice(){
   const m = model();
-  if(m.priceMin === null){ alert('Неможливо: бонуси і відтермінування «з\'їдають» усю ціну.'); return; }
+  if(m.priceMin === null){ uiAlert('Неможливо: бонуси і відтермінування «з\'їдають» усю ціну.'); return; }
   el('price').value = m.priceMin.toFixed(2);
   render();
 }
 function applyTargetPrice(){
   const m = model();
-  if(m.priceTarget === null){ alert('Неможливо: бонуси і відтермінування «з\'їдають» усю ціну.'); return; }
+  if(m.priceTarget === null){ uiAlert('Неможливо: бонуси і відтермінування «з\'їдають» усю ціну.'); return; }
   el('price').value = m.priceTarget.toFixed(2);
   render();
 }
@@ -1019,12 +1104,12 @@ function fallbackCopy(txt, done){
   const ta = document.createElement('textarea');
   ta.value = txt; ta.style.position='fixed'; ta.style.opacity='0';
   document.body.appendChild(ta); ta.select();
-  try{ document.execCommand('copy'); done(); }catch(e){ prompt('Скопіюй вручну:', txt); }
+  try{ document.execCommand('copy'); done(); }catch(e){ ui('Скопіюй вручну:', {input:true, value:txt, cancel:false}); }
   document.body.removeChild(ta);
 }
 
-function resetAll(){
-  if(!confirm('Скинути всі поля до типових значень?')) return;
+async function resetAll(){
+  if(!await uiConfirm('Скинути всі поля до типових значень?')) return;
   IDS.forEach(id => el(id).value = DEFAULTS[id]);
   el('dealName').value = '';
   render();
@@ -1090,8 +1175,8 @@ function skuNoteHtml(){
 /* ---------------- клієнти ---------------- */
 const CLIENTS_KEY = 'verde_calc_clients';
 
-function getClients(){ try{ return JSON.parse(localStorage.getItem(CLIENTS_KEY) || '[]'); }catch(e){ return []; } }
-function setClients(a){ try{ localStorage.setItem(CLIENTS_KEY, JSON.stringify(a)); }catch(e){} }
+function getClients(){ try{ return JSON.parse(store.get(CLIENTS_KEY) || '[]'); }catch(e){ return []; } }
+function setClients(a){ try{ store.set(CLIENTS_KEY, JSON.stringify(a)); }catch(e){} }
 function clientName(id){
   if(!id) return 'Без клієнта';
   const c = getClients().find(c => c.id === id);
@@ -1107,12 +1192,12 @@ function renderClientList(){
   sel.value = list.some(c => c.id === keep) ? keep : '';
 }
 
-function addClient(){
-  const n = (prompt('Назва мережі або клієнта:') || '').trim();
+async function addClient(){
+  const n = ((await uiPrompt('Назва мережі або клієнта:')) || '').trim();
   if(!n) return;
   const list = getClients();
   if(list.some(c => c.name.toLowerCase() === n.toLowerCase())){
-    alert('Такий клієнт уже є.');
+    uiAlert('Такий клієнт уже є.');
     el('client').value = list.find(c => c.name.toLowerCase() === n.toLowerCase()).id;
     render(); return;
   }
@@ -1125,12 +1210,12 @@ function addClient(){
   pLoadForClient();     // у нового клієнта — власний, порожній портфель
 }
 
-function renameClient(){
+async function renameClient(){
   const id = el('client').value;
-  if(!id){ alert('Спочатку обери клієнта.'); return; }
+  if(!id){ uiAlert('Спочатку обери клієнта.'); return; }
   const list = getClients();
   const c = list.find(c => c.id === id);
-  const n = (prompt('Нова назва:', c.name) || '').trim();
+  const n = ((await uiPrompt('Нова назва:', c.name)) || '').trim();
   if(!n || n === c.name) return;
   c.name = n;
   setClients(list);
@@ -1140,17 +1225,17 @@ function renameClient(){
   pRender();
 }
 
-function deleteClient(){
+async function deleteClient(){
   const id = el('client').value;
-  if(!id){ alert('Спочатку обери клієнта.'); return; }
+  if(!id){ uiAlert('Спочатку обери клієнта.'); return; }
   const name = clientName(id);
   const mine = getDeals().filter(d => d.clientId === id);
-  if(!confirm('Видалити «' + name + '»' + (mine.length ? ' разом із прорахунками (' + mine.length + ' шт.)' : '') + '?')) return;
+  if(!await uiConfirm('Видалити «' + name + '»' + (mine.length ? ' разом із прорахунками (' + mine.length + ' шт.)' : '') + '?')) return;
   setClients(getClients().filter(c => c.id !== id));
   setDeals(getDeals().filter(d => d.clientId !== id));
   const ports = getPortfolios();
   delete ports[id];
-  try{ localStorage.setItem(PORT_KEY, JSON.stringify(ports)); }catch(e){}
+  try{ store.set(PORT_KEY, JSON.stringify(ports)); }catch(e){}
   renderClientList();
   el('client').value = '';
   render();
@@ -1165,34 +1250,34 @@ function readState(){ const s = {vatIncl:true}; IDS.forEach(id => s[id] = el(id)
 // присвоюємо лише за реальної зміни — інакше таблиця порівняння збивала б курсор у полі, де друкують
 function writeState(s){ IDS.forEach(id => { if(s[id] !== undefined && el(id).value !== s[id]) el(id).value = s[id]; }); }
 
-function saveLast(){ try{ localStorage.setItem(LAST_KEY, JSON.stringify(readState())); }catch(e){} }
+function saveLast(){ try{ store.set(LAST_KEY, JSON.stringify(readState())); }catch(e){} }
 function loadLast(){
   try{
-    const s = JSON.parse(localStorage.getItem(LAST_KEY) || 'null');
+    const s = JSON.parse(store.get(LAST_KEY) || 'null');
     if(s){ writeState(migrate(s)); return true; }
   }catch(e){}
   return false;
 }
 
-function getDeals(){ try{ return JSON.parse(localStorage.getItem(DEALS_KEY) || '[]'); }catch(e){ return []; } }
-function setDeals(d){ try{ localStorage.setItem(DEALS_KEY, JSON.stringify(d)); }catch(e){} }
+function getDeals(){ try{ return JSON.parse(store.get(DEALS_KEY) || '[]'); }catch(e){ return []; } }
+function setDeals(d){ try{ store.set(DEALS_KEY, JSON.stringify(d)); }catch(e){} }
 
-function saveDeal(){
+async function saveDeal(){
   const clientId = el('client').value;
   if(!clientId){
-    if(!confirm('Клієнта не обрано. Додати нового зараз?')) return;
-    addClient();
+    if(!await uiConfirm('Клієнта не обрано. Додати нового зараз?')) return;
+    await addClient();
     if(!el('client').value) return;
     return saveDeal();
   }
   const name = el('dealName').value.trim();
-  if(!name){ alert('Вкажи назву прорахунку — зазвичай це позиція.'); el('dealName').focus(); return; }
+  if(!name){ uiAlert('Вкажи назву прорахунку — зазвичай це позиція.'); el('dealName').focus(); return; }
 
   const deals = getDeals();
   const rec = {clientId, name, state:readState(), ts:Date.now()};
   const i = deals.findIndex(d => d.clientId === clientId && d.name === name);
   if(i >= 0){
-    if(!confirm('«' + name + '» для клієнта «' + clientName(clientId) + '» уже збережено. Перезаписати?')) return;
+    if(!await uiConfirm('«' + name + '» для клієнта «' + clientName(clientId) + '» уже збережено. Перезаписати?')) return;
     deals[i] = rec;
   } else deals.push(rec);
   setDeals(deals);
@@ -1207,10 +1292,10 @@ function loadDeal(i){
   render();
   window.scrollTo({top:0, behavior:'smooth'});
 }
-function deleteDeal(i){
+async function deleteDeal(i){
   const deals = getDeals();
   if(!deals[i]) return;
-  if(!confirm('Видалити «' + deals[i].name + '»?')) return;
+  if(!await uiConfirm('Видалити «' + deals[i].name + '»?')) return;
   deals.splice(i,1); setDeals(deals); renderDeals();
 }
 
@@ -1477,12 +1562,12 @@ function pWriteState(s){
     cell('per',i).value = r.per;     cell('list',i).value = r.list;
   });
 }
-function getPortfolios(){ try{ return JSON.parse(localStorage.getItem(PORT_KEY) || '{}'); }catch(e){ return {}; } }
+function getPortfolios(){ try{ return JSON.parse(store.get(PORT_KEY) || '{}'); }catch(e){ return {}; } }
 function pSave(){
   const id = el('client').value || '_none';
   const all = getPortfolios();
   all[id] = pReadState();
-  try{ localStorage.setItem(PORT_KEY, JSON.stringify(all)); }catch(e){}
+  try{ store.set(PORT_KEY, JSON.stringify(all)); }catch(e){}
 }
 function pLoadForClient(){
   const id = el('client').value || '_none';
@@ -1525,7 +1610,7 @@ function setMode(m){
   el('tabOne').classList.toggle('active', m === 'one');
   el('tabAll').classList.toggle('active', m === 'all');
   el('mbar').style.display = m === 'one' ? '' : 'none';
-  try{ localStorage.setItem('verde_calc_mode', m); }catch(e){}
+  try{ store.set('verde_calc_mode', m); }catch(e){}
   if(m === 'all') pRender();
 }
 
@@ -1539,7 +1624,8 @@ const ACTIONS = {
   selectAll: () => pSelectAll(true),
   selectNone: () => pSelectAll(false),
   loadDeal: arg => loadDeal(+arg),
-  deleteDeal: arg => deleteDeal(+arg)
+  deleteDeal: arg => deleteDeal(+arg),
+  modalOk, modalCancel
 };
 document.addEventListener('click', e => {
   const btn = e.target.closest && e.target.closest('[data-act]');
@@ -1548,7 +1634,15 @@ document.addEventListener('click', e => {
   if(fn){ e.preventDefault(); fn(btn.dataset.arg); }
 });
 
+// клавіатура у власному діалозі
+document.addEventListener('keydown', e => {
+  if(el('modal').hidden) return;
+  if(e.key === 'Enter'){ e.preventDefault(); modalOk(); }
+  if(e.key === 'Escape'){ e.preventDefault(); modalCancel(); }
+});
+
 /* ---------------- init ---------------- */
+checkStorage();
 buildSkuList();
 renderClientList();
 migrateStorage();                        // одноразово оновлює збереження під нову модель
@@ -1567,7 +1661,7 @@ P_SHARED.forEach(id => {
 });
 el('pChannel').addEventListener('change', pResetPrices);   // ціни каналу підставляються заново
 pLoadForClient();
-try{ setMode(localStorage.getItem('verde_calc_mode') === 'all' ? 'all' : 'one'); }catch(e){ setMode('one'); }
+try{ setMode(store.get('verde_calc_mode') === 'all' ? 'all' : 'one'); }catch(e){ setMode('one'); }
 </script>
 
 </body>
