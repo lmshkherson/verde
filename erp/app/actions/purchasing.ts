@@ -194,6 +194,65 @@ export async function addPurchaseLine(_prev: ActionState, formData: FormData): P
   return { ok: 'Позицію додано' };
 }
 
+/**
+ * Пакетне додавання позицій — введення заявки таблицею, як із прайсу чи
+ * рахунку постачальника. Ціна трактується за прапорцем «з ПДВ» на шапці.
+ */
+export async function addPurchaseLines(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  await requireRole('warehouse');
+  const poId = str(formData, 'po_id');
+
+  let lines: { item_id: string; qty: number; unit_price: number }[];
+  try {
+    lines = JSON.parse(str(formData, 'lines'));
+  } catch {
+    return { error: 'Не вдалося прочитати рядки — оновіть сторінку і спробуйте ще раз' };
+  }
+  if (!Array.isArray(lines) || lines.length === 0) return { error: 'У заявці немає жодного рядка' };
+  if (lines.length > 200) return { error: 'Забагато рядків за раз — розбийте на дві заявки' };
+
+  let saved = 0;
+  try {
+    await transaction(async (c) => {
+      const { rows } = await c.query<{ status: string }>(
+        'select status from purchase_orders where id = $1',
+        [poId],
+      );
+      if (rows[0]?.status !== 'draft') throw new Error('Позиції можна додавати лише в чернетку');
+
+      for (const [i, line] of lines.entries()) {
+        const row = i + 1;
+        const qty = Number(line.qty);
+        const price = Number(line.unit_price);
+        if (!line.item_id) throw new Error(`Рядок ${row}: не обрано номенклатуру`);
+        if (!Number.isFinite(qty) || qty <= 0) throw new Error(`Рядок ${row}: кількість має бути більшою за нуль`);
+        if (!Number.isFinite(price) || price < 0) throw new Error(`Рядок ${row}: перевірте ціну`);
+
+        const { rows: items } = await c.query<{ kind: string }>(
+          'select kind from items where id = $1 and is_active',
+          [line.item_id],
+        );
+        if (!items[0]) throw new Error(`Рядок ${row}: позицію не знайдено`);
+        if (!['raw', 'packaging', 'semi'].includes(items[0].kind)) {
+          throw new Error(`Рядок ${row}: у заявку йдуть сировина й пакування — послуги проводяться документом надходження`);
+        }
+
+        await c.query(
+          `insert into purchase_order_lines (po_id, item_id, qty, unit_price, vat_rate)
+           values ($1, $2, $3, $4, (select vat_rate from items where id = $2))`,
+          [poId, line.item_id, qty, price],
+        );
+        saved += 1;
+      }
+    });
+  } catch (err) {
+    return { error: toMessage(err) };
+  }
+
+  revalidatePath(`/purchasing/${poId}`);
+  return { ok: `Додано рядків: ${saved}` };
+}
+
 export async function removePurchaseLine(formData: FormData) {
   await requireRole('warehouse');
   const poId = str(formData, 'po_id');

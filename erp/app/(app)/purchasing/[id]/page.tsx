@@ -1,5 +1,6 @@
 import { notFound } from 'next/navigation';
-import { addPurchaseLine, cancelPurchaseOrder, markOrdered, receivePurchaseOrder, removePurchaseLine } from '@/app/actions/purchasing';
+import { addPurchaseLines, cancelPurchaseOrder, markOrdered, receivePurchaseOrder, removePurchaseLine } from '@/app/actions/purchasing';
+import { LinesEntry } from '@/components/lines-entry';
 import { recordSupplierPayment } from '@/app/actions/finance';
 import { ActionForm } from '@/components/action-form';
 import { Badge, Button, Card, Cell, Empty, Field, inputClass, LinkButton, PageHeader, Row, Stat, Table } from '@/components/ui';
@@ -74,8 +75,8 @@ export default async function PurchaseOrderPage({ params }: { params: Promise<{ 
         order by i.name`,
       [id],
     ),
-    query<{ id: string; sku: string; name: string; unit: string }>(
-      "select id, sku, name, unit from items where kind in ('raw','packaging') and is_active order by name",
+    query<{ id: string; sku: string; name: string; unit: string; kind: string; vat_rate: number; barcode: string | null }>(
+      "select id, sku, name, unit, kind, vat_rate, barcode from items where kind in ('raw','packaging','semi') and is_active order by name",
     ),
   ]);
 
@@ -226,28 +227,21 @@ export default async function PurchaseOrderPage({ params }: { params: Promise<{ 
         )}
 
         {isDraft && (
-          <Card title="Додати позицію">
-            <ActionForm action={addPurchaseLine} submitLabel="Додати" className="sm:max-w-md">
-              <input type="hidden" name="po_id" value={po.id} />
-              <Field label="Сировина або пакування">
-                <select name="item_id" required className={inputClass} defaultValue="">
-                  <option value="" disabled>
-                    Оберіть позицію…
-                  </option>
-                  {items.map((i) => (
-                    <option key={i.id} value={i.id}>
-                      {i.name} ({unitLabel(i.unit)})
-                    </option>
-                  ))}
-                </select>
-              </Field>
-              <Field label="Кількість" hint="в одиниці, вказаній біля позиції">
-                <input name="qty" type="number" step="0.001" min="0" required className={inputClass} />
-              </Field>
-              <Field label="Ціна за одиницю">
-                <input name="unit_price" type="number" step="0.0001" min="0" required className={inputClass} />
-              </Field>
-            </ActionForm>
+          <Card title="Введення заявки">
+            <p className="mb-3 text-sm text-emerald-800/70">
+              Заповнюйте рядки як із рахунку постачальника: позиція шукається за назвою, артикулом
+              або штрихкодом, ціни {po.prices_include_vat ? 'з ПДВ' : 'без ПДВ'} — будь-яку з
+              чотирьох сум можна ввести, решта перерахуються.
+            </p>
+            <LinesEntry
+              docField="po_id"
+              docId={po.id}
+              items={items}
+              pricesIncludeVat={po.prices_include_vat}
+              showBatch={false}
+              submitLabel="Додати рядки в заявку"
+              action={addPurchaseLines}
+            />
           </Card>
         )}
 

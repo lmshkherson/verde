@@ -80,6 +80,24 @@ async function switchEntity(page, name) {
   await page.waitForTimeout(900);
 }
 
+/**
+ * Рядок табличної форми введення (надходження, заявка, замовлення):
+ * знаходить повний ярлик «Назва (SKU)» у datalist за шматком назви і
+ * заповнює поля row_*_<index>. У datalist-опцій немає тексту, лише value,
+ * тому шукати їх локаторами з hasText марно.
+ */
+async function fillEntryRow(page, index, partial, fields = {}) {
+  const labels = await page
+    .locator('#entry-items option')
+    .evaluateAll((els) => els.map((e) => e.value));
+  const label = labels.find((v) => v.includes(partial));
+  if (!label) throw new Error(`У довіднику табличної форми немає «${partial}»`);
+  await page.fill(`input[name="row_item_${index}"]`, label);
+  for (const [key, value] of Object.entries(fields)) {
+    await page.fill(`input[name="row_${key}_${index}"]`, String(value));
+  }
+}
+
 async function createPurchase(page, supplier, lines, pricesIncludeVat = true) {
   await page.goto(`${BASE}/purchasing`);
   await selectByText(page, 'select[name="supplier_id"]', supplier);
@@ -87,13 +105,14 @@ async function createPurchase(page, supplier, lines, pricesIncludeVat = true) {
   await page.click('form:has(select[name="supplier_id"]) button[type="submit"]');
   await page.waitForURL(/\/purchasing\/[0-9a-f-]{36}/);
 
-  for (const [name, qty, price] of lines) {
-    await selectByText(page, 'select[name="item_id"]', name);
-    await page.fill('input[name="qty"]', String(qty));
-    await page.fill('input[name="unit_price"]', String(price));
-    await page.click('form:has(select[name="item_id"]) button[type="submit"]');
-    await page.waitForTimeout(320);
+  for (const [i, [name, qty, price]] of lines.entries()) {
+    await fillEntryRow(page, i, name, {
+      qty,
+      [pricesIncludeVat ? 'price_gross' : 'price_net']: price,
+    });
   }
+  await page.click('button:has-text("Додати рядки в заявку")');
+  await page.waitForTimeout(700);
 
   await page.click('form:has(input[name="po_id"]) button:has-text("Замовлено")');
   await page.waitForTimeout(400);
@@ -402,9 +421,8 @@ try {
   await sales.click('form:has(select[name="customer_id"]) button[type="submit"]');
   await sales.waitForURL(/\/sales\/[0-9a-f-]{36}/);
 
-  await selectByText(sales, 'select[name="item_id"]', 'Фісташка');
-  await sales.fill('input[name="qty"]', '640');
-  await sales.click('form:has(select[name="item_id"]) button[type="submit"]');
+  await fillEntryRow(sales, 0, 'Фісташка', { qty: 640 });
+  await sales.click('button:has-text("Додати рядки в замовлення")');
   await sales.waitForTimeout(700);
   await sales.reload();
 
@@ -634,9 +652,8 @@ try {
   await sales.click('form:has(select[name="customer_id"]) button[type="submit"]');
   await sales.waitForURL(/\/sales\/[0-9a-f-]{36}/);
 
-  await selectByText(sales, 'select[name="item_id"]', 'Фісташка');
-  await sales.fill('input[name="qty"]', '300');
-  await sales.click('form:has(select[name="item_id"]) button[type="submit"]');
+  await fillEntryRow(sales, 0, 'Фісташка', { qty: 300 });
+  await sales.click('button:has-text("Додати рядки в замовлення")');
   await sales.waitForTimeout(700);
   await sales.reload();
   await sales.click('button:has-text("Підтвердити")');
@@ -682,9 +699,8 @@ try {
   await sales.click('form:has(select[name="customer_id"]) button[type="submit"]');
   await sales.waitForURL(/\/sales\/[0-9a-f-]{36}/);
 
-  await selectByText(sales, 'select[name="item_id"]', 'Фісташка');
-  await sales.fill('input[name="qty"]', '100');
-  await sales.click('form:has(select[name="item_id"]) button[type="submit"]');
+  await fillEntryRow(sales, 0, 'Фісташка', { qty: 100 });
+  await sales.click('button:has-text("Додати рядки в замовлення")');
   await sales.waitForTimeout(700);
   await sales.reload();
 

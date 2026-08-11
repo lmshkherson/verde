@@ -1,7 +1,8 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { addSalesLine, cancelSalesOrder, confirmSalesOrder, recordPayment, removeSalesLine, shipSalesOrder } from '@/app/actions/sales';
+import { addSalesLines, cancelSalesOrder, confirmSalesOrder, recordPayment, removeSalesLine, shipSalesOrder } from '@/app/actions/sales';
 import { ActionForm } from '@/components/action-form';
+import { LinesEntry } from '@/components/lines-entry';
 import { Badge, Button, Card, Cell, Empty, Field, inputClass, LinkButton, PageHeader, Row, Stat, Table } from '@/components/ui';
 import { query, queryOne } from '@/lib/db';
 import { fmtDate, fmtMoney, fmtQty, PRICE_LEVELS, SO_STATUS, unitLabel } from '@/lib/format';
@@ -72,8 +73,20 @@ export default async function SalesOrderPage({ params }: { params: Promise<{ id:
         order by i.name`,
       [id, session.eid],
     ),
-    query<{ id: string; sku: string; name: string; available_qty: number; unit: string }>(
-      `select a.item_id as id, a.sku, a.name, a.available_qty, a.unit
+    query<{
+      id: string;
+      sku: string;
+      name: string;
+      available_qty: number;
+      unit: string;
+      vat_rate: number;
+      barcode: string | null;
+      price_distributor: number | null;
+      price_network: number | null;
+      price_rrp: number | null;
+    }>(
+      `select a.item_id as id, a.sku, a.name, a.available_qty, a.unit,
+              i.vat_rate, i.barcode, i.price_distributor, i.price_network, i.price_rrp
          from v_item_available a
          join items i on i.id = a.item_id
         where a.kind = 'finished' and i.is_active and a.legal_entity_id = $1
@@ -202,28 +215,38 @@ export default async function SalesOrderPage({ params }: { params: Promise<{ id:
         </Card>
 
         {isDraft && (
-          <Card title="Додати позицію">
-            <ActionForm action={addSalesLine} submitLabel="Додати" className="sm:max-w-md">
-              <input type="hidden" name="so_id" value={order.id} />
-              <Field label="Товар">
-                <select name="item_id" required className={inputClass} defaultValue="">
-                  <option value="" disabled>
-                    Оберіть товар…
-                  </option>
-                  {available.map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {a.name} — доступно {fmtQty(a.available_qty, unitLabel(a.unit))}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-              <Field label="Кількість, шт">
-                <input name="qty" type="number" step="1" min="1" required className={inputClass} />
-              </Field>
-              <Field label="Ціна без ПДВ" hint="Порожньо — візьметься з прайсу клієнта">
-                <input name="unit_price" type="number" step="0.01" min="0" className={inputClass} />
-              </Field>
-            </ActionForm>
+          <Card title="Введення замовлення">
+            <p className="mb-3 text-sm text-emerald-800/70">
+              Заповнюйте рядки як із бланка замовлення: товар шукається за назвою, артикулом або
+              штрихкодом, ціна без ПДВ підставляється з прайсу клієнта ({PRICE_LEVELS[order.price_level]})
+              — за потреби перекрийте будь-яку з чотирьох сум, решта перерахуються.
+            </p>
+            <LinesEntry
+              docField="so_id"
+              docId={order.id}
+              items={available.map((a) => ({
+                id: a.id,
+                name: a.name,
+                sku: a.sku,
+                unit: a.unit,
+                kind: 'finished',
+                // Неплатник ПДВ не нараховує податок — колонки «з ПДВ»
+                // просто збігаються з «без ПДВ».
+                vat_rate: session.vat ? Number(a.vat_rate) : 0,
+                barcode: a.barcode,
+                defaultPrice:
+                  order.price_level === 'rrp'
+                    ? a.price_rrp
+                    : order.price_level === 'network'
+                      ? a.price_network
+                      : a.price_distributor,
+                hint: `доступно ${fmtQty(a.available_qty, unitLabel(a.unit))}`,
+              }))}
+              pricesIncludeVat={false}
+              showBatch={false}
+              submitLabel="Додати рядки в замовлення"
+              action={addSalesLines}
+            />
           </Card>
         )}
 

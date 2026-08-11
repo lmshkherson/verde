@@ -232,6 +232,90 @@ export async function addSalesLine(_prev: ActionState, formData: FormData): Prom
   return { ok: 'Позицію додано' };
 }
 
+/**
+ * Пакетне додавання позицій — введення замовлення таблицею, як із бланка
+ * замовлення клієнта. Ціна рядка — без ПДВ; порожня ціна означає «взяти з
+ * прайсу клієнта», рівно як при додаванні по одній.
+ */
+export async function addSalesLines(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  await requireRole('sales');
+  const soId = str(formData, 'so_id');
+
+  let lines: { item_id: string; qty: number; unit_price: number }[];
+  try {
+    lines = JSON.parse(str(formData, 'lines'));
+  } catch {
+    return { error: 'Не вдалося прочитати рядки — оновіть сторінку і спробуйте ще раз' };
+  }
+  if (!Array.isArray(lines) || lines.length === 0) return { error: 'У замовленні немає жодного рядка' };
+  if (lines.length > 200) return { error: 'Забагато рядків за раз — розбийте на два замовлення' };
+
+  let saved = 0;
+  try {
+    await transaction(async (c) => {
+      const { rows: orderRows } = await c.query<{
+        status: string;
+        price_level: string;
+        seller_is_vat_payer: boolean;
+      }>(
+        `select o.status, c.price_level, e.is_vat_payer as seller_is_vat_payer
+           from sales_orders o
+           join customers c on c.id = o.customer_id
+           join legal_entities e on e.id = o.legal_entity_id
+          where o.id = $1`,
+        [soId],
+      );
+      const order = orderRows[0];
+      if (!order) throw new Error('Замовлення не знайдено');
+      if (order.status !== 'draft') throw new Error('Позиції можна додавати лише в чернетку');
+
+      for (const [i, line] of lines.entries()) {
+        const row = i + 1;
+        const qty = Number(line.qty);
+        if (!line.item_id) throw new Error(`Рядок ${row}: не обрано товар`);
+        if (!Number.isFinite(qty) || qty <= 0) throw new Error(`Рядок ${row}: кількість має бути більшою за нуль`);
+
+        const { rows: itemRows } = await c.query<{
+          kind: string;
+          price_distributor: number | null;
+          price_network: number | null;
+          price_rrp: number | null;
+          vat_rate: number;
+        }>(
+          `select kind, price_distributor, price_network, price_rrp, vat_rate
+             from items where id = $1 and is_active`,
+          [line.item_id],
+        );
+        const item = itemRows[0];
+        if (!item) throw new Error(`Рядок ${row}: товар не знайдено`);
+        if (item.kind !== 'finished') throw new Error(`Рядок ${row}: продавати можна лише готову продукцію`);
+
+        let price = Number(line.unit_price) || 0;
+        if (price <= 0) {
+          price =
+            (order.price_level === 'rrp'
+              ? item.price_rrp
+              : order.price_level === 'network'
+                ? item.price_network
+                : item.price_distributor) ?? 0;
+          if (price <= 0) throw new Error(`Рядок ${row}: для товару не заданий прайс — вкажіть ціну`);
+        }
+
+        await c.query(
+          'insert into sales_order_lines (so_id, item_id, qty, unit_price, vat_rate) values ($1, $2, $3, $4, $5)',
+          [soId, line.item_id, qty, price, saleVatRate(order.seller_is_vat_payer, item.vat_rate)],
+        );
+        saved += 1;
+      }
+    });
+  } catch (err) {
+    return { error: toMessage(err) };
+  }
+
+  revalidatePath(`/sales/${soId}`);
+  return { ok: `Додано рядків: ${saved}` };
+}
+
 export async function removeSalesLine(formData: FormData) {
   await requireRole('sales');
   const soId = str(formData, 'so_id');

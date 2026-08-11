@@ -8,7 +8,7 @@ import {
   updateReceiptHeader,
 } from '@/app/actions/receipts';
 import { ActionForm } from '@/components/action-form';
-import { ReceiptEntry } from '@/components/receipt-entry';
+import { LinesEntry } from '@/components/lines-entry';
 import {
   Alert,
   Badge,
@@ -210,8 +210,9 @@ export default async function ReceiptPage({ params }: { params: Promise<{ id: st
                   Позиція шукається за назвою, артикулом або штрихкодом; послуги (доставка, оренда)
                   вводяться таким самим рядком і при проведенні підуть у витрати, а не на склад.
                 </p>
-                <ReceiptEntry
-                  receiptId={doc.id}
+                <LinesEntry
+                  docField="receipt_id"
+                  docId={doc.id}
                   items={entryItems}
                   pricesIncludeVat={doc.prices_include_vat}
                   action={saveReceiptLines}

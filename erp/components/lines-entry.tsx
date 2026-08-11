@@ -5,7 +5,7 @@ import type { ActionState } from '@/lib/action-state';
 import { Alert, Button } from './ui';
 
 /**
- * Введення рядків надходження як із паперової накладної: таблиця
+ * Введення рядків документа як із паперової накладної: таблиця
  * «№ · номенклатура · кількість · ціна без ПДВ · ціна з ПДВ · сума без ПДВ ·
  * сума з ПДВ» з підсумками внизу і одним збереженням на весь документ.
  *
@@ -21,8 +21,13 @@ export interface EntryItem {
   sku: string;
   unit: string;
   kind: string;
+  /** Ефективна ставка для цього документа — сторінка вже врахувала юрособу. */
   vat_rate: number;
   barcode: string | null;
+  /** Ціна без ПДВ, що підставиться сама, щойно позицію розпізнано (прайс). */
+  defaultPrice?: number | null;
+  /** Довідка під назвою: «доступно 120 шт» тощо. */
+  hint?: string;
 }
 
 interface RowState {
@@ -64,15 +69,24 @@ const fmtSum = (n: number) => (Math.round(n * 100) / 100).toFixed(2);
 
 const fmt = new Intl.NumberFormat('uk-UA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-export function ReceiptEntry({
-  receiptId,
+export function LinesEntry({
+  docField,
+  docId,
   items,
   pricesIncludeVat,
+  showBatch = true,
+  submitLabel = 'Додати рядки в накладну',
   action,
 }: {
-  receiptId: string;
+  /** Ім'я прихованого поля документа: receipt_id, so_id чи po_id. */
+  docField: string;
+  docId: string;
   items: EntryItem[];
+  /** Як трактувати ціну при збереженні — так само, як рахує проведення. */
   pricesIncludeVat: boolean;
+  /** Партія і термін придатності потрібні лише в надходженні. */
+  showBatch?: boolean;
+  submitLabel?: string;
   action: (state: ActionState, formData: FormData) => Promise<ActionState>;
 }) {
   const [rows, setRows] = useState<RowState[]>(() => [1, 2, 3, 4, 5].map(emptyRow));
@@ -145,10 +159,12 @@ export function ReceiptEntry({
         if (i !== index) return r;
         const merged = { ...r, ...patch };
         // Позиція щойно розпізналась — перерахувати від уже набраної ціни
-        // за її ставкою ПДВ.
+        // за її ставкою ПДВ, а коли ціни ще немає — підставити з прайсу.
         if (patch.itemId && patch.itemId !== r.itemId) {
           if (merged.priceNet !== '') return recalc(merged, 'priceNet', merged.priceNet);
           if (merged.priceGross !== '') return recalc(merged, 'priceGross', merged.priceGross);
+          const preset = itemById.get(patch.itemId)?.defaultPrice;
+          if (preset && preset > 0) return recalc(merged, 'priceNet', fmtPrice(Number(preset)));
           return merged;
         }
         return edited ? recalc(merged, edited, String(patch[edited] ?? '')) : merged;
@@ -214,15 +230,15 @@ export function ReceiptEntry({
 
   return (
     <form action={submit} className="space-y-3">
-      <input type="hidden" name="receipt_id" value={receiptId} />
-      <datalist id="receipt-items">
+      <input type="hidden" name={docField} value={docId} />
+      <datalist id="entry-items">
         {items.map((i) => (
           <option key={i.id} value={`${i.name} (${i.sku})`} />
         ))}
       </datalist>
 
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[1040px] border-collapse text-sm">
+        <table className={`w-full ${showBatch ? 'min-w-[1040px]' : 'min-w-[820px]'} border-collapse text-sm`}>
           <thead>
             <tr className="border-b border-emerald-900/15 text-left text-xs uppercase tracking-wide text-emerald-800/60">
               <th className="w-8 py-2 pr-2">№</th>
@@ -233,8 +249,8 @@ export function ReceiptEntry({
               <th className="w-24 py-2 pr-2 text-right">Ціна з ПДВ</th>
               <th className="w-24 py-2 pr-2 text-right">Сума без ПДВ</th>
               <th className="w-24 py-2 pr-2 text-right">Сума з ПДВ</th>
-              <th className="w-24 py-2 pr-2">Партія</th>
-              <th className="w-32 py-2 pr-2">Придатний до</th>
+              {showBatch && <th className="w-24 py-2 pr-2">Партія</th>}
+              {showBatch && <th className="w-32 py-2 pr-2">Придатний до</th>}
               <th className="w-8 py-2" />
             </tr>
           </thead>
@@ -254,7 +270,7 @@ export function ReceiptEntry({
                   <td className="py-1.5 pr-2">
                     <input
                       name={`row_item_${i}`}
-                      list="receipt-items"
+                      list="entry-items"
                       value={r.text}
                       onChange={(e) => update(i, { text: e.target.value, itemId: resolve(e.target.value) })}
                       placeholder="назва, артикул або штрихкод…"
@@ -263,7 +279,9 @@ export function ReceiptEntry({
                     />
                     {item && (
                       <div className="mt-0.5 text-[11px] text-emerald-800/50">
-                        ПДВ {Number(item.vat_rate)}%{isService ? ' · послуга — піде у витрати' : ''}
+                        ПДВ {Number(item.vat_rate)}%
+                        {isService ? ' · послуга — піде у витрати' : ''}
+                        {item.hint ? ` · ${item.hint}` : ''}
                       </div>
                     )}
                   </td>
@@ -290,26 +308,30 @@ export function ReceiptEntry({
                       />
                     </td>
                   ))}
-                  <td className="py-1.5 pr-2">
-                    <input
-                      name={`row_batch_${i}`}
-                      value={r.batch}
-                      onChange={(e) => update(i, { batch: e.target.value })}
-                      disabled={isService}
-                      placeholder={isService ? '—' : 'з накладної'}
-                      className={`${cell} disabled:bg-emerald-900/5`}
-                    />
-                  </td>
-                  <td className="py-1.5 pr-2">
-                    <input
-                      name={`row_expires_${i}`}
-                      type="date"
-                      value={r.expires}
-                      onChange={(e) => update(i, { expires: e.target.value })}
-                      disabled={isService}
-                      className={`${cell} disabled:bg-emerald-900/5`}
-                    />
-                  </td>
+                  {showBatch && (
+                    <td className="py-1.5 pr-2">
+                      <input
+                        name={`row_batch_${i}`}
+                        value={r.batch}
+                        onChange={(e) => update(i, { batch: e.target.value })}
+                        disabled={isService}
+                        placeholder={isService ? '—' : 'з накладної'}
+                        className={`${cell} disabled:bg-emerald-900/5`}
+                      />
+                    </td>
+                  )}
+                  {showBatch && (
+                    <td className="py-1.5 pr-2">
+                      <input
+                        name={`row_expires_${i}`}
+                        type="date"
+                        value={r.expires}
+                        onChange={(e) => update(i, { expires: e.target.value })}
+                        disabled={isService}
+                        className={`${cell} disabled:bg-emerald-900/5`}
+                      />
+                    </td>
+                  )}
                   <td className="py-1.5 pt-2 text-center">
                     {rows.length > 1 && (
                       <button
@@ -360,7 +382,7 @@ export function ReceiptEntry({
       {state.error && <Alert tone="red">{state.error}</Alert>}
       {state.ok && <Alert tone="green">{state.ok}</Alert>}
       <Button type="submit" variant="primary" disabled={pending}>
-        {pending ? 'Зберігається…' : 'Додати рядки в накладну'}
+        {pending ? 'Зберігається…' : submitLabel}
       </Button>
     </form>
   );
