@@ -104,6 +104,19 @@
   .hint-foot{margin:1rem 0 0}
   .field-bottom{display:flex;align-items:flex-end}
 
+  /* ---------- STEPS ---------- */
+  .step{margin-bottom:2.6rem}
+  .step-head{display:flex;gap:1rem;align-items:flex-start;margin-bottom:1.2rem}
+  .step-num{
+    flex:none;width:42px;height:42px;border-radius:50%;
+    background:var(--ink);color:var(--yellow);
+    font-family:'Montserrat',sans-serif;font-weight:900;font-size:1.2rem;
+    display:flex;align-items:center;justify-content:center;
+  }
+  .step-head h3{font-family:'Montserrat',sans-serif;font-weight:900;font-size:1.3rem;letter-spacing:-.01em}
+  .step-head p{font-size:.85rem;opacity:.62;margin-top:.25rem;max-width:70ch;line-height:1.45}
+  .step + .step{border-top:2px solid var(--line);padding-top:2.2rem}
+
   /* ---------- TABS ---------- */
   .tabs{display:flex;gap:.5rem;margin-bottom:1.2rem;flex-wrap:wrap}
   .tab{
@@ -258,7 +271,8 @@
   <div class="wrap">
     <span class="tag">Внутрішній інструмент · не для клієнта</span>
     <h1 class="display">Калькулятор <span>дистрибуції</span></h1>
-    <p>Порахуй, скільки реально залишається з відпускної ціни після ретро-бонусу, маркетингу, логістики, лістингу та відтермінування — і чи проходить угода за нашими цільовими показниками.</p>
+    <p>Два кроки: спочатку перевіряємо, чи витримує ціна умови мережі й не падає нижче дистриб'юторської.
+       Потім рахуємо план продажів і дивимось, чи окупається вхід на цьому обсязі.</p>
   </div>
 </section>
 
@@ -286,235 +300,276 @@
 </div>
 
 <div id="viewOne">
-<div class="layout">
 
-  <!-- ============ INPUTS ============ -->
-  <div>
-
-    <div class="card">
-      <h2><span class="dot"></span>0. Товар і канал</h2>
-      <p class="hint">Вибери позицію — ціна та РРЦ підставляться з прайсу. Далі їх можна правити вручну під конкретні перемовини.</p>
-      <div class="grid2">
-        <div class="field">
-          <label>Позиція з прайсу</label>
-          <div class="ctrl"><select id="sku"></select></div>
-        </div>
-        <div class="field">
-          <label>Канал продажу</label>
-          <div class="ctrl"><select id="channel">
-            <option value="dist">Дистриб'ютор</option>
-            <option value="retail">Мережа напряму / роздріб</option>
-          </select></div>
-        </div>
-      </div>
-      <div class="warnbox" id="skuNote"></div>
+<!-- ---------- КРОК 1: ЦІНА ---------- -->
+<section class="step">
+  <div class="step-head">
+    <span class="step-num">1</span>
+    <div>
+      <h3>Ціна та відповідність нормам</h3>
+      <p>Чи витримує ціна бонуси, відтермінування й нашу логістику, не опускаючись нижче дистриб'юторської.
+         Разові витрати сюди не входять — вони на кроці 2.</p>
     </div>
-
-    <div class="card">
-      <h2><span class="dot"></span>1. Ціни</h2>
-      <p class="hint">Усі суми — за одиницю продукції, <b>з ПДВ</b>. Відпускну ціну правимо вручну під конкретні
-        перемовини. Дистриб'юторська ціна — це <b>база порівняння</b>: нижче за неї відвантажувати не можна.</p>
-      <div class="grid3">
-        <div class="field">
-          <label>Відпускна ціна</label>
-          <div class="ctrl"><input id="price" inputmode="decimal" value="32.4"><span class="unit">грн</span></div>
-        </div>
-        <div class="field">
-          <label>Дистриб'юторська ціна (база)</label>
-          <div class="ctrl"><input id="basePrice" inputmode="decimal" value="25.8"><span class="unit">грн</span></div>
-        </div>
-        <div class="field">
-          <label>Наша логістика</label>
-          <div class="ctrl"><input id="ownLog" inputmode="decimal" value="0"><span class="unit">грн/од</span></div>
-        </div>
-      </div>
-      <div class="grid2 mt-085">
-        <div class="field">
-          <label>Доставка</label>
-          <div class="ctrl"><select id="delivery">
-            <option value="rc">На РЦ клієнта — логістика не наша</option>
-            <option value="tt">РЦ немає, веземо на точки — логістика наша</option>
-          </select></div>
-        </div>
-      </div>
-    </div>
-
-    <div class="card">
-      <h2><span class="dot"></span>2. Бонуси мережі (% від відпускної ціни)</h2>
-      <div class="grid3">
-        <div class="field">
-          <label>Ретро-бонус</label>
-          <div class="ctrl"><input id="bRetro" inputmode="decimal" value="4"><span class="unit">%</span></div>
-        </div>
-        <div class="field">
-          <label>Маркетинговий</label>
-          <div class="ctrl"><input id="bMkt" inputmode="decimal" value="3"><span class="unit">%</span></div>
-        </div>
-        <div class="field">
-          <label>Логістичний</label>
-          <div class="ctrl"><input id="bLog" inputmode="decimal" value="3"><span class="unit">%</span></div>
-        </div>
-        <div class="field">
-          <label>Промо / акційна знижка</label>
-          <div class="ctrl"><input id="bPromo" inputmode="decimal" value="0"><span class="unit">%</span></div>
-        </div>
-        <div class="field">
-          <label>Інші бонуси</label>
-          <div class="ctrl"><input id="bOther" inputmode="decimal" value="0"><span class="unit">%</span></div>
-        </div>
-        <div class="field">
-          <label>Разом бонусів</label>
-          <div class="ctrl"><input id="bSum" value="—" readonly tabindex="-1"><span class="unit">%</span></div>
-        </div>
-      </div>
-    </div>
-
-    <div class="card">
-      <h2><span class="dot"></span>3. Прогноз продажів</h2>
-      <p class="hint">Обсяг періоду рахується як кількість точок × продажі з однієї точки. Прогноз задається окремо
-        для кожної позиції — саме з нього розноситься лістинг і рахуються підсумки.</p>
-      <div class="grid3">
-        <div class="field">
-          <label>Торгових точок</label>
-          <div class="ctrl"><input id="points" inputmode="decimal" value="100"><span class="unit">ТТ</span></div>
-        </div>
-        <div class="field">
-          <label>Продажі з 1 ТТ за період</label>
-          <div class="ctrl"><input id="perPoint" inputmode="decimal" value="100"><span class="unit">од</span></div>
-        </div>
-        <div class="field">
-          <label>Прогнозований обсяг</label>
-          <div class="ctrl"><input id="volume" value="—" readonly tabindex="-1"><span class="unit">од</span></div>
-        </div>
-      </div>
-    </div>
-
-    <div class="card">
-      <h2><span class="dot"></span>4. Разові та періодичні витрати</h2>
-      <p class="hint">Лістинг і промо-бюджет розносяться на прогнозований обсяг — так видно їх вагу в кожній одиниці.</p>
-      <div class="grid3">
-        <div class="field">
-          <label>Лістинг (вхід у мережу)</label>
-          <div class="ctrl"><input id="fListing" inputmode="decimal" value="15000"><span class="unit">грн</span></div>
-        </div>
-        <div class="field">
-          <label>Промо-бюджет, POS, мерч</label>
-          <div class="ctrl"><input id="fPromo" inputmode="decimal" value="0"><span class="unit">грн</span></div>
-        </div>
-        <div class="field">
-          <label>Інші витрати періоду</label>
-          <div class="ctrl"><input id="fOther" inputmode="decimal" value="0"><span class="unit">грн</span></div>
-        </div>
-      </div>
-    </div>
-
-    <div class="card">
-      <h2><span class="dot"></span>5. Відтермінування</h2>
-      <p class="hint">Вартість грошей рахується від суми дебіторки за фактичну кількість днів відстрочки. Ціни вже з ПДВ, тож дебіторка дорівнює відпускній ціні.</p>
-      <div class="grid3">
-        <div class="field">
-          <label>Відтермінування</label>
-          <div class="ctrl"><input id="deferDays" inputmode="decimal" value="21"><span class="unit">днів</span></div>
-        </div>
-        <div class="field">
-          <label>Вартість грошей</label>
-          <div class="ctrl"><input id="moneyRate" inputmode="decimal" value="20"><span class="unit">% річних</span></div>
-        </div>
-        <div class="field">
-          <label>Ставка ПДВ (для довідки)</label>
-          <div class="ctrl"><input id="vat" inputmode="decimal" value="20"><span class="unit">%</span></div>
-        </div>
-      </div>
-    </div>
-
-    <div class="card">
-      <h2><span class="dot"></span>6. Наші цільові показники</h2>
-      <p class="hint">Запас — це наскільки чиста відпускна ціна (після всіх бонусів і витрат) вища за дистриб'юторську.
-        Запас нижче нуля означає, що ми віддаємо товар дешевше, ніж власному дистриб'ютору.</p>
-      <div class="grid3">
-        <div class="field">
-          <label>Цільовий запас над базою</label>
-          <div class="ctrl"><input id="targetGap" inputmode="decimal" value="5"><span class="unit">%</span></div>
-        </div>
-        <div class="field">
-          <label>Мінімально допустимий запас</label>
-          <div class="ctrl"><input id="minGap" inputmode="decimal" value="0"><span class="unit">%</span></div>
-        </div>
-        <div class="field">
-          <label>РРЦ — ціна полиці</label>
-          <div class="ctrl"><input id="rrp" inputmode="decimal" value="50"><span class="unit">грн</span></div>
-        </div>
-      </div>
-    </div>
-
-    <div class="card">
-      <h2><span class="dot"></span>Структура відпускної ціни</h2>
-      <div class="bar" id="bar"></div>
-      <div class="barcap" id="barCap"></div>
-      <div class="legend" id="legend"></div>
-      <div class="warnbox" id="barWarn"></div>
-    </div>
-
-    <div class="card">
-      <h2><span class="dot"></span>Збережені прорахунки <span id="dealsFor"></span></h2>
-      <div class="grid2 mb-09">
-        <div class="field">
-          <label>Назва прорахунку (зазвичай — позиція)</label>
-          <div class="ctrl"><input id="dealName" placeholder="Напр.: Зарядись магній-кокос, 25 г"></div>
-        </div>
-        <div class="field field-bottom">
-          <button class="solid w100" data-act="saveDeal">Зберегти поточний</button>
-        </div>
-      </div>
-      <div class="btns flush mb-09">
-        <button class="ghost mini-btn" id="scopeBtn" data-act="toggleScope">Показати всіх клієнтів</button>
-      </div>
-      <div class="tbl-wrap"><table id="dealsTable"></table></div>
-      <div class="empty" id="dealsEmpty">Ще нічого не збережено. Прорахуй умову і натисни «Зберегти поточний» — так зручно порівнювати позиції всередині мережі.</div>
-    </div>
-
   </div>
 
-  <!-- ============ RESULTS ============ -->
-  <div class="sticky">
+  <div class="layout">
+    <div>
 
-    <div class="verdict ok" id="verdict">
-      <div class="vtag" id="vTag">Рішення</div>
-      <div class="vtitle display" id="vTitle">—</div>
-      <div class="vtext" id="vText">—</div>
-      <div class="vnums">
-        <div class="vnum"><div class="k">Запас до бази</div><div class="v" id="vGapPct">—</div></div>
-        <div class="vnum"><div class="k">Запас / од</div><div class="v" id="vGap">—</div></div>
-        <div class="vnum"><div class="k">Чиста відпускна ціна</div><div class="v" id="vNet">—</div></div>
-        <div class="vnum"><div class="k">Запас за період</div><div class="v" id="vTotal">—</div></div>
+      <div class="card">
+        <h2><span class="dot"></span>Товар і ціни</h2>
+        <p class="hint">Обери позицію — ціна, база і РРЦ підставляться з прайсу. Усі суми за одиницю, <b>з ПДВ</b>.
+          Дистриб'юторська ціна — це <b>база порівняння</b>: нижче за неї відвантажувати не можна.</p>
+        <div class="grid2">
+          <div class="field">
+            <label>Позиція з прайсу</label>
+            <div class="ctrl"><select id="sku"></select></div>
+          </div>
+          <div class="field">
+            <label>Канал продажу</label>
+            <div class="ctrl"><select id="channel">
+              <option value="dist">Дистриб'ютор</option>
+              <option value="retail">Мережа напряму / роздріб</option>
+            </select></div>
+          </div>
+        </div>
+        <div class="grid3 mt-085">
+          <div class="field">
+            <label>Відпускна ціна</label>
+            <div class="ctrl"><input id="price" inputmode="decimal" value="32.4"><span class="unit">грн</span></div>
+          </div>
+          <div class="field">
+            <label>Дистриб'юторська ціна (база)</label>
+            <div class="ctrl"><input id="basePrice" inputmode="decimal" value="25.8"><span class="unit">грн</span></div>
+          </div>
+          <div class="field">
+            <label>РРЦ — ціна полиці</label>
+            <div class="ctrl"><input id="rrp" inputmode="decimal" value="50"><span class="unit">грн</span></div>
+          </div>
+        </div>
+        <div class="warnbox" id="skuNote"></div>
+      </div>
+
+      <div class="card">
+        <h2><span class="dot"></span>Бонуси мережі</h2>
+        <p class="hint">У відсотках від відпускної ціни.</p>
+        <div class="grid3">
+          <div class="field">
+            <label>Ретро-бонус</label>
+            <div class="ctrl"><input id="bRetro" inputmode="decimal" value="4"><span class="unit">%</span></div>
+          </div>
+          <div class="field">
+            <label>Маркетинговий</label>
+            <div class="ctrl"><input id="bMkt" inputmode="decimal" value="3"><span class="unit">%</span></div>
+          </div>
+          <div class="field">
+            <label>Логістичний</label>
+            <div class="ctrl"><input id="bLog" inputmode="decimal" value="3"><span class="unit">%</span></div>
+          </div>
+          <div class="field">
+            <label>Промо / акційна знижка</label>
+            <div class="ctrl"><input id="bPromo" inputmode="decimal" value="0"><span class="unit">%</span></div>
+          </div>
+          <div class="field">
+            <label>Інші бонуси</label>
+            <div class="ctrl"><input id="bOther" inputmode="decimal" value="0"><span class="unit">%</span></div>
+          </div>
+          <div class="field">
+            <label>Разом бонусів</label>
+            <div class="ctrl"><input id="bSum" value="—" readonly tabindex="-1"><span class="unit">%</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2><span class="dot"></span>Умови роботи</h2>
+        <p class="hint">Вартість грошей рахується від суми дебіторки за фактичну кількість днів відстрочки.
+          Логістика лягає на нас лише тоді, коли у клієнта немає РЦ і ми розвозимо по точках.</p>
+        <div class="grid3">
+          <div class="field">
+            <label>Відтермінування</label>
+            <div class="ctrl"><input id="deferDays" inputmode="decimal" value="21"><span class="unit">днів</span></div>
+          </div>
+          <div class="field">
+            <label>Вартість грошей</label>
+            <div class="ctrl"><input id="moneyRate" inputmode="decimal" value="20"><span class="unit">% річних</span></div>
+          </div>
+          <div class="field">
+            <label>Ставка ПДВ (для довідки)</label>
+            <div class="ctrl"><input id="vat" inputmode="decimal" value="20"><span class="unit">%</span></div>
+          </div>
+        </div>
+        <div class="grid2 mt-085">
+          <div class="field">
+            <label>Доставка</label>
+            <div class="ctrl"><select id="delivery">
+              <option value="rc">На РЦ клієнта — логістика не наша</option>
+              <option value="tt">РЦ немає, веземо на точки — логістика наша</option>
+            </select></div>
+          </div>
+          <div class="field">
+            <label>Наша логістика</label>
+            <div class="ctrl"><input id="ownLog" inputmode="decimal" value="0"><span class="unit">грн/од</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2><span class="dot"></span>Наші норми</h2>
+        <p class="hint">Запас — наскільки чиста відпускна ціна вища за дистриб'юторську. Нижче нуля означає,
+          що мережа отримує товар дешевше за нашого дистриб'ютора.</p>
+        <div class="grid2">
+          <div class="field">
+            <label>Цільовий запас над базою</label>
+            <div class="ctrl"><input id="targetGap" inputmode="decimal" value="5"><span class="unit">%</span></div>
+          </div>
+          <div class="field">
+            <label>Мінімально допустимий запас</label>
+            <div class="ctrl"><input id="minGap" inputmode="decimal" value="0"><span class="unit">%</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2><span class="dot"></span>Структура відпускної ціни</h2>
+        <div class="bar" id="bar"></div>
+        <div class="barcap" id="barCap"></div>
+        <div class="legend" id="legend"></div>
+        <div class="warnbox" id="barWarn"></div>
+      </div>
+
+    </div>
+
+    <div class="sticky">
+      <div class="verdict ok" id="verdict">
+        <div class="vtag" id="vTag">Рішення</div>
+        <div class="vtitle display" id="vTitle">—</div>
+        <div class="vtext" id="vText">—</div>
+        <div class="vnums">
+          <div class="vnum"><div class="k">Запас до бази</div><div class="v" id="vGapPct">—</div></div>
+          <div class="vnum"><div class="k">Запас / од</div><div class="v" id="vGap">—</div></div>
+          <div class="vnum"><div class="k">Чиста відпускна ціна</div><div class="v" id="vNet">—</div></div>
+          <div class="vnum"><div class="k">З\'їдають умови</div><div class="v" id="vErosion">—</div></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2><span class="dot"></span>Розрахунок на одиницю</h2>
+        <div class="rows" id="unitRows"></div>
+      </div>
+
+      <div class="card">
+        <h2><span class="dot"></span>Межі торгу</h2>
+        <div class="rows" id="limitRows"></div>
+        <div class="btns">
+          <button data-act="applyMinPrice">Підставити мінімальну ціну</button>
+          <button data-act="applyTargetPrice">Підставити цільову ціну</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2><span class="dot"></span>Полиця</h2>
+        <div class="rows" id="shelfRows"></div>
       </div>
     </div>
-
-    <div class="card">
-      <h2><span class="dot"></span>Розрахунок на одиницю</h2>
-      <div class="rows" id="unitRows"></div>
-    </div>
-
-    <div class="card">
-      <h2><span class="dot"></span>Межі торгу</h2>
-      <div class="rows" id="limitRows"></div>
-      <div class="btns">
-        <button data-act="applyMinPrice">Підставити мінімальну ціну</button>
-        <button data-act="applyTargetPrice">Підставити цільову ціну</button>
-      </div>
-    </div>
-
-    <div class="card">
-      <h2><span class="dot"></span>Полиця та обсяг періоду</h2>
-      <div class="rows" id="periodRows"></div>
-      <div class="btns">
-        <button class="solid" data-act="copySummary" id="copyBtn">Скопіювати підсумок</button>
-        <button class="ghost" data-act="resetAll">Скинути</button>
-      </div>
-    </div>
-
   </div>
-</div>
+</section>
+
+<!-- ---------- КРОК 2: ПЛАН ПРОДАЖІВ ---------- -->
+<section class="step">
+  <div class="step-head">
+    <span class="step-num">2</span>
+    <div>
+      <h3>План продажів</h3>
+      <p>Скільки точок і скільки штук з точки, які разові витрати на вхід — і чи окупається угода на плановому обсязі.</p>
+    </div>
+  </div>
+
+  <div class="layout">
+    <div>
+
+      <div class="card">
+        <h2><span class="dot"></span>Прогноз продажів</h2>
+        <p class="hint">Обсяг періоду = кількість точок × продажі з однієї точки. Прогноз задається окремо для кожної позиції.</p>
+        <div class="grid3">
+          <div class="field">
+            <label>Торгових точок</label>
+            <div class="ctrl"><input id="points" inputmode="decimal" value="100"><span class="unit">ТТ</span></div>
+          </div>
+          <div class="field">
+            <label>Продажі з 1 ТТ за період</label>
+            <div class="ctrl"><input id="perPoint" inputmode="decimal" value="100"><span class="unit">од</span></div>
+          </div>
+          <div class="field">
+            <label>Прогнозований обсяг</label>
+            <div class="ctrl"><input id="volume" value="—" readonly tabindex="-1"><span class="unit">од</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2><span class="dot"></span>Разові витрати на вхід</h2>
+        <p class="hint">Розносяться на прогнозований обсяг — так видно, скільки кожна одиниця забирає на лістинг.</p>
+        <div class="grid3">
+          <div class="field">
+            <label>Лістинг (вхід у мережу)</label>
+            <div class="ctrl"><input id="fListing" inputmode="decimal" value="15000"><span class="unit">грн</span></div>
+          </div>
+          <div class="field">
+            <label>Промо-бюджет, POS, мерч</label>
+            <div class="ctrl"><input id="fPromo" inputmode="decimal" value="0"><span class="unit">грн</span></div>
+          </div>
+          <div class="field">
+            <label>Інші витрати періоду</label>
+            <div class="ctrl"><input id="fOther" inputmode="decimal" value="0"><span class="unit">грн</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2><span class="dot"></span>Збережені прорахунки <span id="dealsFor"></span></h2>
+        <div class="grid2 mb-09">
+          <div class="field">
+            <label>Назва прорахунку (зазвичай — позиція)</label>
+            <div class="ctrl"><input id="dealName" placeholder="Напр.: Зарядись магній-кокос, 25 г"></div>
+          </div>
+          <div class="field field-bottom">
+            <button class="solid w100" data-act="saveDeal">Зберегти поточний</button>
+          </div>
+        </div>
+        <div class="btns flush mb-09">
+          <button class="ghost mini-btn" id="scopeBtn" data-act="toggleScope">Показати всіх клієнтів</button>
+        </div>
+        <div class="tbl-wrap"><table id="dealsTable"></table></div>
+        <div class="empty" id="dealsEmpty">Ще нічого не збережено.</div>
+      </div>
+
+    </div>
+
+    <div class="sticky">
+      <div class="verdict ok" id="verdict2">
+        <div class="vtag" id="v2Tag">Рішення по плану</div>
+        <div class="vtitle display" id="v2Title">—</div>
+        <div class="vtext" id="v2Text">—</div>
+        <div class="vnums">
+          <div class="vnum"><div class="k">Обсяг періоду</div><div class="v" id="v2Vol">—</div></div>
+          <div class="vnum"><div class="k">Запас за період</div><div class="v" id="v2Total">—</div></div>
+          <div class="vnum"><div class="k">Запас / од з лістингом</div><div class="v" id="v2Gap">—</div></div>
+          <div class="vnum"><div class="k">Окупність лістингу</div><div class="v" id="v2Payback">—</div></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2><span class="dot"></span>Підсумки періоду</h2>
+        <div class="rows" id="periodRows"></div>
+        <div class="btns">
+          <button class="solid" data-act="copySummary" id="copyBtn">Скопіювати підсумок</button>
+          <button class="ghost" data-act="resetAll">Скинути</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
 </div>
 
 <!-- ============ ПОРТФЕЛЬ ============ -->
@@ -838,12 +893,15 @@ function model(){
   const deferMoney = P*k;
   const targetGap = num('targetGap'), minGap = num('minGap');
 
-  const {NN, gap, gapPct, belowBase} = core({P, base, ownLog, B, k, Fu, targetGap, minGap});
-  const erosion = P > 0 ? (P - NN)/P*100 : 0;       // скільки з'їдають бонуси й витрати
+  // крок 1 — рівень ціни: бонуси, відтермінування, наша логістика. Разові витрати сюди не входять.
+  const price = core({P, base, ownLog, B, k, Fu:0, targetGap, minGap});
+  // крок 2 — рівень плану: те саме плюс лістинг, рознесений на прогнозований обсяг.
+  const plan  = core({P, base, ownLog, B, k, Fu,   targetGap, minGap});
+  const erosion = P > 0 ? (P - price.NN)/P*100 : 0;  // скільки з'їдають умови мережі
 
-  // зворотній розрахунок: NN потрібна = base*(1+z) → P = (base*(1+z) + Fu + ownLog) / (1 - B - k)
+  // зворотній розрахунок — на рівні ціни (без разових витрат), щоб межі торгу не залежали від прогнозу
   const denom = 1 - B - k;
-  const needNN = z => base*(1 + z/100) + Fu + ownLog;
+  const needNN = z => base*(1 + z/100) + ownLog;
   const priceFor = z => denom > 0 ? needNN(z)/denom : null;
   const priceTarget = priceFor(targetGap);
   const priceMin = priceFor(minGap);
@@ -870,7 +928,10 @@ function model(){
   const netMargin = rrp > 0 ? (rrp - P)/rrp*100 : 0;
 
   return {P,base,ownLog,ownDelivery,bonuses,Bpct,B,k,points,perPoint,vol,fixTotal,Fu,vat,
-          bonusMoney,deferMoney,NN,gap,gapPct,erosion,belowBase,
+          bonusMoney,deferMoney,erosion,
+          NN:price.NN, gap:price.gap, gapPct:price.gapPct, belowBase:price.belowBase, verdict:price.verdict,
+          planNN:plan.NN, planGap:plan.gap, planGapPct:plan.gapPct,
+          planBelowBase:plan.belowBase, planVerdict:plan.verdict,
           priceTarget,priceMin,priceFloor,
           maxBonusTarget,maxBonusMin,maxBonusFloor,maxDefer,
           priceNoVat,rrp,netMarkup,netMargin,
@@ -878,10 +939,7 @@ function model(){
 }
 
 /* ---------------- render ---------------- */
-function verdictOf(m){
-  return core({P:m.P, base:m.base, ownLog:m.ownLog, B:m.B, k:m.k, Fu:m.Fu,
-               targetGap:m.targetGap, minGap:m.minGap}).verdict;
-}
+function verdictOf(m){ return m.planVerdict; }   // у списку прорахунків — повна картина, з лістингом
 
 function render(){
   const m = model();
@@ -893,43 +951,61 @@ function render(){
   el('ownLog').disabled = !m.ownDelivery;
   el('ownLog').parentElement.style.opacity = m.ownDelivery ? '1' : '.45';
 
-  /* --- вердикт --- */
-  const v = verdictOf(m);
-  const vBox = el('verdict');
-  vBox.className = 'verdict ' + v;
+  /* --- крок 1: вердикт по ціні --- */
+  const v = m.verdict;
+  el('verdict').className = 'verdict ' + v;
   const flag = m.belowBase;
   const title = flag ? '🚩 Нижче дистриб\'юторської ціни'
-                     : {ok:'Підходить ✅', warn:'На межі — торгуємось ⚠️', bad:'Не підходить ❌'}[v];
+                     : {ok:'Ціна проходить ✅', warn:'На межі — торгуємось ⚠️', bad:'Не підходить ❌'}[v];
   const texts = {
-    ok: 'Умова проходить за цільовим запасом. Можна фіксувати відпускну ціну.',
+    ok: 'Ціна проходить за цільовим запасом. Переходь до плану продажів.',
     bad: 'Запас нижчий за мінімально допустимий. Треба піднімати ціну, різати бонуси або скорочувати відтермінування.',
     warn:'Запас між мінімальним і цільовим. Погоджувати лише з керівником або торгуватись за умови.'
   };
   const isDist = el('channel').value === 'dist';
   let text = flag
     ? (isDist
-        ? 'Після бонусів, лістингу та відтермінування чиста ціна на ' + money(-m.gap) +
+        ? 'Після бонусів і відтермінування чиста ціна на ' + money(-m.gap) +
           ' ₴ нижча за прайсову дистриб\'юторську — фактично це знижка до прайсу понад узгоджені умови.'
-        : 'Після бонусів, лістингу та відтермінування мережа отримує товар на ' + money(-m.gap) +
+        : 'Після бонусів і відтермінування мережа отримує товар на ' + money(-m.gap) +
           ' ₴ дешевше, ніж наш дистриб\'ютор. Так відвантажувати не можна — це підриває дистриб\'юторський канал.')
     : texts[v];
   if(m.NN <= 0) text += ' Бонуси й витрати з\'їдають усю відпускну ціну — чиста ціна від\'ємна.';
-  if(m.vol <= 0) text += ' Заповни прогноз продажів — без нього лістинг не рознесено на одиницю.';
   if(m.base <= 0) text += ' Не заповнена дистриб\'юторська ціна — порівнювати немає з чим.';
 
-  el('vTag').textContent = 'Рішення · ціль +' + pct(m.targetGap) + ' / мін +' + pct(m.minGap) + ' до бази';
+  el('vTag').textContent = 'Крок 1 · ціль +' + pct(m.targetGap) + ' / мін +' + pct(m.minGap) + ' до бази';
   el('vTitle').textContent = title;
   el('vText').textContent = text;
   el('vGapPct').textContent = (m.gapPct >= 0 ? '+' : '−') + pct(Math.abs(m.gapPct));
   el('vGap').textContent = (m.gap >= 0 ? '+' : '−') + money(Math.abs(m.gap)) + ' ₴';
   el('vNet').textContent = money(m.NN) + ' ₴';
-  el('vTotal').textContent = money0(m.gap*m.vol) + ' ₴';
+  el('vErosion').textContent = pct(m.erosion);
 
   el('mbar').className = 'mbar ' + v;
   el('mMargin').textContent = (m.gapPct >= 0 ? '+' : '−') + pct(Math.abs(m.gapPct));
   el('mProfit').textContent = money(m.NN) + ' ₴';
   el('mState').textContent = flag ? '🚩 Нижче бази'
                                   : {ok:'Підходить ✅', warn:'На межі ⚠️', bad:'Не підходить ❌'}[v];
+
+  /* --- крок 2: вердикт по плану --- */
+  const v2 = m.planVerdict;
+  el('verdict2').className = 'verdict ' + v2;
+  const payback = (m.planGap + m.Fu) > 0 ? m.fixTotal/(m.planGap + m.Fu) : null;
+  el('v2Tag').textContent = 'Крок 2 · з урахуванням разових витрат';
+  el('v2Title').textContent = m.vol <= 0 ? 'Прогноз не заповнено'
+    : (m.planBelowBase ? '🚩 План не витягує лістинг'
+      : {ok:'План проходить ✅', warn:'План на межі ⚠️', bad:'План не проходить ❌'}[v2]);
+  el('v2Text').textContent = m.vol <= 0
+    ? 'Вкажи кількість точок і продажі з однієї точки — без обсягу лістинг немає на що рознести.'
+    : (m.planBelowBase
+        ? 'Ціна сама по собі ' + (m.belowBase ? 'уже нижча за базу' : 'норму проходить') +
+          ', але разові витрати на цьому обсязі опускають угоду нижче дистриб\'юторської ціни. ' +
+          'Потрібен більший обсяг або менший лістинг.'
+        : 'Разові витрати окупаються на плановому обсязі, запас лишається над базою.');
+  el('v2Vol').textContent = money0(m.vol) + ' од.';
+  el('v2Total').textContent = money0(m.planGap*m.vol) + ' ₴';
+  el('v2Gap').textContent = (m.planGap >= 0 ? '+' : '−') + money(Math.abs(m.planGap)) + ' ₴';
+  el('v2Payback').textContent = payback === null ? '—' : money0(payback) + ' од.';
 
   /* --- розрахунок на одиницю --- */
   let rows = '';
@@ -941,7 +1017,6 @@ function render(){
   R('Відпускна ціна (з ПДВ)', money(m.P) + ' ₴');
   m.bonuses.forEach(b => { if(b.p) R(b.key + ' (' + pct(b.p) + ')', '− ' + money(m.P*b.p/100) + ' ₴', 'neg', true); });
   if(m.Bpct) R('Разом бонуси (' + pct(m.Bpct) + ')', '− ' + money(m.bonusMoney) + ' ₴', 'neg');
-  if(m.Fu) R('Лістинг і фікс. витрати на од.', '− ' + money(m.Fu) + ' ₴', 'neg');
   if(m.deferMoney) R('Відтермінування ' + money0(num('deferDays')) + ' дн.', '− ' + money(m.deferMoney) + ' ₴', 'neg');
   if(m.ownLog) R('Наша логістика', '− ' + money(m.ownLog) + ' ₴', 'neg');
   T('Чиста відпускна ціна', money(m.NN) + ' ₴');
@@ -963,27 +1038,31 @@ function render(){
   R('Макс. відтермінування (мін. запас)', m.maxDefer === null ? na : money0(Math.max(0,m.maxDefer)) + ' дн.', m.maxDefer !== null && num('deferDays') <= m.maxDefer ? 'pos' : 'neg');
   el('limitRows').innerHTML = rows;
 
-  /* --- полиця та період --- */
+  /* --- полиця (крок 1) --- */
   rows = '';
   R('Наша ціна без ПДВ (довідково)', money(m.priceNoVat) + ' ₴');
   R('РРЦ — ціна полиці', money(m.rrp) + ' ₴');
   R('Націнка мережі до РРЦ', pct(m.netMarkup), m.netMarkup > 0 ? '' : 'neg');
   R('Маржа мережі від РРЦ', pct(m.netMargin), m.netMargin > 0 ? '' : 'neg');
+  el('shelfRows').innerHTML = rows;
+
+  /* --- підсумки періоду (крок 2) --- */
+  rows = '';
   T('Прогноз продажів', money0(m.vol) + ' од.');
   R('Торгових точок', money0(m.points) + ' ТТ', '', true);
   R('Продажі з 1 ТТ за період', money0(m.perPoint) + ' од.', '', true);
-  R('Запас з однієї ТТ', money0(m.gap*m.perPoint) + ' ₴', m.gap >= 0 ? 'pos' : 'neg');
+  R('Запас з однієї ТТ', money0(m.planGap*m.perPoint) + ' ₴', m.planGap >= 0 ? 'pos' : 'neg');
   R('Валова виручка по прайсу', money0(m.P*m.vol) + ' ₴');
   R('Бонуси мережі за період', '− ' + money0(m.bonusMoney*m.vol) + ' ₴', 'neg');
-  R('Фіксовані витрати періоду', '− ' + money0(m.fixTotal) + ' ₴', 'neg');
   R('Вартість відтермінування', '− ' + money0(m.deferMoney*m.vol) + ' ₴', 'neg');
-  R('Чиста виручка за період', money0(m.NN*m.vol) + ' ₴');
+  if(m.ownLog) R('Наша логістика за період', '− ' + money0(m.ownLog*m.vol) + ' ₴', 'neg');
+  R('Разові витрати на вхід', '− ' + money0(m.fixTotal) + ' ₴', 'neg');
+  R('Лістинг на одиницю', '− ' + money(m.Fu) + ' ₴', 'neg', true);
+  R('Чиста виручка за період', money0(m.planNN*m.vol) + ' ₴');
   R('Та сама кількість по базі', money0(m.base*m.vol) + ' ₴');
-  T('Запас за період', money0(m.gap*m.vol) + ' ₴', m.gap >= 0 ? 'pos' : 'neg');
-  if(m.fixTotal > 0){
-    const perUnit = m.gap + m.Fu;   // запас до рознесення фіксованих витрат
-    R('Обсяг для окупності лістингу', perUnit > 0 ? money0(m.fixTotal/perUnit) + ' од.' : 'не окупається');
-  }
+  T('Запас за період', money0(m.planGap*m.vol) + ' ₴', m.planGap >= 0 ? 'pos' : 'neg');
+  R('Запас у % до бази', (m.planGapPct >= 0 ? '+' : '−') + pct(Math.abs(m.planGapPct)),
+    m.planGapPct >= m.minGap ? 'pos' : 'neg');
   el('periodRows').innerHTML = rows;
 
   renderBar(m);
@@ -995,7 +1074,6 @@ function renderBar(m){
   const parts = [
     {name:'Чиста відпускна ціна', val:Math.max(m.NN,0), color:'#FFE600'},
     ...m.bonuses.filter(b=>b.p>0).map(b=>({name:b.key, val:m.P*b.p/100, color:b.color})),
-    {name:'Лістинг і фікс. витрати', val:m.Fu, color:'#B8860B'},
     {name:'Відтермінування', val:m.deferMoney, color:'#E5A100'},
     {name:'Наша логістика', val:m.ownLog, color:'#3A5C46'}
   ].filter(p => p.val > 0.0001);
@@ -1061,7 +1139,7 @@ function summaryText(){
   const m = model();
   const v = verdictOf(m);
   const label = m.belowBase ? 'ЧЕРВОНИЙ ФЛАГ — НИЖЧЕ ДИСТРИБ\'ЮТОРСЬКОЇ ЦІНИ'
-                            : {ok:'ПІДХОДИТЬ', warn:'НА МЕЖІ', bad:'НЕ ПІДХОДИТЬ'}[v];
+                            : {ok:'ПІДХОДИТЬ', warn:'НА МЕЖІ', bad:'НЕ ПІДХОДИТЬ'}[m.verdict];
   const name = el('dealName').value.trim();
   const chan = el('channel').value === 'dist' ? "дистриб'ютор" : 'мережа напряму';
   const sign = x => (x >= 0 ? '+' : '−');
@@ -1078,9 +1156,9 @@ function summaryText(){
     'Лістинг і фікс. витрати: ' + money0(m.fixTotal) + ' грн на ' + money0(m.vol) + ' од = ' + money(m.Fu) + ' грн/од',
     'Відтермінування: ' + money0(num('deferDays')) + ' дн = ' + money(m.deferMoney) + ' грн/од',
     '',
-    'Чиста відпускна ціна: ' + money(m.NN) + ' грн',
-    'Запас над базою: ' + sign(m.gap) + money(Math.abs(m.gap)) + ' грн/од (' + sign(m.gapPct) + pct(Math.abs(m.gapPct)) + ')',
-    'Запас за період: ' + money0(m.gap*m.vol) + ' грн',
+    'Чиста ціна після бонусів: ' + money(m.NN) + ' грн · запас ' + sign(m.gapPct) + pct(Math.abs(m.gapPct)),
+    'З лістингом: ' + money(m.planNN) + ' грн · запас ' + sign(m.planGapPct) + pct(Math.abs(m.planGapPct)),
+    'Запас за період: ' + money0(m.planGap*m.vol) + ' грн',
     '',
     'РРЦ: ' + money(m.rrp) + ' грн · націнка мережі ' + pct(m.netMarkup),
     '',
@@ -1088,7 +1166,8 @@ function summaryText(){
     'Цільова ціна (запас +' + pct(m.targetGap) + '): ' + (m.priceTarget === null ? '—' : money(m.priceTarget) + ' грн'),
     'Макс. бонуси при цій ціні: ' + (m.maxBonusMin === null ? '—' : pct(m.maxBonusMin)),
     '',
-    'РІШЕННЯ: ' + label + ' (ціль +' + pct(m.targetGap) + ', мінімум +' + pct(m.minGap) + ' до бази)'
+    'РІШЕННЯ по ціні: ' + label + ' (ціль +' + pct(m.targetGap) + ', мінімум +' + pct(m.minGap) + ' до бази)',
+    'РІШЕННЯ по плану: ' + (m.planBelowBase ? 'ЛІСТИНГ НЕ ОКУПАЄТЬСЯ' : {ok:'ПІДХОДИТЬ', warn:'НА МЕЖІ', bad:'НЕ ПІДХОДИТЬ'}[m.planVerdict])
   ].join('\n');
 }
 
@@ -1327,7 +1406,7 @@ function renderDeals(){
     writeState(migrate(d.state));
     const m = model();
     const v = verdictOf(m);
-    const pillTxt = m.belowBase ? '🚩 Нижче бази' : {ok:'Підходить', warn:'На межі', bad:'Ні'}[v];
+    const pillTxt = m.planBelowBase ? '🚩 Нижче бази' : {ok:'Підходить', warn:'На межі', bad:'Ні'}[v];
     return `<tr>
       ${showAllClients ? `<td>${escapeHtml(clientName(d.clientId))}</td>` : ''}
       <td>${escapeHtml(d.name)}</td>
@@ -1336,9 +1415,9 @@ function renderDeals(){
       <td>${pct(m.Bpct)}</td>
       <td>${money0(num('deferDays'))} дн</td>
       <td>${money0(m.points)} × ${money0(m.perPoint)}</td>
-      <td>${money(m.NN)}</td>
-      <td><b>${m.gapPct >= 0 ? '+' : '−'}${pct(Math.abs(m.gapPct))}</b></td>
-      <td>${money0(m.gap*m.vol)}</td>
+      <td>${money(m.planNN)}</td>
+      <td><b>${m.planGapPct >= 0 ? '+' : '−'}${pct(Math.abs(m.planGapPct))}</b></td>
+      <td>${money0(m.planGap*m.vol)}</td>
       <td><span class="pill ${v}">${pillTxt}</span></td>
       <td>
         <button class="mini-btn" data-act="loadDeal" data-arg="${i}">Відкрити</button>
