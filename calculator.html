@@ -281,16 +281,16 @@
 
     <div class="card">
       <h2><span class="dot"></span>1. Ціни</h2>
-      <p class="hint">Усі суми — за одиницю продукції, <b>без ПДВ</b>. Відпускну ціну правимо вручну під конкретні
+      <p class="hint">Усі суми — за одиницю продукції, <b>з ПДВ</b>. Відпускну ціну правимо вручну під конкретні
         перемовини. Дистриб'юторська ціна — це <b>база порівняння</b>: нижче за неї відвантажувати не можна.</p>
       <div class="grid3">
         <div class="field">
           <label>Відпускна ціна</label>
-          <div class="ctrl"><input id="price" inputmode="decimal" value="27"><span class="unit">грн</span></div>
+          <div class="ctrl"><input id="price" inputmode="decimal" value="32.4"><span class="unit">грн</span></div>
         </div>
         <div class="field">
           <label>Дистриб'юторська ціна (база)</label>
-          <div class="ctrl"><input id="basePrice" inputmode="decimal" value="21.5"><span class="unit">грн</span></div>
+          <div class="ctrl"><input id="basePrice" inputmode="decimal" value="25.8"><span class="unit">грн</span></div>
         </div>
         <div class="field">
           <label>Наша логістика</label>
@@ -378,8 +378,8 @@
     </div>
 
     <div class="card">
-      <h2><span class="dot"></span>5. Відтермінування та ПДВ</h2>
-      <p class="hint">Вартість грошей рахується від суми дебіторки з ПДВ за фактичну кількість днів відстрочки.</p>
+      <h2><span class="dot"></span>5. Відтермінування</h2>
+      <p class="hint">Вартість грошей рахується від суми дебіторки за фактичну кількість днів відстрочки. Ціни вже з ПДВ, тож дебіторка дорівнює відпускній ціні.</p>
       <div class="grid3">
         <div class="field">
           <label>Відтермінування</label>
@@ -390,7 +390,7 @@
           <div class="ctrl"><input id="moneyRate" inputmode="decimal" value="20"><span class="unit">% річних</span></div>
         </div>
         <div class="field">
-          <label>ПДВ</label>
+          <label>Ставка ПДВ (для довідки)</label>
           <div class="ctrl"><input id="vat" inputmode="decimal" value="20"><span class="unit">%</span></div>
         </div>
       </div>
@@ -410,7 +410,7 @@
           <div class="ctrl"><input id="minGap" inputmode="decimal" value="0"><span class="unit">%</span></div>
         </div>
         <div class="field">
-          <label>РРЦ — ціна полиці з ПДВ</label>
+          <label>РРЦ — ціна полиці</label>
           <div class="ctrl"><input id="rrp" inputmode="decimal" value="50"><span class="unit">грн</span></div>
         </div>
       </div>
@@ -491,7 +491,7 @@
 
   <div class="card">
     <h2><span class="dot"></span>Спільні умови мережі</h2>
-    <p class="hint">Ці умови діють на всі обрані позиції. Ціна, прогноз і лістинг задаються для кожної позиції окремо в таблиці нижче.</p>
+    <p class="hint">Ці умови діють на всі обрані позиції. Ціна, прогноз і лістинг задаються для кожної позиції окремо в таблиці нижче. Усі суми — з ПДВ.</p>
     <div class="grid4">
       <div class="field">
         <label>Канал продажу</label>
@@ -551,10 +551,6 @@
         <label>Інші витрати періоду</label>
         <div class="ctrl"><input id="pFixOther" inputmode="decimal" value="0"><span class="unit">грн</span></div>
       </div>
-      <div class="field">
-        <label>ПДВ</label>
-        <div class="ctrl"><input id="pVat" inputmode="decimal" value="20"><span class="unit">%</span></div>
-      </div>
     </div>
     <p class="hint" style="margin:1rem 0 0">«Інші витрати періоду» — спільний бюджет на промо, POS чи мерч. Розноситься між обраними позиціями пропорційно до їхньої виручки.</p>
   </div>
@@ -596,53 +592,91 @@
 </div>
 
 <footer>
-  <div class="wrap">VERDE ⚡ калькулятор дистрибуції · розрахунки без ПДВ, полична ціна — з ПДВ · <b>v-verde.ua</b></div>
+  <div class="wrap">VERDE ⚡ калькулятор дистрибуції · усі розрахунки з ПДВ · <b>v-verde.ua</b></div>
 </footer>
 
 <script>
 /* ---------------- прайс-лист ----------------
-   dist   — ціна дистриб'ютора без ПДВ
-   retail — ціна в мережу / роздріб без ПДВ
+   Усі ціни — З ПДВ, як і всі розрахунки в калькуляторі.
+   dist   — ціна дистриб'ютора з ПДВ
+   retail — ціна в мережу / роздріб з ПДВ
    rrp    — рекомендована ціна полиці з ПДВ
    Джерело — аркуш «Специфікація». Оновлювати разом із прайсом: правити тільки тут.
    PRICE_DATE — необов'язкова мітка версії прайсу, показується в підказці.
 --------------------------------------------- */
 const PRICE_DATE = '';
 const PRICELIST = [
-  {g:'Набори цукерок', n:'Набір цукерок Бестселерів 3 смаки VERDE 86 г.',            dist:87.5, retail:115.5,  rrp:199},
-  {g:'Набори цукерок', n:'Набір цукерок вишня-марципан VERDE 85 г.',                 dist:87.5, retail:115.5,  rrp:199},
-  {g:'Набори цукерок', n:'Набір цукерок з колагеном шоко-мигдаль, 5 шт. 75 г.',      dist:93,   retail:123.75, rrp:249},
-  {g:'Набори цукерок', n:'Набір цукерок з колагеном Мікс 3 смаки, 5 шт. 75 г.',      dist:93,   retail:123.75, rrp:249},
-  {g:'Батончики Зарядись', n:'Батончик Зарядись, магній-кокос, 25 г',                dist:21.5, retail:27,     rrp:50},
-  {g:'Батончики Зарядись', n:'Батончик Зарядись, омега-3-фісташка, 30 г',            dist:21.5, retail:27,     rrp:50},
-  {g:'Батончики Зарядись', n:'Батончик Зарядись, вітамін D3-мигдаль, 30 г',          dist:21.5, retail:27,     rrp:50},
-  {g:'Батончики Зарядись', n:'Батончик Зарядись, вітамін В12-фундук, 30 г',          dist:21.5, retail:27,     rrp:50},
-  {g:'Батончики Зарядись', n:'Батончик Зарядись, гуарана-арахіс, 30 г',              dist:21.5, retail:27,     rrp:50},
-  {g:'Батончики з колагеном', n:'Батончик з колагеном кокос, 35 г.',                 dist:30.5, retail:40.75,  rrp:79},
-  {g:'Батончики з колагеном', n:'Батончик з колагеном фісташка, 30 г.',              dist:30.5, retail:40.75,  rrp:79},
-  {g:'Набори батончиків', n:'Набір батончиків з гуараною, арахісом та білим шоколадом, 150 г',      dist:107.5, retail:113, rrp:199},
-  {g:'Набори батончиків', n:'Набір батончиків з вітаміном D3, мигдалем та білим шоколадом, 150 г',  dist:107.5, retail:113, rrp:199},
-  {g:'Набори батончиків', n:'Набір батончиків з вітаміном В₁₂, фундуком та чорним шоколадом, 150 г',dist:107.5, retail:113, rrp:199},
-  {g:'Набори батончиків', n:'Набір батончиків з магнієм, кокосом та білим шоколадом, 125 г',        dist:107.5, retail:113, rrp:199},
-  {g:'Набори батончиків', n:'Набір батончиків з омега-3, фісташкою та білим шоколадом, 150 г',      dist:107.5, retail:113, rrp:199},
-  {g:'Набори батончиків', n:'Набір батончиків Мікс 5 смаків з вітамінами, 145 г',                   dist:107.5, retail:113, rrp:199}
+  {g:'Набори цукерок', n:'Набір цукерок Бестселерів 3 смаки VERDE 86 г.',            dist:105,   retail:138.6,  rrp:199},
+  {g:'Набори цукерок', n:'Набір цукерок вишня-марципан VERDE 85 г.',                 dist:105,   retail:138.6,  rrp:199},
+  {g:'Набори цукерок', n:'Набір цукерок з колагеном шоко-мигдаль, 5 шт. 75 г.',      dist:111.6, retail:148.5, rrp:249},
+  {g:'Набори цукерок', n:'Набір цукерок з колагеном Мікс 3 смаки, 5 шт. 75 г.',      dist:111.6, retail:148.5, rrp:249},
+  {g:'Батончики Зарядись', n:'Батончик Зарядись, магній-кокос, 25 г',                dist:25.8,  retail:32.4,     rrp:50},
+  {g:'Батончики Зарядись', n:'Батончик Зарядись, омега-3-фісташка, 30 г',            dist:25.8,  retail:32.4,     rrp:50},
+  {g:'Батончики Зарядись', n:'Батончик Зарядись, вітамін D3-мигдаль, 30 г',          dist:25.8,  retail:32.4,     rrp:50},
+  {g:'Батончики Зарядись', n:'Батончик Зарядись, вітамін В12-фундук, 30 г',          dist:25.8,  retail:32.4,     rrp:50},
+  {g:'Батончики Зарядись', n:'Батончик Зарядись, гуарана-арахіс, 30 г',              dist:25.8,  retail:32.4,     rrp:50},
+  {g:'Батончики з колагеном', n:'Батончик з колагеном кокос, 35 г.',                 dist:36.6,  retail:48.9,  rrp:79},
+  {g:'Батончики з колагеном', n:'Батончик з колагеном фісташка, 30 г.',              dist:36.6,  retail:48.9,  rrp:79},
+  {g:'Набори батончиків', n:'Набір батончиків з гуараною, арахісом та білим шоколадом, 150 г',      dist:129,   retail:135.6, rrp:199},
+  {g:'Набори батончиків', n:'Набір батончиків з вітаміном D3, мигдалем та білим шоколадом, 150 г',  dist:129,   retail:135.6, rrp:199},
+  {g:'Набори батончиків', n:'Набір батончиків з вітаміном В₁₂, фундуком та чорним шоколадом, 150 г',dist:129,   retail:135.6, rrp:199},
+  {g:'Набори батончиків', n:'Набір батончиків з магнієм, кокосом та білим шоколадом, 125 г',        dist:129,   retail:135.6, rrp:199},
+  {g:'Набори батончиків', n:'Набір батончиків з омега-3, фісташкою та білим шоколадом, 150 г',      dist:129,   retail:135.6, rrp:199},
+  {g:'Набори батончиків', n:'Набір батончиків Мікс 5 смаків з вітамінами, 145 г',                   dist:129,   retail:135.6, rrp:199}
 ];
 
 /* ---------------- helpers ---------------- */
 const IDS = ['client','sku','channel','delivery','price','basePrice','ownLog','bRetro','bMkt','bLog','bPromo','bOther',
              'points','perPoint','fListing','fPromo','fOther','deferDays','moneyRate','vat',
              'targetGap','minGap','rrp'];
-const DEFAULTS = {client:'',sku:'4',channel:'retail',delivery:'rc',price:27,basePrice:21.5,ownLog:0,
+const DEFAULTS = {client:'',sku:'4',channel:'retail',delivery:'rc',price:32.4,basePrice:25.8,ownLog:0,
              bRetro:4,bMkt:3,bLog:3,bPromo:0,bOther:0,
              points:100,perPoint:100,fListing:15000,fPromo:0,fOther:0,deferDays:21,moneyRate:20,vat:20,
              targetGap:5,minGap:0,rrp:50};
 
-// стани, збережені до появи прогнозу, мали ручний обсяг — переносимо його в «продажі з 1 ТТ»
+/* Міграції збережених станів.
+   1) до появи прогнозу обсяг вводився вручну — переносимо його в «продажі з 1 ТТ»;
+   2) до переходу на ціни з ПДВ усі суми зберігалися без ПДВ — накручуємо ставку.
+      РРЦ не чіпаємо: вона завжди була з ПДВ. Прапорець vatIncl захищає від повторної конвертації. */
+const VAT_FIELDS = ['price','basePrice','ownLog','fListing','fPromo','fOther'];
+function bumpVat(s, fields, rate){
+  fields.forEach(f => {
+    const n = parseFloat(String(s[f]).replace(/\s/g,'').replace(',','.'));
+    if(isFinite(n)) s[f] = String(Math.round(n*rate*100)/100);
+  });
+}
 function migrate(s){
-  if(s && s.volume !== undefined && s.points === undefined){
-    s.points = 1; s.perPoint = s.volume;
+  if(!s) return s;
+  if(s.volume !== undefined && s.points === undefined){ s.points = 1; s.perPoint = s.volume; }
+  if(!s.vatIncl){
+    bumpVat(s, VAT_FIELDS, 1 + (parseFloat(s.vat) || 20)/100);
+    s.vatIncl = true;
   }
   return s;
+}
+function pMigrate(s){
+  if(!s || s.vatIncl) return s;
+  const rate = 1 + (parseFloat(s.shared && s.shared.pVat) || 20)/100;
+  if(s.shared) bumpVat(s.shared, ['pOwnLog','pFixOther'], rate);
+  (s.rows || []).forEach(r => bumpVat(r, ['price','base','list'], rate));
+  s.vatIncl = true;
+  return s;
+}
+function migrateStorage(){
+  try{
+    const last = JSON.parse(localStorage.getItem(LAST_KEY) || 'null');
+    if(last) localStorage.setItem(LAST_KEY, JSON.stringify(migrate(last)));
+
+    const deals = getDeals();
+    if(deals.length){ deals.forEach(d => d.state = migrate(d.state)); setDeals(deals); }
+
+    const ports = getPortfolios();
+    const ids = Object.keys(ports);
+    if(ids.length){
+      ids.forEach(id => ports[id] = pMigrate(ports[id]));
+      localStorage.setItem(PORT_KEY, JSON.stringify(ports));
+    }
+  }catch(e){}
 }
 
 const el = id => document.getElementById(id);
@@ -658,10 +692,12 @@ const pct = x => isFinite(x)
   : '—';
 
 /* ---------------- core model ----------------
-   P    — відпускна ціна без ПДВ
-   base — дистриб'юторська ціна без ПДВ: база порівняння, нижче неї відвантажувати не можна
+   Усі суми — З ПДВ.
+   P    — відпускна ціна з ПДВ
+   base — дистриб'юторська ціна з ПДВ: база порівняння, нижче неї відвантажувати не можна
    B    — сума бонусів, частка від P
-   k    — вартість відтермінування, частка від P: (1+ПДВ) * ставка * дні/365
+   k    — вартість відтермінування, частка від P: ставка * дні/365
+          (P уже з ПДВ, тобто дорівнює сумі дебіторки — накручувати ПДВ вдруге не треба)
    Fu   — фіксовані витрати періоду на одиницю
    NN   — чиста відпускна ціна: P*(1 - B - k) - Fu - власна логістика
    Запас = NN - base; у відсотках — від base.
@@ -700,7 +736,7 @@ function model(){
   const Fu = vol > 0 ? fixTotal/vol : 0;
 
   const vat = num('vat')/100;
-  const k = (1+vat) * (num('moneyRate')/100) * (num('deferDays')/365);
+  const k = (num('moneyRate')/100) * (num('deferDays')/365);
 
   const bonusMoney = P*B;
   const deferMoney = P*k;
@@ -728,20 +764,20 @@ function model(){
     const r = num('moneyRate')/100;
     if(P <= 0 || r <= 0) return null;
     const kMax = 1 - B - needNN(minGap)/P;
-    return kMax/((1+vat)*r)*365;
+    return kMax/r*365;
   })();
 
   // полиця: РРЦ задана прайсом, тож націнку мережі виводимо з неї, а не навпаки
-  const priceWithVat = P*(1+vat);
+  const priceNoVat = (1+vat) > 0 ? P/(1+vat) : P;   // довідково, для звірки з прайсом і бухгалтерією
   const rrp = num('rrp');
-  const netMarkup = priceWithVat > 0 ? (rrp/priceWithVat - 1)*100 : 0;
-  const netMargin  = rrp > 0 ? (rrp - priceWithVat)/rrp*100 : 0;
+  const netMarkup = P > 0 ? (rrp/P - 1)*100 : 0;
+  const netMargin = rrp > 0 ? (rrp - P)/rrp*100 : 0;
 
   return {P,base,ownLog,ownDelivery,bonuses,Bpct,B,k,points,perPoint,vol,fixTotal,Fu,vat,
           bonusMoney,deferMoney,NN,gap,gapPct,erosion,belowBase,
           priceTarget,priceMin,priceFloor,
           maxBonusTarget,maxBonusMin,maxBonusFloor,maxDefer,
-          priceWithVat,rrp,netMarkup,netMargin,
+          priceNoVat,rrp,netMarkup,netMargin,
           targetGap,minGap};
 }
 
@@ -806,7 +842,7 @@ function render(){
   const T = (k,val,cls) => rows +=
     `<div class="row total"><div class="k">${k}</div><div class="v${cls?' '+cls:''}">${val}</div></div>`;
 
-  R('Відпускна ціна (без ПДВ)', money(m.P) + ' ₴');
+  R('Відпускна ціна (з ПДВ)', money(m.P) + ' ₴');
   m.bonuses.forEach(b => { if(b.p) R(b.key + ' (' + pct(b.p) + ')', '− ' + money(m.P*b.p/100) + ' ₴', 'neg', true); });
   if(m.Bpct) R('Разом бонуси (' + pct(m.Bpct) + ')', '− ' + money(m.bonusMoney) + ' ₴', 'neg');
   if(m.Fu) R('Лістинг і фікс. витрати на од.', '− ' + money(m.Fu) + ' ₴', 'neg');
@@ -833,8 +869,8 @@ function render(){
 
   /* --- полиця та період --- */
   rows = '';
-  R('Наша ціна з ПДВ', money(m.priceWithVat) + ' ₴');
-  R('РРЦ — ціна полиці з ПДВ', money(m.rrp) + ' ₴');
+  R('Наша ціна без ПДВ (довідково)', money(m.priceNoVat) + ' ₴');
+  R('РРЦ — ціна полиці', money(m.rrp) + ' ₴');
   R('Націнка мережі до РРЦ', pct(m.netMarkup), m.netMarkup > 0 ? '' : 'neg');
   R('Маржа мережі від РРЦ', pct(m.netMargin), m.netMargin > 0 ? '' : 'neg');
   T('Прогноз продажів', money0(m.vol) + ' од.');
@@ -914,7 +950,7 @@ function summaryText(){
     'Клієнт: ' + clientName(el('client').value),
     'Канал: ' + chan + ' · доставка: ' + (m.ownDelivery ? 'на точки, логістика наша' : 'на РЦ клієнта'),
     '',
-    'Відпускна ціна (без ПДВ): ' + money(m.P) + ' грн',
+    'Відпускна ціна (з ПДВ): ' + money(m.P) + ' грн',
     'Дистриб\'юторська ціна (база): ' + money(m.base) + ' грн',
     'Бонуси: ' + pct(m.Bpct) + ' (' + money(m.bonusMoney) + ' грн/од)',
     '  ' + m.bonuses.filter(b=>b.p).map(b=>b.key + ' ' + pct(b.p)).join(', '),
@@ -926,7 +962,7 @@ function summaryText(){
     'Запас над базою: ' + sign(m.gap) + money(Math.abs(m.gap)) + ' грн/од (' + sign(m.gapPct) + pct(Math.abs(m.gapPct)) + ')',
     'Запас за період: ' + money0(m.gap*m.vol) + ' грн',
     '',
-    'РРЦ: ' + money(m.rrp) + ' грн з ПДВ · націнка мережі ' + pct(m.netMarkup),
+    'РРЦ: ' + money(m.rrp) + ' грн · націнка мережі ' + pct(m.netMarkup),
     '',
     'Мінімальна ціна (запас +' + pct(m.minGap) + '): ' + (m.priceMin === null ? '—' : money(m.priceMin) + ' грн'),
     'Цільова ціна (запас +' + pct(m.targetGap) + '): ' + (m.priceTarget === null ? '—' : money(m.priceTarget) + ' грн'),
@@ -1003,11 +1039,11 @@ function skuNoteHtml(){
     s += 'Для цієї позиції у прайсі <b>немає дистриб\'юторської ціни</b> — базу порівняння постав вручну. ';
   }
   if(listPrice === null){
-    return s + 'Відпускну ціну теж вводимо вручну або рахуємо як «мережа напряму» (' + money(p.retail) + ' ₴ без ПДВ).';
+    return s + 'Відпускну ціну теж вводимо вручну або рахуємо як «мережа напряму» (' + money(p.retail) + ' ₴ з ПДВ).';
   }
 
-  s += 'З прайсу' + (PRICE_DATE ? ' (' + PRICE_DATE + ')' : '') + ': <b>' + money(listPrice) + ' ₴</b> без ПДВ · ' +
-       money(listPrice*(1 + num('vat')/100)) + ' ₴ з ПДВ · РРЦ ' + money(p.rrp) + ' ₴.';
+  s += 'З прайсу' + (PRICE_DATE ? ' (' + PRICE_DATE + ')' : '') + ': <b>' + money(listPrice) + ' ₴</b> з ПДВ · ' +
+       money(listPrice/(1 + num('vat')/100)) + ' ₴ без ПДВ · РРЦ ' + money(p.rrp) + ' ₴.';
   const cur = num('price');
   if(Math.abs(cur - listPrice) > 0.005){
     const d = (cur - listPrice)/listPrice*100;
@@ -1090,7 +1126,7 @@ function deleteClient(){
 const LAST_KEY = 'verde_calc_last';
 const DEALS_KEY = 'verde_calc_deals';
 
-function readState(){ const s = {}; IDS.forEach(id => s[id] = el(id).value); return s; }
+function readState(){ const s = {vatIncl:true}; IDS.forEach(id => s[id] = el(id).value); return s; }
 // присвоюємо лише за реальної зміни — інакше таблиця порівняння збивала б курсор у полі, де друкують
 function writeState(s){ IDS.forEach(id => { if(s[id] !== undefined && el(id).value !== s[id]) el(id).value = s[id]; }); }
 
@@ -1208,7 +1244,7 @@ function escapeHtml(s){
    Спільні умови зверху, ціна / прогноз / лістинг — по кожній позиції.
 ==================================================== */
 const P_SHARED = ['pChannel','pPoints','pDefer','pRate','pRetro','pMkt','pLog','pPromo',
-                  'pDelivery','pOwnLog','pTargetGap','pMinGap','pFixOther','pVat'];
+                  'pDelivery','pOwnLog','pTargetGap','pMinGap','pFixOther'];
 const PORT_KEY = 'verde_calc_portfolios';
 const cellId = (f,i) => 'p_' + f + '_' + i;
 const cell = (f,i) => el(cellId(f,i));
@@ -1272,8 +1308,7 @@ function pSelectAll(on){
 }
 
 function portfolio(){
-  const vat = num('pVat')/100;
-  const k = (1+vat)*(num('pRate')/100)*(num('pDefer')/365);
+  const k = (num('pRate')/100)*(num('pDefer')/365);   // ціни з ПДВ = сума дебіторки
   const B = (num('pRetro') + num('pMkt') + num('pLog') + num('pPromo'))/100;
   const points = num('pPoints');
   const ownLog = el('pDelivery').value === 'tt' ? num('pOwnLog') : 0;
@@ -1314,7 +1349,7 @@ function portfolio(){
   t.gapPct = t.baseRevenue > 0 ? t.gap/t.baseRevenue*100 : 0;
   t.verdict = t.flags ? 'bad' : (t.gapPct < minGap ? 'bad' : (t.warns || t.gapPct < targetGap ? 'warn' : 'ok'));
 
-  return {rows, sel, t, B, k, points, ownLog, targetGap, minGap, vat};
+  return {rows, sel, t, B, k, points, ownLog, targetGap, minGap};
 }
 
 function pRender(){
@@ -1388,7 +1423,7 @@ function pRender(){
 
 /* ---- збереження портфеля під клієнта ---- */
 function pReadState(){
-  const s = {shared:{}, rows:[]};
+  const s = {vatIncl:true, shared:{}, rows:[]};
   P_SHARED.forEach(id => s.shared[id] = el(id).value);
   PRICELIST.forEach((p,i) => s.rows.push({
     on: cell('on',i).checked,
@@ -1462,6 +1497,7 @@ function setMode(m){
 /* ---------------- init ---------------- */
 buildSkuList();
 renderClientList();
+migrateStorage();                        // одноразово оновлює збереження під нову модель
 if(!loadLast()) writeState(DEFAULTS);   // перший запуск — стартуємо з позиції за замовчуванням
 IDS.forEach(id => el(id).addEventListener('input', render));
 el('sku').addEventListener('change', applySku);
