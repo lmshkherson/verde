@@ -2534,6 +2534,129 @@ try {
   check('ФОП продав понад власний залишок — склад нуль', near(fopAfter, 0, 0.001), `${fopPist} → ${fopAfter}`);
   await switchEntity(sales, 'Верде Світ');
 
+  // ─── 13-і. Акт списання і безоплатна відправка ─────────────────────────────
+  console.log('\nАкт списання');
+
+  // P&L до актів — наприкінці перевіримо, що результат впав рівно на їх
+  // собівартість: подвоєння (стаття + рядок «Списання») дало б удвічі більше.
+  await owner.goto(`${BASE}/pl`);
+  const plBeforeActs = await stat(owner, 'Фінансовий результат');
+
+  await switchEntity(warehouse, 'Верде Світ');
+  const beforeWo = await stockCost(warehouse, 'finished', 'Фісташка');
+
+  await warehouse.goto(`${BASE}/writeoffs`);
+  await selectByText(
+    warehouse,
+    'form:has(select[name="category"]) select[name="entity_id"]',
+    'Верде Світ',
+  );
+  await selectByText(
+    warehouse,
+    'form:has(select[name="category"]) select[name="warehouse_id"]',
+    'готової продукції',
+  );
+  await warehouse.fill('input[name="reason"]', 'Пошкоджено при транспортуванні');
+  await warehouse.click('form:has(select[name="category"]) button[type="submit"]');
+  await warehouse.waitForURL(/\/writeoffs\/[0-9a-f-]{36}/);
+  const woId = warehouse.url().match(/writeoffs\/([0-9a-f-]{36})/)[1];
+
+  await fillEntryRow(warehouse, 0, 'Фісташка', { qty: 3 });
+  await warehouse.fill('input[name="row_note_0"]', 'розчавлений короб');
+  await warehouse.click('button:has-text("Додати рядки в акт")');
+  await warehouse.waitForTimeout(700);
+  await warehouse.reload();
+  await warehouse.click('button:has-text("Провести")');
+  await warehouse.waitForTimeout(1500);
+  await warehouse.reload();
+
+  check('акт проведено', (await warehouse.locator('text=Проведено').count()) > 0);
+  const woCost = await stat(warehouse, 'Собівартість');
+  check('собівартість порахувалась за партіями', woCost > 0, `${woCost} грн`);
+  const afterWo = await stockCost(warehouse, 'finished', 'Фісташка');
+  check(
+    'склад зменшився рівно на списане',
+    near(afterWo.qty, beforeWo.qty - 3, 0.001),
+    `${beforeWo.qty} → ${afterWo.qty} шт`,
+  );
+
+  await owner.goto(`${BASE}/movements/${woId}`);
+  check(
+    'Дт/Кт: екран рухів упізнає акт списання',
+    (await owner.locator('text=Акт списання').count()) > 0,
+  );
+  check('і показує складські рухи', (await stat(owner, 'Складських рухів')) > 0);
+
+  // Безоплатна відправка блогеру: із замовлення — ТТН плюс проведений акт.
+  console.log('\nБезоплатна відправка з замовлення');
+  const beforeGift = await stockCost(sales, 'finished', 'Фісташка');
+
+  await sales.goto(`${BASE}/sales`);
+  await selectByText(
+    sales,
+    'form:has(select[name="customer_id"]) select[name="entity_id"]',
+    'Верде Світ',
+  );
+  await selectByText(sales, 'select[name="customer_id"]', 'Ранок');
+  await sales.click('form:has(select[name="customer_id"]) button[type="submit"]');
+  await sales.waitForURL(/\/sales\/[0-9a-f-]{36}/);
+  const giftSoUrl = sales.url();
+  await fillEntryRow(sales, 0, 'Фісташка', { qty: 2 });
+  await sales.click('button:has-text("Додати рядки в замовлення")');
+  await sales.waitForTimeout(800);
+  await sales.reload();
+
+  await selectByText(sales, 'form:has(input[name="so_id"]) select[name="category"]', 'Маркетинг');
+  await sales.click('button:has-text("Відправити безоплатно")');
+  await sales.waitForURL(/\/writeoffs\/[0-9a-f-]{36}/);
+
+  check('із замовлення створився проведений акт', (await sales.locator('text=Проведено').count()) > 0);
+  const giftCategory = await sales
+    .locator('[data-stat="Стаття витрат"] [data-stat-value]')
+    .innerText();
+  check('стаття акта — маркетинг', giftCategory.includes('Маркетинг'), giftCategory);
+  check(
+    'мінбаза ПДВ: зобов’язання з собівартості (п. 188.1 ПКУ)',
+    (await sales.locator('text=188.1').count()) > 0,
+  );
+  check('є посилання на друк ТТН', (await sales.locator('a:has-text("Друк ТТН")').count()) > 0);
+  check(
+    'і на видаткову накладну',
+    (await sales.locator('a:has-text("Видаткова накладна")').count()) > 0,
+  );
+  const giftCost = await stat(sales, 'Собівартість');
+  check('собівартість подарунка порахована', giftCost > 0, `${giftCost} грн`);
+
+  await sales.goto(giftSoUrl);
+  check(
+    'замовлення відвантажено без виручки: сума нуль',
+    near(await stat(sales, 'Сума з ПДВ'), 0, 0.001),
+  );
+  check('статус — відвантажено', (await sales.locator('text=Відвантажено').count()) > 0);
+  const afterGift = await stockCost(sales, 'finished', 'Фісташка');
+  check(
+    'склад зменшився на подаровану кількість',
+    near(afterGift.qty, beforeGift.qty - 2, 0.001),
+    `${beforeGift.qty} → ${afterGift.qty} шт`,
+  );
+
+  // Результат впав рівно на собівартість двох актів — якби акт потрапив і в
+  // статтю, і в рядок «Списання», падіння було б удвічі більшим.
+  await owner.goto(`${BASE}/pl`);
+  const plAfterActs = await stat(owner, 'Фінансовий результат');
+  check(
+    'акти не подвоюють витрати: P&L впав рівно на їх собівартість',
+    near(plBeforeActs - plAfterActs, woCost + giftCost, 1),
+    `${plBeforeActs} → ${plAfterActs} при собівартості ${woCost} + ${giftCost}`,
+  );
+
+  // Після перегенерації в акта є і проводки: Дт стаття, Кт запаси.
+  await owner.goto(`${BASE}/accounting`);
+  await owner.click('button:has-text("Перегенерувати період")');
+  await owner.waitForTimeout(3000);
+  await owner.goto(`${BASE}/movements/${woId}`);
+  check('після перегенерації акт має проводки', (await stat(owner, 'Проводок')) > 0);
+
   // ─── 14. Права доступу ─────────────────────────────────────────────────────
   console.log('\nПрава доступу');
   const denied = await warehouse.goto(`${BASE}/reports`);

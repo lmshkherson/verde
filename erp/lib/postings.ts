@@ -38,6 +38,7 @@ const cashAccount = (method: string) => (method === 'cash' ? '301' : '311');
 /** Рахунок витрат за категорією. Цех виділено окремо — він розходиться між книгами. */
 function expenseAccount(category: string): string {
   if (category === 'logistics' || category === 'marketing') return '93';
+  if (category === 'spoilage') return '947';
   return '92';
 }
 
@@ -408,6 +409,7 @@ export async function regeneratePostings(
   }>(
     `select id, spent_on, category, amount_net, cost_behavior, description from expenses
       where legal_entity_id = $1
+        and write_off_id is null
         and spent_on >= $2::date and spent_on < ($2::date + interval '1 month')`,
     range,
   );
@@ -428,11 +430,12 @@ export async function regeneratePostings(
     }
   }
 
-  // ─── Втрати від псування ─────────────────────────────────────────────────
+  // ─── Втрати від псування (разові операції без акта) ──────────────────────
   const { rows: writeOffs } = await client.query<{ day: string; kind: string; amount: number }>(
     `select m.moved_at::date as day, i.kind, sum(-m.qty * m.unit_cost) as amount
        from stock_moves m join items i on i.id = m.item_id
       where m.legal_entity_id = $1 and m.move_type = 'write_off'
+        and coalesce(m.doc_type, '') <> 'write_off_act'
         and m.moved_at >= $2::date and m.moved_at < ($2::date + interval '1 month')
       group by m.moved_at::date, i.kind`,
     range,
@@ -440,6 +443,31 @@ export async function regeneratePostings(
   for (const w of writeOffs) {
     count += await addBatch(client, entityId, 'write_off', null, w.day, 'Списання', [
       { debit: '947', credit: inventoryAccount(w.kind), amount: w.amount },
+    ]);
+  }
+
+  // ─── Акти списання: собівартість лягає за статтею акта ───────────────────
+  const { rows: writeOffActs } = await client.query<{
+    id: string;
+    number: string;
+    category: string;
+    day: string;
+    kind: string;
+    amount: number;
+  }>(
+    `select w.id, w.number, w.category, m.moved_at::date as day, i.kind,
+            sum(-m.qty * m.unit_cost) as amount
+       from stock_moves m
+       join items i on i.id = m.item_id
+       join write_offs w on w.id = m.doc_id
+      where m.legal_entity_id = $1 and m.doc_type = 'write_off_act'
+        and m.moved_at >= $2::date and m.moved_at < ($2::date + interval '1 month')
+      group by w.id, w.number, w.category, m.moved_at::date, i.kind`,
+    range,
+  );
+  for (const w of writeOffActs) {
+    count += await addBatch(client, entityId, 'write_off_act', w.id, w.day, `Акт списання ${w.number}`, [
+      { debit: expenseAccount(w.category), credit: inventoryAccount(w.kind), amount: w.amount },
     ]);
   }
 

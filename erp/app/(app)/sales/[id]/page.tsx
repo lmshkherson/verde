@@ -1,11 +1,12 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { addSalesLines, cancelSalesOrder, confirmSalesOrder, recordPayment, removeSalesLine, shipSalesOrder } from '@/app/actions/sales';
+import { giftShipFromOrder } from '@/app/actions/writeoffs';
 import { ActionForm } from '@/components/action-form';
 import { LinesEntry } from '@/components/lines-entry';
 import { Badge, Button, Card, Cell, Empty, Field, inputClass, LinkButton, PageHeader, Row, Stat, Table } from '@/components/ui';
 import { query, queryOne } from '@/lib/db';
-import { fmtDate, fmtMoney, fmtQty, SALES_CHANNELS, SO_STATUS, unitLabel } from '@/lib/format';
+import { EXPENSE_CATEGORIES, fmtDate, fmtMoney, fmtQty, SALES_CHANNELS, SO_STATUS, unitLabel } from '@/lib/format';
 import { requireRole } from '@/lib/session';
 
 export const dynamic = 'force-dynamic';
@@ -316,6 +317,29 @@ export default async function SalesOrderPage({ params }: { params: Promise<{ id:
               <p className="text-xs text-emerald-800/60">
                 Партії підбираються за FEFO: клієнту поїде те, у чого раніше закінчується термін.
               </p>
+            </ActionForm>
+          </Card>
+        )}
+
+        {(isDraft || canShip) && lines.length > 0 && (
+          <Card title="Безоплатна відправка (списання)">
+            <p className="mb-3 text-sm text-emerald-800/70">
+              Для відправки блогерам, зразків чи подарунків: система створить відвантаження з
+              нульовими цінами (щоб надрукувати ТТН і видаткову) і одразу проведе акт списання
+              собівартості за обраною статтею. Виручки й дебіторки по замовленню не буде — ціни в
+              рядках обнуляться.
+            </p>
+            <ActionForm action={giftShipFromOrder} submitLabel="Відправити безоплатно">
+              <input type="hidden" name="so_id" value={order.id} />
+              <Field label="Стаття витрат" hint="куди у фінрезультаті ляже собівартість">
+                <select name="category" className={inputClass} defaultValue="marketing">
+                  {Object.entries(EXPENSE_CATEGORIES).map(([key, label]) => (
+                    <option key={key} value={key}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </Field>
             </ActionForm>
           </Card>
         )}

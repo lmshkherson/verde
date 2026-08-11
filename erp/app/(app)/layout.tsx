@@ -14,6 +14,7 @@ const ALL_ITEMS: (NavItem & { section: Section })[] = [
   { section: 'catalog', href: '/catalog', label: 'Номенклатура', short: 'SKU', icon: '🏷️' },
   { section: 'catalog', href: '/labeling', label: 'Маркування', short: 'Етикетка', icon: '🥜' },
   { section: 'stock', href: '/stocktake', label: 'Інвентаризація', short: 'Інвент.', icon: '📋' },
+  { section: 'stock', href: '/writeoffs', label: 'Списання', short: 'Спис.', icon: '🗑️' },
   { section: 'stock', href: '/traceability', label: 'Простежуваність', short: 'Партії', icon: '🔎' },
   { section: 'quality', href: '/quality', label: 'Вхідний контроль', short: 'Вхід.к', icon: '🧪' },
   { section: 'quality', href: '/haccp', label: 'HACCP', short: 'HACCP', icon: '🌡️' },

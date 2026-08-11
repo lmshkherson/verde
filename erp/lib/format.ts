@@ -116,6 +116,7 @@ export const EXPENSE_CATEGORIES: Record<string, string> = {
   marketing: 'Маркетинг і реклама',
   bank: 'Банківські послуги',
   services: 'Послуги підрядників',
+  spoilage: 'Псування і втрати',
   other: 'Інше',
 };
 
