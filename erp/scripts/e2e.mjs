@@ -1036,7 +1036,7 @@ try {
   await owner.waitForURL(/\/production\/[0-9a-f-]{36}/);
   check(
     'з картки варки можна відкрити її рухи',
-    (await owner.locator('a:has-text("Рухи документа")').count()) > 0,
+    (await owner.locator('a:has-text("Дт/Кт")').count()) > 0,
   );
 
   // ─── 11b. Баланс і звіт про фінансові результати ───────────────────────────

@@ -183,7 +183,7 @@ export default async function DocumentMovementsPage({ params }: { params: Promis
   return (
     <>
       <PageHeader
-        title={`Рухи документа ${doc.title}`}
+        title={`Дт/Кт документа ${doc.title}`}
         subtitle={`${doc.kind} · ${fmtDate(doc.date)}`}
         action={doc.href ? <LinkButton href={doc.href}>← До документа</LinkButton> : undefined}
       />

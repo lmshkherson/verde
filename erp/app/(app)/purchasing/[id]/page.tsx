@@ -101,7 +101,7 @@ export default async function PurchaseOrderPage({ params }: { params: Promise<{ 
         subtitle={`${po.supplier} · від ${fmtDate(po.ordered_on)}`}
         action={
           <div className="flex gap-2">
-            <LinkButton href={`/movements/${po.id}`}>Рухи документа</LinkButton>
+            <LinkButton href={`/movements/${po.id}`}>Дт/Кт</LinkButton>
             <LinkButton href="/purchasing">← До списку</LinkButton>
           </div>
         }

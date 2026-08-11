@@ -129,7 +129,7 @@ export default async function ProductionOrderPage({ params }: { params: Promise<
         action={
           <div className="flex flex-wrap items-center gap-2">
             <Badge tone={statusTone[order.status]}>{PROD_STATUS[order.status]}</Badge>
-            <LinkButton href={`/movements/${order.id}`}>Рухи документа</LinkButton>
+            <LinkButton href={`/movements/${order.id}`}>Дт/Кт</LinkButton>
             <LinkButton href="/production">← До списку</LinkButton>
           </div>
         }

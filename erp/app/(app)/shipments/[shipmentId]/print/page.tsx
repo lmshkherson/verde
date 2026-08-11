@@ -114,7 +114,7 @@ export default async function ShipmentPrintPage({
         <PrintButton label="Друк / зберегти PDF" />
         <LinkButton href={`/sales/${doc.order_id}`}>← До замовлення</LinkButton>
         <LinkButton href={`/shipments/${shipmentId}/ttn`}>ТТН</LinkButton>
-        <LinkButton href={`/movements/${shipmentId}`}>Рухи документа</LinkButton>
+        <LinkButton href={`/movements/${shipmentId}`}>Дт/Кт</LinkButton>
         {!doc.seller_address && (
           <span className="text-sm text-amber-700">
             У юрособи не заповнена адреса —{' '}

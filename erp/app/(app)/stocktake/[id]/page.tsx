@@ -99,7 +99,7 @@ export default async function StocktakePage({ params }: { params: Promise<{ id: 
           action={
             <div className="flex gap-2">
               <PrintButton label="Друк опису" />
-              <LinkButton href={`/movements/${doc.id}`}>Рухи документа</LinkButton>
+              <LinkButton href={`/movements/${doc.id}`}>Дт/Кт</LinkButton>
               <LinkButton href="/stocktake">← До журналу</LinkButton>
             </div>
           }

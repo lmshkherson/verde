@@ -125,7 +125,7 @@ export default async function ReceiptPage({ params }: { params: Promise<{ id: st
               {STATUS[doc.status]}
             </Badge>
             <LinkButton href={`/purchasing/suppliers/${doc.supplier_id}`}>Постачальник</LinkButton>
-            {!open && <LinkButton href={`/movements/${doc.id}`}>Рухи документа</LinkButton>}
+            {!open && <LinkButton href={`/movements/${doc.id}`}>Дт/Кт</LinkButton>}
             <LinkButton href="/receipts">← До журналу</LinkButton>
           </div>
         }

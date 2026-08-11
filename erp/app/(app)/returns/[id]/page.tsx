@@ -123,7 +123,7 @@ export default async function ReturnPage({ params }: { params: Promise<{ id: str
         subtitle={`${doc.customer} · ${fmtDate(doc.returned_on)} · ${RETURN_REASONS[doc.reason]}`}
         action={
           <div className="flex gap-2">
-            <LinkButton href={`/movements/${doc.id}`}>Рухи документа</LinkButton>
+            <LinkButton href={`/movements/${doc.id}`}>Дт/Кт</LinkButton>
             {doc.so_id && <LinkButton href={`/sales/${doc.so_id}`}>Замовлення</LinkButton>}
             <LinkButton href="/returns">← До повернень</LinkButton>
           </div>

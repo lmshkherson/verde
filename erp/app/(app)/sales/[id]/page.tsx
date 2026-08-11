@@ -337,7 +337,7 @@ export default async function SalesOrderPage({ params }: { params: Promise<{ id:
                       >
                         {s.number}
                       </Link>
-                      <div className="text-xs text-emerald-800/50">рухи документа</div>
+                      <div className="text-xs text-emerald-800/50">Дт/Кт документа</div>
                     </Cell>
                     <Cell>{fmtDate(s.shipped_on)}</Cell>
                     <Cell>
