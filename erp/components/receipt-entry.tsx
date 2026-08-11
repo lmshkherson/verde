@@ -6,9 +6,13 @@ import { Alert, Button } from './ui';
 
 /**
  * Введення рядків надходження як із паперової накладної: таблиця
- * «№ · номенклатура · кількість · ціна · сума» з підсумками внизу і одним
- * збереженням на весь документ. Позиція шукається набором назви чи артикулу
- * (datalist), сканером теж можна — штрихкод розпізнається так само.
+ * «№ · номенклатура · кількість · ціна без ПДВ · ціна з ПДВ · сума без ПДВ ·
+ * сума з ПДВ» з підсумками внизу і одним збереженням на весь документ.
+ *
+ * Чотири грошові поля рахуються одне з одного в обидва боки: у паперових
+ * накладних постачальники друкують хто ціну без податку, хто суму з ним —
+ * оператор вводить те, що бачить, решта заповнюється сама за ставкою ПДВ
+ * із картки позиції.
  */
 
 export interface EntryItem {
@@ -26,17 +30,25 @@ interface RowState {
   text: string;
   itemId: string | null;
   qty: string;
-  price: string;
+  priceNet: string;
+  priceGross: string;
+  sumNet: string;
+  sumGross: string;
   batch: string;
   expires: string;
 }
+
+type MoneyField = 'priceNet' | 'priceGross' | 'sumNet' | 'sumGross';
 
 const emptyRow = (key: number): RowState => ({
   key,
   text: '',
   itemId: null,
   qty: '',
-  price: '',
+  priceNet: '',
+  priceGross: '',
+  sumNet: '',
+  sumGross: '',
   batch: '',
   expires: '',
 });
@@ -45,6 +57,10 @@ const toNum = (v: string) => {
   const n = Number(v.replace(',', '.').trim());
   return Number.isFinite(n) ? n : 0;
 };
+
+/** До 4 знаків для цін, без хвоста нулів — як пишуть у накладних. */
+const fmtPrice = (n: number) => String(Math.round(n * 10000) / 10000);
+const fmtSum = (n: number) => (Math.round(n * 100) / 100).toFixed(2);
 
 const fmt = new Intl.NumberFormat('uk-UA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -64,11 +80,10 @@ export function ReceiptEntry({
   const [clientError, setClientError] = useState('');
   const [state, formAction, pending] = useActionState(action, {});
 
-  // Ярлик «Назва (SKU)» — унікальний і читається як у паперовій накладній.
-  const labelOf = useMemo(() => {
+  const itemById = useMemo(() => {
     const m = new Map<string, EntryItem>();
     for (const i of items) m.set(i.id, i);
-    return (id: string | null) => (id ? m.get(id) ?? null : null);
+    return m;
   }, [items]);
 
   const byText = useMemo(() => {
@@ -89,12 +104,55 @@ export function ReceiptEntry({
     }
   }, [state]);
 
-  const update = (index: number, patch: Partial<RowState>) => {
+  const rateOf = (r: RowState) => Number(itemById.get(r.itemId ?? '')?.vat_rate ?? 20) / 100;
+
+  /**
+   * Перерахунок чотирьох грошових полів від одного зміненого. Канонічне
+   * значення — ціна без ПДВ; редаговане поле зберігає текст, як його
+   * набрали, решта форматуються.
+   */
+  const recalc = (row: RowState, edited: MoneyField | 'qty', raw: string): RowState => {
+    const next = { ...row, [edited]: raw } as RowState;
+    const rate = rateOf(next);
+    const qty = toNum(next.qty);
+
+    let priceNet: number | null = null;
+    if (edited === 'priceNet') priceNet = toNum(raw);
+    else if (edited === 'priceGross') priceNet = toNum(raw) / (1 + rate);
+    else if (edited === 'sumNet') priceNet = qty > 0 ? toNum(raw) / qty : null;
+    else if (edited === 'sumGross') priceNet = qty > 0 ? toNum(raw) / (1 + rate) / qty : null;
+    else if (edited === 'qty') {
+      // Кількість змінилась — ціни лишаються, суми перераховуються.
+      priceNet = next.priceNet !== '' ? toNum(next.priceNet) : next.priceGross !== '' ? toNum(next.priceGross) / (1 + rate) : null;
+    }
+
+    if (raw.trim() === '' && edited !== 'qty') {
+      return { ...next, priceNet: '', priceGross: '', sumNet: '', sumGross: '', [edited]: raw };
+    }
+    if (priceNet === null || !Number.isFinite(priceNet)) return next;
+
+    if (edited !== 'priceNet') next.priceNet = fmtPrice(priceNet);
+    if (edited !== 'priceGross') next.priceGross = fmtPrice(priceNet * (1 + rate));
+    if (edited !== 'sumNet') next.sumNet = qty > 0 ? fmtSum(priceNet * qty) : '';
+    if (edited !== 'sumGross') next.sumGross = qty > 0 ? fmtSum(priceNet * (1 + rate) * qty) : '';
+    return next;
+  };
+
+  const update = (index: number, patch: Partial<RowState>, edited?: MoneyField | 'qty') => {
     setClientError('');
     setRows((prev) => {
-      const next = prev.map((r, i) => (i === index ? { ...r, ...patch } : r));
-      // Останній рядок заповнили — одразу підставляємо новий порожній,
-      // щоб не тягнутися до кнопки після кожної позиції.
+      const next = prev.map((r, i) => {
+        if (i !== index) return r;
+        const merged = { ...r, ...patch };
+        // Позиція щойно розпізналась — перерахувати від уже набраної ціни
+        // за її ставкою ПДВ.
+        if (patch.itemId && patch.itemId !== r.itemId) {
+          if (merged.priceNet !== '') return recalc(merged, 'priceNet', merged.priceNet);
+          if (merged.priceGross !== '') return recalc(merged, 'priceGross', merged.priceGross);
+          return merged;
+        }
+        return edited ? recalc(merged, edited, String(patch[edited] ?? '')) : merged;
+      });
       if (index === prev.length - 1 && (patch.text ?? '') !== '') {
         next.push(emptyRow(nextKey.current));
         nextKey.current += 1;
@@ -105,16 +163,18 @@ export function ReceiptEntry({
 
   const resolve = (text: string): string | null => byText.get(text.trim().toLowerCase()) ?? null;
 
-  const filled = rows.filter((r) => r.text.trim() !== '' || r.qty.trim() !== '' || r.price.trim() !== '');
+  const filled = rows.filter(
+    (r) => r.text.trim() !== '' || r.qty.trim() !== '' || r.priceNet !== '' || r.priceGross !== '',
+  );
 
   const totals = filled.reduce(
     (acc, r) => {
-      const item = labelOf(r.itemId);
-      if (!item) return acc;
-      const gross = toNum(r.qty) * toNum(r.price);
-      const rate = Number(item.vat_rate) / 100;
-      const net = pricesIncludeVat ? gross / (1 + rate) : gross;
-      const vat = pricesIncludeVat ? gross - net : gross * rate;
+      if (!r.itemId) return acc;
+      const qty = toNum(r.qty);
+      const pn = toNum(r.priceNet);
+      const rate = rateOf(r);
+      const net = pn * qty;
+      const vat = net * rate;
       return { net: acc.net + net, vat: acc.vat + vat, gross: acc.gross + net + vat };
     },
     { net: 0, vat: 0, gross: 0 },
@@ -138,7 +198,9 @@ export function ReceiptEntry({
         filled.map((r) => ({
           item_id: r.itemId,
           qty: toNum(r.qty),
-          unit_price: toNum(r.price),
+          // Документ зберігає ціну в тому вигляді, який оголошено в шапці
+          // («ціни з ПДВ» чи без) — рівно як рахує проведення.
+          unit_price: toNum(pricesIncludeVat ? r.priceGross : r.priceNet),
           batch_code: r.batch,
           expires_on: r.expires,
         })),
@@ -148,6 +210,7 @@ export function ReceiptEntry({
   };
 
   const UNIT_LABELS: Record<string, string> = { kg: 'кг', g: 'г', l: 'л', ml: 'мл', pcs: 'шт', pack: 'уп' };
+  const cell = 'w-full rounded-lg border border-emerald-900/15 bg-white px-2 py-1.5 text-sm';
 
   return (
     <form action={submit} className="space-y-3">
@@ -159,26 +222,32 @@ export function ReceiptEntry({
       </datalist>
 
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[760px] border-collapse text-sm">
+        <table className="w-full min-w-[1040px] border-collapse text-sm">
           <thead>
             <tr className="border-b border-emerald-900/15 text-left text-xs uppercase tracking-wide text-emerald-800/60">
               <th className="w-8 py-2 pr-2">№</th>
               <th className="py-2 pr-2">Номенклатура</th>
-              <th className="w-14 py-2 pr-2">Од.</th>
-              <th className="w-24 py-2 pr-2 text-right">К-сть</th>
-              <th className="w-28 py-2 pr-2 text-right">Ціна</th>
-              <th className="w-28 py-2 pr-2 text-right">Сума</th>
-              <th className="w-28 py-2 pr-2">Партія</th>
-              <th className="w-36 py-2 pr-2">Придатний до</th>
+              <th className="w-12 py-2 pr-2">Од.</th>
+              <th className="w-20 py-2 pr-2 text-right">К-сть</th>
+              <th className="w-24 py-2 pr-2 text-right">Ціна без ПДВ</th>
+              <th className="w-24 py-2 pr-2 text-right">Ціна з ПДВ</th>
+              <th className="w-24 py-2 pr-2 text-right">Сума без ПДВ</th>
+              <th className="w-24 py-2 pr-2 text-right">Сума з ПДВ</th>
+              <th className="w-24 py-2 pr-2">Партія</th>
+              <th className="w-32 py-2 pr-2">Придатний до</th>
               <th className="w-8 py-2" />
             </tr>
           </thead>
           <tbody>
             {rows.map((r, i) => {
-              const item = labelOf(r.itemId);
+              const item = itemById.get(r.itemId ?? '') ?? null;
               const isService = item?.kind === 'service';
-              const amount = toNum(r.qty) * toNum(r.price);
-              const cell = 'w-full rounded-lg border border-emerald-900/15 bg-white px-2 py-1.5 text-sm';
+              const money: [MoneyField, string][] = [
+                ['priceNet', r.priceNet],
+                ['priceGross', r.priceGross],
+                ['sumNet', r.sumNet],
+                ['sumGross', r.sumGross],
+              ];
               return (
                 <tr key={r.key} className="border-b border-emerald-900/5 align-top">
                   <td className="py-1.5 pr-2 pt-3 text-emerald-800/50">{i + 1}</td>
@@ -189,9 +258,14 @@ export function ReceiptEntry({
                       value={r.text}
                       onChange={(e) => update(i, { text: e.target.value, itemId: resolve(e.target.value) })}
                       placeholder="назва, артикул або штрихкод…"
-                      className={`${cell} min-w-64 ${r.text && !r.itemId ? 'border-amber-400' : ''}`}
+                      className={`${cell} min-w-56 ${r.text && !r.itemId ? 'border-amber-400' : ''}`}
                       autoComplete="off"
                     />
+                    {item && (
+                      <div className="mt-0.5 text-[11px] text-emerald-800/50">
+                        ПДВ {Number(item.vat_rate)}%{isService ? ' · послуга — піде у витрати' : ''}
+                      </div>
+                    )}
                   </td>
                   <td className="py-1.5 pr-2 pt-3 text-emerald-800/70" data-row-unit={i}>
                     {item ? (isService ? 'посл.' : UNIT_LABELS[item.unit] ?? item.unit) : '—'}
@@ -200,23 +274,22 @@ export function ReceiptEntry({
                     <input
                       name={`row_qty_${i}`}
                       value={r.qty}
-                      onChange={(e) => update(i, { qty: e.target.value })}
+                      onChange={(e) => update(i, { qty: e.target.value }, 'qty')}
                       inputMode="decimal"
                       className={`${cell} text-right`}
                     />
                   </td>
-                  <td className="py-1.5 pr-2">
-                    <input
-                      name={`row_price_${i}`}
-                      value={r.price}
-                      onChange={(e) => update(i, { price: e.target.value })}
-                      inputMode="decimal"
-                      className={`${cell} text-right`}
-                    />
-                  </td>
-                  <td className="py-1.5 pr-2 pt-3 text-right font-semibold tabular-nums" data-row-amount={i}>
-                    {amount > 0 ? fmt.format(amount) : '—'}
-                  </td>
+                  {money.map(([field, value]) => (
+                    <td key={field} className="py-1.5 pr-2">
+                      <input
+                        name={`row_${field === 'priceNet' ? 'price_net' : field === 'priceGross' ? 'price_gross' : field === 'sumNet' ? 'sum_net' : 'sum_gross'}_${i}`}
+                        value={value}
+                        onChange={(e) => update(i, { [field]: e.target.value }, field)}
+                        inputMode="decimal"
+                        className={`${cell} text-right tabular-nums`}
+                      />
+                    </td>
+                  ))}
                   <td className="py-1.5 pr-2">
                     <input
                       name={`row_batch_${i}`}
@@ -270,15 +343,15 @@ export function ReceiptEntry({
         <div className="min-w-56 space-y-1 text-right text-sm" data-entry-totals>
           <div className="flex justify-between gap-6">
             <span className="text-emerald-800/60">Разом без ПДВ</span>
-            <span className="font-semibold tabular-nums">{fmt.format(totals.net)}</span>
+            <span className="font-semibold tabular-nums" data-total-net>{fmt.format(totals.net)}</span>
           </div>
           <div className="flex justify-between gap-6">
             <span className="text-emerald-800/60">ПДВ</span>
-            <span className="font-semibold tabular-nums">{fmt.format(totals.vat)}</span>
+            <span className="font-semibold tabular-nums" data-total-vat>{fmt.format(totals.vat)}</span>
           </div>
           <div className="flex justify-between gap-6 border-t border-emerald-900/15 pt-1 text-base">
-            <span className="font-semibold">Разом</span>
-            <span className="font-bold tabular-nums">{fmt.format(totals.gross)}</span>
+            <span className="font-semibold">Разом з ПДВ</span>
+            <span className="font-bold tabular-nums" data-total-gross>{fmt.format(totals.gross)}</span>
           </div>
         </div>
       </div>

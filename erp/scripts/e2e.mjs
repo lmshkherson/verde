@@ -1859,7 +1859,14 @@ try {
     ((await warehouse.locator('[data-row-unit="0"]').innerText()) ?? '').trim() === 'шт',
   );
   await warehouse.fill('input[name="row_qty_0"]', '500');
-  await warehouse.fill('input[name="row_price_0"]', '6.60');
+  await warehouse.fill('input[name="row_price_gross_0"]', '6.60');
+  check(
+    'ціна без ПДВ і суми порахувалися самі від ціни з ПДВ',
+    (await warehouse.locator('input[name="row_price_net_0"]').inputValue()) === '5.5' &&
+      (await warehouse.locator('input[name="row_sum_net_0"]').inputValue()) === '2750.00' &&
+      (await warehouse.locator('input[name="row_sum_gross_0"]').inputValue()) === '3300.00',
+    '6,60 з ПДВ → 5,50 без ПДВ, 2 750 / 3 300 за 500 шт',
+  );
   await warehouse.fill('input[name="row_batch_0"]', 'ПЛ-2026/88');
   await warehouse.click('button:has-text("Додати рядки в накладну")');
   await warehouse.waitForTimeout(1200);
@@ -1919,7 +1926,7 @@ try {
 
   await warehouse.fill('input[name="row_item_0"]', 'Какао терте (RAW-KAKAO)');
   await warehouse.fill('input[name="row_qty_0"]', '10');
-  await warehouse.fill('input[name="row_price_0"]', '540');
+  await warehouse.fill('input[name="row_price_gross_0"]', '540');
   await warehouse.click('button:has-text("Додати рядки в накладну")');
   await warehouse.waitForTimeout(1200);
   await warehouse.reload();
@@ -1982,7 +1989,7 @@ try {
     ((await warehouse.locator('[data-row-unit="0"]').innerText()) ?? '').includes('посл'),
   );
   await warehouse.fill('input[name="row_qty_0"]', '1');
-  await warehouse.fill('input[name="row_price_0"]', '12000');
+  await warehouse.fill('input[name="row_price_gross_0"]', '12000');
   await warehouse.click('button:has-text("Додати рядки в накладну")');
   await warehouse.waitForTimeout(1200);
   await warehouse.reload();
