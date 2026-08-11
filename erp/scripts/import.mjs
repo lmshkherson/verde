@@ -79,27 +79,30 @@ function barcode(raw, sku) {
 }
 
 const handlers = {
-  // sku;назва;тип;одиниця;термін_днів;мін_залишок;вага_г;шт_у_боксі;ціна_дистриб;ціна_мережа;ррц;уктзед;код_одиниці;штрихкод
+  // sku;назва;тип;одиниця;термін_днів;мін_залишок;вага_г;шт_у_боксі;ціна_дистриб;ціна_мережа;ррц;уктзед;код_одиниці;штрихкод;стаття_витрат
   async items() {
     let count = 0;
     for (const r of rows) {
       const sku = str(r.sku);
       if (!sku) continue;
+      const kind = str(r['тип']) || 'raw';
       await client.query(
         `insert into items (sku, name, kind, unit, shelf_life_days, min_stock, weight_g, pcs_per_box,
-                            price_distributor, price_network, price_rrp, uktzed, uom_code, barcode)
-         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+                            price_distributor, price_network, price_rrp, uktzed, uom_code, barcode,
+                            expense_category)
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
          on conflict (sku) do update set
            name = excluded.name, kind = excluded.kind, unit = excluded.unit,
            shelf_life_days = excluded.shelf_life_days, min_stock = excluded.min_stock,
            weight_g = excluded.weight_g, pcs_per_box = excluded.pcs_per_box,
            price_distributor = excluded.price_distributor, price_network = excluded.price_network,
            price_rrp = excluded.price_rrp, uktzed = excluded.uktzed, uom_code = excluded.uom_code,
-           barcode = coalesce(excluded.barcode, items.barcode)`,
+           barcode = coalesce(excluded.barcode, items.barcode),
+           expense_category = excluded.expense_category`,
         [
           sku,
           str(r['назва']),
-          str(r['тип']) || 'raw',
+          kind,
           str(r['одиниця']) || 'kg',
           num(r['термін_днів']) || null,
           num(r['мін_залишок']),
@@ -111,6 +114,9 @@ const handlers = {
           strOrNull(r['уктзед']),
           strOrNull(r['код_одиниці']),
           barcode(r['штрихкод'], sku),
+          // Послуга без статті витрат не пройде обмеження бази — і не має
+          // сенсу: при проведенні надходження сума лягає саме за статтею.
+          kind === 'service' ? str(r['стаття_витрат']) || 'services' : null,
         ],
       );
       count += 1;
