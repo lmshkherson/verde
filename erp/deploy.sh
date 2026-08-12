@@ -81,8 +81,11 @@ do_install() {
   sudo -u postgres psql -tc "select 1 from pg_database where datname='$DB_NAME'" | grep -q 1 \
     || sudo -u postgres createdb -O "$DB_USER" "$DB_NAME"
 
-  say "Код: $REPO_URL → $APP_DIR (гілка $BRANCH)"
-  if [ -d "$APP_DIR/.git" ]; then
+  say "Код: $APP_DIR"
+  if [ -d "$ERP_DIR" ] && [ ! -d "$APP_DIR/.git" ]; then
+    # Код уже розпакований з архіву — git не потрібен, працюємо з тим, що є.
+    echo "  Розпакований архів у $APP_DIR — беру його"
+  elif [ -d "$APP_DIR/.git" ]; then
     git -C "$APP_DIR" fetch origin "$BRANCH" && git -C "$APP_DIR" checkout "$BRANCH" \
       && git -C "$APP_DIR" pull origin "$BRANCH"
   else
@@ -184,17 +187,22 @@ NGINXEOF
 # ── update ───────────────────────────────────────────────────────────────────
 
 do_update() {
-  [ -d "$APP_DIR/.git" ] || fail "У $APP_DIR немає репозиторію — спершу sudo ./deploy.sh install"
+  [ -d "$ERP_DIR" ] || fail "У $APP_DIR немає коду — спершу sudo ./deploy.sh install"
   [ -f "$ENV_FILE" ] || fail "Немає $ENV_FILE — спершу sudo ./deploy.sh install"
 
-  say "Свіжий код (гілка $BRANCH)"
-  git -C "$APP_DIR" fetch origin "$BRANCH"
-  git -C "$APP_DIR" checkout "$BRANCH"
-  local before after
-  before=$(git -C "$APP_DIR" rev-parse --short HEAD)
-  git -C "$APP_DIR" pull --ff-only origin "$BRANCH"
-  after=$(git -C "$APP_DIR" rev-parse --short HEAD)
-  echo "  $before → $after"
+  local before="(архів)"
+  if [ -d "$APP_DIR/.git" ]; then
+    say "Свіжий код (гілка $BRANCH)"
+    git -C "$APP_DIR" fetch origin "$BRANCH"
+    git -C "$APP_DIR" checkout "$BRANCH"
+    before=$(git -C "$APP_DIR" rev-parse --short HEAD)
+    git -C "$APP_DIR" pull --ff-only origin "$BRANCH"
+    echo "  $before → $(git -C "$APP_DIR" rev-parse --short HEAD)"
+  else
+    # Код приїхав архівом: перед update розпакуйте новий zip поверх $APP_DIR
+    # (.env.local і база при цьому не чіпаються) — далі скрипт зробить решту.
+    say "Код без git — беру те, що розпаковано в $APP_DIR"
+  fi
 
   # Бекап перед міграціями обов'язковий: зворотних скриптів у міграцій немає,
   # відкат схеми — це відновлення з бекапу.
