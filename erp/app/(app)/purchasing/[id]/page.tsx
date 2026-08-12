@@ -1,5 +1,5 @@
 import { notFound } from 'next/navigation';
-import { addPurchaseLines, cancelPurchaseOrder, markOrdered, receivePurchaseOrder, removePurchaseLine } from '@/app/actions/purchasing';
+import { addPurchaseLines, cancelPurchaseOrder, markOrdered, receivePurchaseOrder, recordFxDifference, removePurchaseLine } from '@/app/actions/purchasing';
 import { LinesEntry } from '@/components/lines-entry';
 import { recordSupplierPayment } from '@/app/actions/finance';
 import { ActionForm } from '@/components/action-form';
@@ -40,10 +40,12 @@ export default async function PurchaseOrderPage({ params }: { params: Promise<{ 
     buyer_is_vat_payer: boolean;
     supplier_is_vat_payer: boolean;
     entity_name: string;
+    currency: string;
+    fx_rate: number;
   }>(
     `select p.id, p.number, p.status, p.ordered_on, p.expected_on, p.note,
             s.name as supplier, s.payment_terms_days,
-            p.supplier_id,
+            p.supplier_id, p.currency, p.fx_rate,
             a.net_amount, a.gross_amount, a.received_net, a.received_gross,
             coalesce((select sum(sp.amount) from supplier_payments sp where sp.po_id = p.id), 0) as paid_amount,
             p.prices_include_vat, s.is_vat_payer as supplier_is_vat_payer,
@@ -99,7 +101,9 @@ export default async function PurchaseOrderPage({ params }: { params: Promise<{ 
     <>
       <PageHeader
         title={`Заявка ${po.number}`}
-        subtitle={`${po.entity_name} ← ${po.supplier} · від ${fmtDate(po.ordered_on)}`}
+        subtitle={`${po.entity_name} ← ${po.supplier} · від ${fmtDate(po.ordered_on)}${
+          po.currency !== 'UAH' ? ` · ${po.currency}, курс ${Number(po.fx_rate)}` : ''
+        }`}
         action={
           <div className="flex gap-2">
             <LinkButton href={`/movements/${po.id}`}>Дт/Кт</LinkButton>
@@ -222,6 +226,30 @@ export default async function PurchaseOrderPage({ params }: { params: Promise<{ 
                     </option>
                   ))}
                 </select>
+              </Field>
+            </ActionForm>
+          </Card>
+        )}
+
+        {po.currency !== 'UAH' && po.received_gross > 0.005 && (
+          <Card title="Курсова різниця">
+            <p className="mb-3 text-sm text-emerald-800/70">
+              Борг зафіксовано в гривнях за курсом документа ({Number(po.fx_rate)} грн/{po.currency}).
+              Якщо на дату оплати курс інший — зафіксуйте його тут: різниця ляже у витрати за
+              статтею «Курсові різниці» і скоригує борг постачальнику. Зміцнення гривні дасть
+              від’ємну витрату — це нормально.
+            </p>
+            <ActionForm action={recordFxDifference} submitLabel="Зафіксувати різницю" variant="ghost">
+              <input type="hidden" name="po_id" value={po.id} />
+              <Field label={`Курс на дату оплати, грн за 1 ${po.currency}`}>
+                <input
+                  name="pay_rate"
+                  type="number"
+                  step="0.000001"
+                  min="0"
+                  defaultValue={Number(po.fx_rate)}
+                  className={inputClass}
+                />
               </Field>
             </ActionForm>
           </Card>

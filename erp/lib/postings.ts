@@ -39,6 +39,7 @@ const cashAccount = (method: string) => (method === 'cash' ? '301' : '311');
 function expenseAccount(category: string): string {
   if (category === 'logistics' || category === 'marketing') return '93';
   if (category === 'spoilage') return '947';
+  if (category === 'fx') return '945';
   return '92';
 }
 

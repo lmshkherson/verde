@@ -3,7 +3,7 @@ import { createPurchaseOrder } from '@/app/actions/purchasing';
 import { ActionForm } from '@/components/action-form';
 import { Badge, Card, Cell, Empty, Field, inputClass, LinkButton, PageHeader, Row, Stat, Table } from '@/components/ui';
 import { query } from '@/lib/db';
-import { fmtDate, fmtMoney, fmtQty, PO_STATUS } from '@/lib/format';
+import { CURRENCIES, fmtDate, fmtMoney, fmtQty, PO_STATUS } from '@/lib/format';
 import { requireRole } from '@/lib/session';
 
 export const dynamic = 'force-dynamic';
@@ -161,6 +161,27 @@ export default async function PurchasingPage() {
               <Field label="Очікувана дата">
                 <input name="expected_on" type="date" className={inputClass} />
               </Field>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Field label="Валюта" hint="для імпорту; ціни рядків — у валюті документа">
+                  <select name="currency" className={inputClass} defaultValue="UAH">
+                    {Object.entries(CURRENCIES).map(([code, label]) => (
+                      <option key={code} value={code}>
+                        {label}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label="Курс, грн за одиницю" hint="для гривні ігнорується">
+                  <input
+                    name="fx_rate"
+                    type="number"
+                    step="0.000001"
+                    min="0"
+                    defaultValue="1"
+                    className={inputClass}
+                  />
+                </Field>
+              </div>
               <Field label="Примітка">
                 <input name="note" className={inputClass} />
               </Field>

@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { autoMatch, createBankAccount, importStatement } from '@/app/actions/bank';
+import { autoMatch, createBankAccount, importStatement, saveBankApi, syncBankApi } from '@/app/actions/bank';
 import { ActionForm } from '@/components/action-form';
 import { BankRow, type BankTx, type Party } from '@/components/bank-row';
 import {
@@ -35,8 +35,11 @@ export default async function BankPage() {
       unmatched: number;
       net_flow: number;
       last_op: string | null;
+      api_provider: string | null;
+      has_token: boolean;
     }>(
       `select a.id, a.name, a.iban, a.bank_name, a.currency,
+              a.api_provider, a.api_token is not null as has_token,
               t.lines, t.unmatched, t.net_flow, t.last_op
          from bank_accounts a
          join v_bank_account_totals t on t.account_id = a.id
@@ -243,6 +246,53 @@ export default async function BankPage() {
               </Field>
             </ActionForm>
           </Card>
+
+          {accounts.length > 0 && (
+            <Card title="Синхронізація по API">
+              <p className="mb-3 text-sm text-emerald-800/70">
+                З токеном виписка тягнеться прямо з банку — за останній місяць, без дублів
+                (повторна синхронізація підхопить лише нове). monobank — токен із застосунку;
+                Приват24 для бізнесу — «id:token» автоклієнта з кабінету АП24.
+              </p>
+              <ActionForm action={saveBankApi} submitLabel="Зберегти токен" variant="ghost">
+                <Field label="Рахунок">
+                  <select name="account_id" className={inputClass} defaultValue={accounts[0].id}>
+                    {accounts.map((a) => (
+                      <option key={a.id} value={a.id}>
+                        {a.name}
+                        {a.api_provider ? ` · ${a.api_provider}` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Field label="Банк">
+                    <select name="api_provider" className={inputClass} defaultValue="monobank">
+                      <option value="monobank">monobank</option>
+                      <option value="privat24">Приват24 для бізнесу</option>
+                    </select>
+                  </Field>
+                  <Field label="Токен">
+                    <input name="api_token" className={inputClass} autoComplete="off" />
+                  </Field>
+                </div>
+              </ActionForm>
+              <div className="mt-3">
+                <ActionForm action={syncBankApi} submitLabel="Синхронізувати за місяць">
+                  <Field label="Рахунок">
+                    <select name="account_id" className={inputClass} defaultValue={accounts.find((a) => a.has_token)?.id ?? accounts[0].id}>
+                      {accounts.map((a) => (
+                        <option key={a.id} value={a.id}>
+                          {a.name}
+                          {a.has_token ? ' · токен збережено' : ' · без токена'}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                </ActionForm>
+              </div>
+            </Card>
+          )}
         </div>
       </div>
     </>

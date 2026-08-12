@@ -427,3 +427,120 @@ export async function autoMatch(_prev: ActionState, formData: FormData): Promise
         : `Рознесено автоматично: ${matched}. Лишилося на руки: ${left}`,
   };
 }
+
+/** Токен API на банківському рахунку. */
+export async function saveBankApi(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  const session = await requireRole('warehouse', 'sales');
+  const accountId = str(formData, 'account_id');
+  const provider = str(formData, 'api_provider');
+  if (!accountId) return { error: 'Оберіть рахунок' };
+
+  try {
+    await transaction((c) =>
+      c.query(
+        `update bank_accounts set api_provider = $2, api_token = $3
+          where id = $1 and legal_entity_id = $4`,
+        [
+          accountId,
+          ['monobank', 'privat24'].includes(provider) ? provider : null,
+          strOrNull(formData, 'api_token'),
+          session.eid,
+        ],
+      ),
+    );
+  } catch (err) {
+    return { error: toMessage(err) };
+  }
+  revalidatePath('/bank');
+  return { ok: 'Налаштування API збережено' };
+}
+
+/**
+ * Синхронізація виписки через API банку: рухи за останній місяць лягають у
+ * той самий конвеєр, що CSV, — з дедуплікацією по ext_id, тож синхронізацію
+ * можна тиснути хоч щодня без дублів.
+ */
+export async function syncBankApi(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  const session = await requireRole('warehouse', 'sales');
+  const accountId = str(formData, 'account_id');
+  if (!accountId) return { error: 'Оберіть рахунок' };
+
+  let statementId = '';
+  try {
+    const account = await transaction(async (c) => {
+      const { rows } = await c.query<{
+        id: string;
+        iban: string | null;
+        api_provider: string | null;
+        api_token: string | null;
+      }>(
+        'select id, iban, api_provider, api_token from bank_accounts where id = $1 and legal_entity_id = $2',
+        [accountId, session.eid],
+      );
+      return rows[0];
+    });
+    if (!account) return { error: 'Рахунок не знайдено' };
+    if (!account.api_provider || !account.api_token) {
+      return { error: 'Спершу збережіть банк і токен API для цього рахунку' };
+    }
+
+    const { fetchBankRows } = await import('@/lib/bank-api');
+    const apiRows = await fetchBankRows(account.api_provider, account.api_token, account.iban ?? '');
+    if (apiRows.length === 0) return { ok: 'Банк не повернув жодного руху за останній місяць' };
+
+    statementId = await transaction(async (c) => {
+      const dates = apiRows.map((r) => r.opDate).sort();
+      const { rows: stmtRows } = await c.query<{ id: string }>(
+        `insert into bank_statements
+           (legal_entity_id, account_id, file_name, period_from, period_to, rows_total, imported_by)
+         values ($1, $2, $3, $4, $5, $6, $7) returning id`,
+        [
+          session.eid,
+          accountId,
+          `API ${account.api_provider}`,
+          dates[0],
+          dates[dates.length - 1],
+          apiRows.length,
+          session.uid,
+        ],
+      );
+      const id = stmtRows[0].id;
+
+      let created = 0;
+      for (const row of apiRows) {
+        const { rowCount } = await c.query(
+          `insert into bank_transactions
+             (statement_id, legal_entity_id, account_id, op_date, amount, currency,
+              counterparty_name, counterparty_edrpou, counterparty_iban, purpose, doc_number, ext_id)
+           values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+           on conflict (account_id, ext_id) do nothing`,
+          [
+            id,
+            session.eid,
+            accountId,
+            row.opDate,
+            row.amount,
+            row.currency,
+            row.counterpartyName,
+            row.counterpartyEdrpou,
+            row.counterpartyIban,
+            row.purpose,
+            row.docNumber,
+            row.extId,
+          ],
+        );
+        if (rowCount) created += 1;
+      }
+      await c.query('update bank_statements set rows_new = $2, rows_duplicate = $3 where id = $1', [
+        id,
+        created,
+        apiRows.length - created,
+      ]);
+      return id;
+    });
+  } catch (err) {
+    return { error: toMessage(err) };
+  }
+
+  redirect(`/bank/${statementId}`);
+}

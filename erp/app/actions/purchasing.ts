@@ -142,8 +142,9 @@ export async function createPurchaseOrder(_prev: ActionState, formData: FormData
       const number = await nextDocNumber(c, entityId, 'ЗАК');
       const { rows } = await c.query<{ id: string }>(
         `insert into purchase_orders
-           (number, legal_entity_id, supplier_id, expected_on, note, prices_include_vat, created_by)
-         values ($1, $2, $3, $4, $5, $6, $7) returning id`,
+           (number, legal_entity_id, supplier_id, expected_on, note, prices_include_vat,
+            currency, fx_rate, created_by)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9) returning id`,
         [
           number,
           entityId,
@@ -153,6 +154,11 @@ export async function createPurchaseOrder(_prev: ActionState, formData: FormData
           // Незнятий чекбокс приходить як 'on', знятий — відсутній у формі.
           // Порівняння з 'off' завжди давало true і мовчки губило вибір.
           formData.get('prices_include_vat') === 'on',
+          ['USD', 'EUR', 'PLN'].includes(str(formData, 'currency')) ? str(formData, 'currency') : 'UAH',
+          // Для гривні курс завжди 1, хай там що ввели.
+          ['USD', 'EUR', 'PLN'].includes(str(formData, 'currency'))
+            ? Math.max(num(formData, 'fx_rate', 1), 0.000001)
+            : 1,
           session.uid,
         ],
       );
@@ -310,13 +316,14 @@ export async function receivePurchaseOrder(_prev: ActionState, formData: FormDat
         status: string;
         legal_entity_id: string;
         prices_include_vat: boolean;
+        fx_rate: number;
         buyer_is_vat_payer: boolean;
         supplier_is_vat_payer: boolean;
         supplier_name: string;
         supplier_edrpou: string | null;
         supplier_id: string;
       }>(
-        `select p.number, p.status, p.legal_entity_id, p.prices_include_vat,
+        `select p.number, p.status, p.legal_entity_id, p.prices_include_vat, p.fx_rate,
                 e.is_vat_payer as buyer_is_vat_payer,
                 s.is_vat_payer as supplier_is_vat_payer,
                 s.name as supplier_name, s.edrpou as supplier_edrpou, s.id as supplier_id
@@ -365,7 +372,8 @@ export async function receivePurchaseOrder(_prev: ActionState, formData: FormDat
           throw new Error(`«${line.name}»: прийнято більше, ніж замовлено`);
         }
 
-        const vat = calcPurchaseVat(line.unit_price, {
+        // Валютна ціна множиться на курс шапки: в облік усе лягає в гривнях.
+        const vat = calcPurchaseVat(Number(line.unit_price) * Number(po.fx_rate), {
           buyerIsVatPayer: po.buyer_is_vat_payer,
           supplierIsVatPayer: po.supplier_is_vat_payer,
           itemVatRate: line.vat_rate,
@@ -565,4 +573,74 @@ export async function createOrdersFromNeeds(_prev: ActionState, formData: FormDa
   revalidatePath('/purchasing');
   revalidatePath('/purchasing/needs');
   return { ok: `Створено чернеток заявок: ${created.length} (${created.join(', ')}) — перевірте кількість і ціни перед відправкою` };
+}
+
+/**
+ * Курсова різниця по валютній заявці: борг у гривнях зафіксовано за курсом
+ * документа, а платити доведеться за курсом дня. Різниця записується
+ * витратою за статтею «Курсові різниці» на постачальника — тож кредиторка
+ * одразу показує суму, яку реально треба сплатити. Зміцнення гривні дає
+ * від'ємну витрату, і це нормально.
+ */
+export async function recordFxDifference(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  const session = await requireRole('warehouse');
+  const poId = str(formData, 'po_id');
+  const payRate = num(formData, 'pay_rate');
+  if (payRate <= 0) return { error: 'Вкажіть курс на дату оплати' };
+
+  let diff = 0;
+  try {
+    await transaction(async (c) => {
+      const { rows } = await c.query<{
+        number: string;
+        currency: string;
+        fx_rate: number;
+        legal_entity_id: string;
+        supplier_id: string;
+        received_gross: number;
+      }>(
+        `select p.number, p.currency, p.fx_rate, p.legal_entity_id, p.supplier_id,
+                coalesce(a.received_gross, 0) as received_gross
+           from purchase_orders p
+           left join v_po_amounts a on a.po_id = p.id
+          where p.id = $1 for update of p`,
+        [poId],
+      );
+      const po = rows[0];
+      if (!po) throw new Error('Заявку не знайдено');
+      if (po.currency === 'UAH') throw new Error('Заявка в гривнях — курсової різниці немає');
+      if (Number(po.received_gross) <= 0) throw new Error('Курсова різниця фіксується після оприбуткування');
+
+      // received_gross уже в гривнях за курсом документа — валютна сума
+      // відновлюється діленням, різниця рахується на новий курс.
+      const fxAmount = Number(po.received_gross) / Number(po.fx_rate);
+      diff = round2(fxAmount * (payRate - Number(po.fx_rate)));
+      if (Math.abs(diff) < 0.01) throw new Error('Курс не змінився — різниці немає');
+
+      await c.query(
+        `insert into expenses
+           (legal_entity_id, category, spent_on, description, amount_net, vat_amount,
+            cost_behavior, supplier_id, created_by)
+         values ($1, 'fx', current_date, $2, $3, 0, 'fixed', $4, $5)`,
+        [
+          po.legal_entity_id,
+          `Курсова різниця за ${po.number}: ${fxAmount.toFixed(2)} ${po.currency} × (${payRate} − ${po.fx_rate})`,
+          diff,
+          po.supplier_id,
+          session.uid,
+        ],
+      );
+    });
+  } catch (err) {
+    return { error: toMessage(err) };
+  }
+
+  revalidatePath(`/purchasing/${poId}`);
+  revalidatePath('/purchasing/suppliers');
+  return {
+    ok:
+      diff > 0
+        ? `Курсова різниця ${diff.toFixed(2)} грн додана до боргу постачальника`
+        : `Курсова різниця ${diff.toFixed(2)} грн — борг зменшився, гривня зміцнилась`,
+  };
 }

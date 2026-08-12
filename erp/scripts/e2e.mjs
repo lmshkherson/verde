@@ -2817,6 +2817,66 @@ try {
     (await sales.locator('tr', { hasText: 'Ірина Симоненко' }).count()) > 0,
   );
 
+  // ─── 13-л. Валютна закупівля і банк по API ────────────────────────────────
+  console.log('\nВалютна закупівля');
+
+  await warehouse.goto(`${BASE}/purchasing/suppliers`);
+  const suhBefore = await rowCells(warehouse, 'Гриценко');
+  const gryDebtBefore = money(suhBefore[5]) || 0;
+
+  await warehouse.goto(`${BASE}/purchasing`);
+  await selectByText(warehouse, 'select[name="supplier_id"]', 'Гриценко');
+  await warehouse.uncheck('input[name="prices_include_vat"]');
+  await selectByText(warehouse, 'select[name="currency"]', 'долар');
+  await warehouse.fill('input[name="fx_rate"]', '40');
+  await warehouse.click('form:has(select[name="supplier_id"]) button[type="submit"]');
+  await warehouse.waitForURL(/\/purchasing\/[0-9a-f-]{36}/);
+  await fillEntryRow(warehouse, 0, 'фісташки', { qty: 5, price_net: 10 });
+  await warehouse.click('button:has-text("Додати рядки в заявку")');
+  await warehouse.waitForTimeout(900);
+  await warehouse.click('form:has(input[name="po_id"]) button:has-text("Замовлено")');
+  await warehouse.waitForTimeout(500);
+  await warehouse.reload();
+  await warehouse.click('button:has-text("Оприбуткувати на склад")');
+  await warehouse.waitForTimeout(1700);
+  await warehouse.reload();
+  check(
+    'валютна заявка в собівартість лягла в гривнях: 5 × 10 USD × 40',
+    near(await stat(warehouse, 'У собівартість'), 2000, 0.02),
+  );
+
+  // Курс на дату оплати 42: різниця 50 USD × 2 = 100 грн у витрати й борг.
+  await warehouse.fill('input[name="pay_rate"]', '42');
+  await warehouse.click('button:has-text("Зафіксувати різницю")');
+  await warehouse.waitForTimeout(1500);
+  check(
+    'курсова різниця порахована',
+    (await warehouse.locator('text=100.00 грн').count()) > 0,
+  );
+  await warehouse.goto(`${BASE}/purchasing/suppliers`);
+  const suhAfter = await rowCells(warehouse, 'Гриценко');
+  check(
+    'борг постачальнику виріс на курсову різницю',
+    near(money(suhAfter[5]), gryDebtBefore + 2000 + 100, 0.05),
+    `${gryDebtBefore} → ${suhAfter[5]}`,
+  );
+
+  console.log('\nБанк по API');
+  await warehouse.goto(`${BASE}/bank`);
+  check(
+    'картка синхронізації по API на місці',
+    (await warehouse.locator('text=Синхронізація по API').count()) > 0,
+  );
+  await warehouse
+    .locator('form:has(button:has-text("Синхронізувати за місяць"))')
+    .locator('button[type="submit"]')
+    .click();
+  await warehouse.waitForTimeout(1500);
+  check(
+    'без токена синхронізація чесно відмовляє',
+    (await warehouse.locator('text=Спершу збережіть банк і токен').count()) > 0,
+  );
+
   // ─── 14. Права доступу ─────────────────────────────────────────────────────
   console.log('\nПрава доступу');
   const denied = await warehouse.goto(`${BASE}/reports`);
