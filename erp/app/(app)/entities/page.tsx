@@ -34,12 +34,13 @@ export default async function EntitiesPage() {
       director_name: string | null;
       director_position: string;
       accountant_name: string | null;
+      single_tax_group: number;
       stock_value: number;
       vat_payable: number;
     }>(`
       select e.id, e.name, e.short_name, e.doc_prefix, e.edrpou, e.ipn, e.tax_system, e.is_vat_payer, e.overhead_policy,
              e.address, e.phone, e.email, e.bank_name, e.bank_account,
-             e.director_name, e.director_position, e.accountant_name,
+             e.director_name, e.director_position, e.accountant_name, e.single_tax_group,
              coalesce(st.value, 0)   as stock_value,
              coalesce(vat.payable, 0) as vat_payable
         from legal_entities e
@@ -183,6 +184,21 @@ export default async function EntitiesPage() {
                         className={inputClass}
                       />
                     </Field>
+                    {e.tax_system === 'single_tax' && (
+                      <Field
+                        label="Група єдиного податку"
+                        hint="2-га платить фіксовану ставку щомісяця, 3-тя — відсоток від доходу"
+                      >
+                        <select
+                          name="single_tax_group"
+                          className={inputClass}
+                          defaultValue={String(e.single_tax_group)}
+                        >
+                          <option value="2">2 група — фіксований податок</option>
+                          <option value="3">3 група — 5% від доходу</option>
+                        </select>
+                      </Field>
+                    )}
                   </ActionForm>
                 </div>
               </details>

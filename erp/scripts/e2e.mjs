@@ -2772,7 +2772,9 @@ try {
   await owner.goto(`${BASE}/single-tax`);
   const epText = (await owner.locator('body').innerText()).replace(/[\s ]+/g, ' ');
   check('сторінка ЄП показує єдинника', epText.includes('Верде Роздріб'));
-  check('і квартальну таблицю', epText.includes('квартал'));
+  // ФОП VERDE — 2 група: податок фіксований, а не відсоток від доходу.
+  check('2 група: фіксований податок щомісяця', epText.includes('2 група'));
+  check('і графік сплати до 20 числа', epText.includes('до 20 числа'));
 
   // Магазин: токен у налаштуваннях, потім POST як від сайту.
   await owner.goto(`${BASE}/integrations`);

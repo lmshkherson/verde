@@ -150,7 +150,8 @@ export async function updateEntityRequisites(
         `update legal_entities set
            address = $2, phone = $3, email = $4,
            bank_name = $5, bank_account = $6,
-           director_name = $7, director_position = $8, accountant_name = $9
+           director_name = $7, director_position = $8, accountant_name = $9,
+           single_tax_group = $10
          where id = $1`,
         [
           id,
@@ -162,6 +163,7 @@ export async function updateEntityRequisites(
           strOrNull(formData, 'director_name'),
           str(formData, 'director_position') || 'Директор',
           strOrNull(formData, 'accountant_name'),
+          ['2', '3'].includes(str(formData, 'single_tax_group')) ? Number(str(formData, 'single_tax_group')) : 2,
         ],
       ),
     );
