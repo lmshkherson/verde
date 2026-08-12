@@ -237,7 +237,12 @@ export default async function PurchaseOrderPage({ params }: { params: Promise<{ 
             <LinesEntry
               docField="po_id"
               docId={po.id}
-              items={items}
+              items={items.map((i) => ({
+                ...i,
+                // У неплатника ПДВ в накладній немає: колонки «з ПДВ»
+                // і «без ПДВ» мають збігатися, а не різнитися на 20%.
+                vat_rate: po.supplier_is_vat_payer ? Number(i.vat_rate) : 0,
+              }))}
               pricesIncludeVat={po.prices_include_vat}
               showBatch={false}
               submitLabel="Додати рядки в заявку"

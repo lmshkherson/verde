@@ -42,8 +42,8 @@ export default async function ReceiptsPage() {
     query<{ id: string; name: string }>(
       'select id, name from suppliers where is_active order by name',
     ),
-    query<{ id: string; name: string; is_default: boolean }>(
-      `select id, name, is_default from warehouses
+    query<{ id: string; name: string; kind: string; is_default: boolean }>(
+      `select id, name, kind, is_default from warehouses
         where is_active order by is_default desc, code`,
     ),
     query<{ id: string; short_name: string; is_vat_payer: boolean }>(
@@ -153,7 +153,15 @@ export default async function ReceiptsPage() {
                   <select
                     name="warehouse_id"
                     className={inputClass}
-                    defaultValue={warehouses.find((w) => w.is_default)?.id ?? warehouses[0]?.id ?? ''}
+                    // Надходження — це прихід сировини й матеріалів, тож
+                    // типовий вибір — склад сировини, а не перший за кодом.
+                    defaultValue={
+                      warehouses.find((w) => w.kind === 'raw' && w.is_default)?.id ??
+                      warehouses.find((w) => w.kind === 'raw')?.id ??
+                      warehouses.find((w) => w.is_default)?.id ??
+                      warehouses[0]?.id ??
+                      ''
+                    }
                   >
                     {warehouses.map((w) => (
                       <option key={w.id} value={w.id}>

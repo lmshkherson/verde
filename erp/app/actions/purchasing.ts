@@ -150,7 +150,9 @@ export async function createPurchaseOrder(_prev: ActionState, formData: FormData
           supplierId,
           strOrNull(formData, 'expected_on'),
           strOrNull(formData, 'note'),
-          formData.get('prices_include_vat') !== 'off',
+          // Незнятий чекбокс приходить як 'on', знятий — відсутній у формі.
+          // Порівняння з 'off' завжди давало true і мовчки губило вибір.
+          formData.get('prices_include_vat') === 'on',
           session.uid,
         ],
       );

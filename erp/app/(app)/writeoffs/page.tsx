@@ -40,8 +40,8 @@ export default async function WriteOffsPage() {
         limit 60`,
       [session.eid],
     ),
-    query<{ id: string; name: string; is_default: boolean }>(
-      `select id, name, is_default from warehouses
+    query<{ id: string; name: string; kind: string; is_default: boolean }>(
+      `select id, name, kind, is_default from warehouses
         where is_active order by is_default desc, code`,
     ),
     query<{ id: string; short_name: string; is_vat_payer: boolean }>(
@@ -139,7 +139,15 @@ export default async function WriteOffsPage() {
                 <select
                   name="warehouse_id"
                   className={inputClass}
-                  defaultValue={warehouses.find((w) => w.is_default)?.id ?? warehouses[0]?.id ?? ''}
+                  // Списують найчастіше готову продукцію — типовий вибір
+                  // склад ГП, а не перший за кодом.
+                  defaultValue={
+                    warehouses.find((w) => w.kind === 'finished' && w.is_default)?.id ??
+                    warehouses.find((w) => w.kind === 'finished')?.id ??
+                    warehouses.find((w) => w.is_default)?.id ??
+                    warehouses[0]?.id ??
+                    ''
+                  }
                 >
                   {warehouses.map((w) => (
                     <option key={w.id} value={w.id}>

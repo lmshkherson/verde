@@ -106,8 +106,8 @@ export default async function ReceiptPage({ params }: { params: Promise<{ id: st
         where is_active
         order by kind, name`,
     ),
-    query<{ id: string; name: string; is_default: boolean }>(
-      `select id, name, is_default from warehouses
+    query<{ id: string; name: string; kind: string; is_default: boolean }>(
+      `select id, name, kind, is_default from warehouses
         where is_active order by is_default desc, code`,
     ),
   ]);
@@ -218,7 +218,12 @@ export default async function ReceiptPage({ params }: { params: Promise<{ id: st
                 <LinesEntry
                   docField="receipt_id"
                   docId={doc.id}
-                  items={entryItems}
+                  items={entryItems.map((i) => ({
+                    ...i,
+                    // У неплатника ПДВ в накладній немає: колонки «з ПДВ»
+                    // і «без ПДВ» мають збігатися, а не різнитися на 20%.
+                    vat_rate: doc.supplier_is_vat_payer ? Number(i.vat_rate) : 0,
+                  }))}
                   pricesIncludeVat={doc.prices_include_vat}
                   action={saveReceiptLines}
                 />
@@ -307,7 +312,12 @@ export default async function ReceiptPage({ params }: { params: Promise<{ id: st
                   <select
                     name="warehouse_id"
                     className={inputClass}
-                    defaultValue={doc.warehouse_id ?? warehouses.find((w) => w.is_default)?.id ?? ''}
+                    defaultValue={
+                      doc.warehouse_id ??
+                      warehouses.find((w) => w.kind === 'raw' && w.is_default)?.id ??
+                      warehouses.find((w) => w.kind === 'raw')?.id ??
+                      ''
+                    }
                   >
                     {warehouses.map((w) => (
                       <option key={w.id} value={w.id}>

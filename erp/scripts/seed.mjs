@@ -338,8 +338,10 @@ try {
   );
 
   for (const [code, name, kind, address] of WAREHOUSES) {
+    // Кожен сідовий склад — єдиний свого типу, тож одразу типовий: без цього
+    // документи на чистій базі підставляють перший-ліпший склад за кодом.
     await client.query(
-      `insert into warehouses (code, name, kind, address) values ($1, $2, $3, $4)
+      `insert into warehouses (code, name, kind, address, is_default) values ($1, $2, $3, $4, true)
        on conflict (code) do update set name = excluded.name, address = excluded.address`,
       [code, name, kind, address],
     );

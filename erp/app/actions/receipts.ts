@@ -43,7 +43,9 @@ export async function createReceipt(_prev: ActionState, formData: FormData): Pro
           str(formData, 'received_on') || new Date().toISOString().slice(0, 10),
           strOrNull(formData, 'supplier_doc_number'),
           strOrNull(formData, 'supplier_doc_date'),
-          formData.get('prices_include_vat') !== 'off',
+          // Незнятий чекбокс приходить як 'on', знятий — відсутній у формі.
+          // Порівняння з 'off' завжди давало true і мовчки губило вибір.
+          formData.get('prices_include_vat') === 'on',
           strOrNull(formData, 'warehouse_id'),
           strOrNull(formData, 'note'),
           session.uid,
