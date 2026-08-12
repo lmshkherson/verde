@@ -496,3 +496,73 @@ export async function receivePurchaseOrder(_prev: ActionState, formData: FormDat
   revalidatePath('/quality');
   return { ok: 'Прихід оприбутковано' };
 }
+
+/**
+ * Створення чернеток заявок із дефіцитів: рядки групуються за постачальником
+ * останньої закупівлі, кількість — рівно дефіцит, ціна — остання. Дефіцити
+ * перераховуються тут-таки, а не беруться з форми: між відкриттям сторінки
+ * і натисканням кнопки склад міг змінитися.
+ */
+export async function createOrdersFromNeeds(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  const session = await requireRole('warehouse');
+  const { purchaseNeeds } = await import('@/lib/needs');
+
+  const created: string[] = [];
+  try {
+    const needs = (await purchaseNeeds()).filter((n) => n.shortage > 0.0005 && n.supplier_id);
+    if (needs.length === 0) {
+      return { error: 'Немає дефіцитів із відомим постачальником — нічого створювати' };
+    }
+
+    await transaction(async (c) => {
+      const entityId = await resolveEntityId(c, formData, session.eid);
+      const bySupplier = new Map<string, typeof needs>();
+      for (const n of needs) {
+        const list = bySupplier.get(n.supplier_id!) ?? [];
+        list.push(n);
+        bySupplier.set(n.supplier_id!, list);
+      }
+
+      for (const [supplierId, list] of bySupplier) {
+        const number = await nextDocNumber(c, entityId, 'ЗАК');
+        const { rows } = await c.query<{ id: string }>(
+          `insert into purchase_orders
+             (number, legal_entity_id, supplier_id, note, prices_include_vat, created_by)
+           values ($1, $2, $3, $4, $5, $6) returning id`,
+          [
+            number,
+            entityId,
+            supplierId,
+            'Створено з потреб у закупівлі',
+            list[0].last_price_gross,
+            session.uid,
+          ],
+        );
+        for (const n of list) {
+          const { rows: itemRows } = await c.query<{ vat_rate: number }>(
+            'select vat_rate from items where id = $1',
+            [n.item_id],
+          );
+          await c.query(
+            `insert into purchase_order_lines (po_id, item_id, qty, unit_price, vat_rate)
+             values ($1, $2, $3, $4, $5)`,
+            [
+              rows[0].id,
+              n.item_id,
+              n.shortage,
+              Number(n.last_price ?? 0),
+              Number(itemRows[0]?.vat_rate ?? 20),
+            ],
+          );
+        }
+        created.push(number);
+      }
+    });
+  } catch (err) {
+    return { error: toMessage(err) };
+  }
+
+  revalidatePath('/purchasing');
+  revalidatePath('/purchasing/needs');
+  return { ok: `Створено чернеток заявок: ${created.length} (${created.join(', ')}) — перевірте кількість і ціни перед відправкою` };
+}

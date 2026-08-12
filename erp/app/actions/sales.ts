@@ -65,7 +65,8 @@ export async function updateCustomer(_prev: ActionState, formData: FormData): Pr
            name = $2, channel = $3, edrpou = $4, ipn = $5, is_vat_payer = $6,
            contact = $7, phone = $8,
            payment_terms_days = $9, credit_limit = $10, note = $11, address = $12,
-           delivery_address = $13, iban = $14, bank_name = $15
+           delivery_address = $13, iban = $14, bank_name = $15,
+           np_city = $16, np_branch = $17
          where id = $1`,
         [
           id,
@@ -83,6 +84,8 @@ export async function updateCustomer(_prev: ActionState, formData: FormData): Pr
           strOrNull(formData, 'delivery_address'),
           iban.iban,
           strOrNull(formData, 'bank_name'),
+          strOrNull(formData, 'np_city'),
+          strOrNull(formData, 'np_branch'),
         ],
       ),
     );
@@ -184,8 +187,9 @@ export async function addSalesLine(_prev: ActionState, formData: FormData): Prom
         status: string;
         channel: string;
         seller_is_vat_payer: boolean;
+        discount_pct: number;
       }>(
-        `select o.status, c.channel, e.is_vat_payer as seller_is_vat_payer
+        `select o.status, o.discount_pct, c.channel, e.is_vat_payer as seller_is_vat_payer
            from sales_orders o
            join customers c on c.id = o.customer_id
            join legal_entities e on e.id = o.legal_entity_id
@@ -220,9 +224,12 @@ export async function addSalesLine(_prev: ActionState, formData: FormData): Prom
       // Неплатник ПДВ не нараховує податок узагалі, тож у рядку буде нуль.
       const rate = saleVatRate(order.seller_is_vat_payer, item.vat_rate);
 
+      // Прайсова ціна фіксується в рядку; знижка з шапки перераховує продажну.
+      const discounted = Math.round(price * (1 - Number(order.discount_pct) / 100) * 10000) / 10000;
       await c.query(
-        'insert into sales_order_lines (so_id, item_id, qty, unit_price, vat_rate) values ($1, $2, $3, $4, $5)',
-        [soId, itemId, qty, price, rate],
+        `insert into sales_order_lines (so_id, item_id, qty, unit_price, vat_rate, list_price)
+         values ($1, $2, $3, $4, $5, $6)`,
+        [soId, itemId, qty, discounted, rate, price],
       );
     });
   } catch (err) {
@@ -258,8 +265,9 @@ export async function addSalesLines(_prev: ActionState, formData: FormData): Pro
         status: string;
         channel: string;
         seller_is_vat_payer: boolean;
+        discount_pct: number;
       }>(
-        `select o.status, c.channel, e.is_vat_payer as seller_is_vat_payer
+        `select o.status, o.discount_pct, c.channel, e.is_vat_payer as seller_is_vat_payer
            from sales_orders o
            join customers c on c.id = o.customer_id
            join legal_entities e on e.id = o.legal_entity_id
@@ -301,9 +309,12 @@ export async function addSalesLines(_prev: ActionState, formData: FormData): Pro
           }
         }
 
+        // Прайсова ціна фіксується в рядку; знижка з шапки перераховує продажну.
+        const discounted = Math.round(price * (1 - Number(order.discount_pct) / 100) * 10000) / 10000;
         await c.query(
-          'insert into sales_order_lines (so_id, item_id, qty, unit_price, vat_rate) values ($1, $2, $3, $4, $5)',
-          [soId, line.item_id, qty, price, saleVatRate(order.seller_is_vat_payer, item.vat_rate)],
+          `insert into sales_order_lines (so_id, item_id, qty, unit_price, vat_rate, list_price)
+           values ($1, $2, $3, $4, $5, $6)`,
+          [soId, line.item_id, qty, discounted, saleVatRate(order.seller_is_vat_payer, item.vat_rate), price],
         );
         saved += 1;
       }
@@ -724,7 +735,8 @@ async function ensureGroupStock(
         );
       }
       await c.query(
-        'insert into sales_order_lines (so_id, item_id, qty, unit_price, vat_rate) values ($1, $2, $3, $4, $5)',
+        `insert into sales_order_lines (so_id, item_id, qty, unit_price, vat_rate, list_price)
+         values ($1, $2, $3, $4, $5, $4)`,
         [
           soRows[0].id,
           it.itemId,
@@ -892,4 +904,42 @@ export async function updateShipmentTransport(
   revalidatePath(`/shipments/${shipmentId}/ttn`);
   revalidatePath('/haccp');
   return { ok: 'Реквізити збережено' };
+}
+
+/**
+ * Знижка на все замовлення. Прайсова ціна лишається в list_price, продажна
+ * перераховується — тож виручка, ПДВ, маржа і друковані форми бачать знижку
+ * без жодних змін у своїх формулах.
+ */
+export async function applyOrderDiscount(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  await requireRole('sales');
+  const soId = str(formData, 'so_id');
+  const pct = num(formData, 'discount_pct', 0);
+  if (pct < 0 || pct >= 100) return { error: 'Знижка має бути від 0 до 99,99%' };
+
+  try {
+    await transaction(async (c) => {
+      const { rows } = await c.query<{ status: string }>(
+        'select status from sales_orders where id = $1 for update',
+        [soId],
+      );
+      if (!rows[0]) throw new Error('Замовлення не знайдено');
+      if (rows[0].status !== 'draft') {
+        throw new Error('Знижка змінюється лише в чернетці — підтверджене замовлення вже погоджене з клієнтом');
+      }
+
+      await c.query(
+        `update sales_order_lines
+            set unit_price = round(coalesce(list_price, unit_price) * (1 - $2::numeric / 100), 4)
+          where so_id = $1`,
+        [soId, pct],
+      );
+      await c.query('update sales_orders set discount_pct = $2 where id = $1', [soId, pct]);
+    });
+  } catch (err) {
+    return { error: toMessage(err) };
+  }
+
+  revalidatePath(`/sales/${soId}`);
+  return { ok: pct > 0 ? `Знижку ${pct}% застосовано до всіх рядків` : 'Знижку прибрано — ціни за прайсом' };
 }

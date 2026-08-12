@@ -1,7 +1,8 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { addSalesLines, cancelSalesOrder, confirmSalesOrder, recordPayment, removeSalesLine, shipSalesOrder } from '@/app/actions/sales';
+import { addSalesLines, applyOrderDiscount, cancelSalesOrder, confirmSalesOrder, recordPayment, removeSalesLine, shipSalesOrder } from '@/app/actions/sales';
 import { giftShipFromOrder } from '@/app/actions/writeoffs';
+import { createShipmentTtn } from '@/app/actions/novaposhta';
 import { ActionForm } from '@/components/action-form';
 import { LinesEntry } from '@/components/lines-entry';
 import { Badge, Button, Card, Cell, Empty, Field, inputClass, LinkButton, PageHeader, Row, Stat, Table } from '@/components/ui';
@@ -46,9 +47,12 @@ export default async function SalesOrderPage({ params }: { params: Promise<{ id:
     legal_entity_id: string;
     entity_name: string;
     seller_is_vat_payer: boolean;
+    discount_pct: number;
   }>(
-    `select f.*, c.channel, e.short_name as entity_name, e.is_vat_payer as seller_is_vat_payer
+    `select f.*, c.channel, e.short_name as entity_name, e.is_vat_payer as seller_is_vat_payer,
+            so.discount_pct
        from v_sales_orders_full f
+       join sales_orders so on so.id = f.id
        join customers c on c.id = f.customer_id
        join legal_entities e on e.id = f.legal_entity_id
       where f.id = $1`,
@@ -67,10 +71,11 @@ export default async function SalesOrderPage({ params }: { params: Promise<{ id:
       unit_price: number;
       vat_rate: number;
       shipped_qty: number;
+      list_price: number | null;
       stock_available: number;
     }>(
       `select l.id, l.item_id, i.name, i.sku, i.unit, l.qty, l.unit_price, l.vat_rate, l.shipped_qty,
-              coalesce(a.available_qty, 0) as stock_available
+              l.list_price, coalesce(a.available_qty, 0) as stock_available
          from sales_order_lines l
          join items i on i.id = l.item_id
          left join v_item_available a on a.item_id = l.item_id and a.legal_entity_id = $2
@@ -116,18 +121,25 @@ export default async function SalesOrderPage({ params }: { params: Promise<{ id:
       <PageHeader
         title={`Замовлення ${order.number}`}
         subtitle={`${order.entity_name} → ${order.customer_name} · ${SALES_CHANNELS[order.channel] ?? order.channel} · від ${fmtDate(order.ordered_on)}`}
-        action={<LinkButton href="/sales">← До списку</LinkButton>}
+        action={
+          <div className="flex flex-wrap items-center gap-2">
+            {order.status !== 'cancelled' && lines.length > 0 && (
+              <LinkButton href={`/sales/${order.id}/invoice`}>Рахунок на оплату</LinkButton>
+            )}
+            <LinkButton href="/sales">← До списку</LinkButton>
+          </div>
+        }
       />
 
       <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Stat
           label="Сума з ПДВ"
           value={fmtMoney(order.total_amount)}
-          hint={
+          hint={`${
             order.vat_amount > 0
               ? `база ${fmtMoney(order.net_amount)} + ПДВ ${fmtMoney(order.vat_amount)}`
               : 'без ПДВ'
-          }
+          }${Number(order.discount_pct) > 0 ? ` · знижка ${Number(order.discount_pct)}%` : ''}`}
         />
         <Stat
           label="Відвантажено"
@@ -181,7 +193,14 @@ export default async function SalesOrderPage({ params }: { params: Promise<{ id:
                     <div className="text-xs text-emerald-800/50">{l.sku}</div>
                   </Cell>
                   <Cell align="right">{fmtQty(l.qty, unitLabel(l.unit))}</Cell>
-                  <Cell align="right">{fmtMoney(l.unit_price)}</Cell>
+                  <Cell align="right">
+                    {fmtMoney(l.unit_price)}
+                    {l.list_price != null && Number(l.list_price) !== Number(l.unit_price) && (
+                      <div className="text-xs text-emerald-800/50 line-through">
+                        {fmtMoney(l.list_price)}
+                      </div>
+                    )}
+                  </Cell>
                   <Cell align="right" className="font-semibold">
                     {fmtMoney(l.qty * l.unit_price)}
                   </Cell>
@@ -321,6 +340,29 @@ export default async function SalesOrderPage({ params }: { params: Promise<{ id:
           </Card>
         )}
 
+        {isDraft && lines.length > 0 && (
+          <Card title="Знижка на замовлення">
+            <p className="mb-3 text-sm text-emerald-800/70">
+              Застосовується до всіх рядків від прайсової ціни каналу — у рядках буде видно і
+              прайс, і ціну зі знижкою. Нуль прибирає знижку й повертає ціни за прайсом.
+            </p>
+            <ActionForm action={applyOrderDiscount} submitLabel="Застосувати" variant="ghost">
+              <input type="hidden" name="so_id" value={order.id} />
+              <Field label="Знижка, %">
+                <input
+                  name="discount_pct"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  max="99.99"
+                  defaultValue={Number(order.discount_pct) > 0 ? Number(order.discount_pct) : undefined}
+                  className={inputClass}
+                />
+              </Field>
+            </ActionForm>
+          </Card>
+        )}
+
         {(isDraft || canShip) && lines.length > 0 && (
           <Card title="Безоплатна відправка (списання)">
             <p className="mb-3 text-sm text-emerald-800/70">
@@ -365,6 +407,15 @@ export default async function SalesOrderPage({ params }: { params: Promise<{ id:
                     <Cell>
                       {s.ttn_number ?? '—'}
                       {s.carrier && <div className="text-xs text-emerald-800/50">{s.carrier}</div>}
+                      {!s.ttn_number && (
+                        <ActionForm
+                          action={createShipmentTtn}
+                          submitLabel="ТТН у Новій Пошті"
+                          variant="ghost"
+                        >
+                          <input type="hidden" name="shipment_id" value={s.id} />
+                        </ActionForm>
+                      )}
                     </Cell>
                     <Cell>
                       <Link

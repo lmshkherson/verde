@@ -2657,6 +2657,166 @@ try {
   await owner.goto(`${BASE}/movements/${woId}`);
   check('після перегенерації акт має проводки', (await stat(owner, 'Проводок')) > 0);
 
+  // ─── 13-к. Рахунок, знижка, каса, звірка, потреби, ЄП, магазин ────────────
+  console.log('\nЗнижка в замовленні й рахунок на оплату');
+
+  await sales.goto(`${BASE}/sales`);
+  await selectByText(
+    sales,
+    'form:has(select[name="customer_id"]) select[name="entity_id"]',
+    'Верде Світ',
+  );
+  await selectByText(sales, 'select[name="customer_id"]', 'АТБ-Маркет');
+  await sales.click('form:has(select[name="customer_id"]) button[type="submit"]');
+  await sales.waitForURL(/\/sales\/[0-9a-f-]{36}/);
+  const discountOrderUrl = sales.url();
+  await fillEntryRow(sales, 0, 'Фісташка', { qty: 5 });
+  await sales.click('button:has-text("Додати рядки в замовлення")');
+  await sales.waitForTimeout(800);
+  await sales.reload();
+  const beforeDiscount = await stat(sales, 'Сума з ПДВ');
+  check('сума до знижки — за прайсом', near(beforeDiscount, 5 * 29.75 * 1.2, 0.02), `${beforeDiscount}`);
+
+  await sales.fill('input[name="discount_pct"]', '10');
+  await sales.click('button:has-text("Застосувати")');
+  await sales.waitForTimeout(1200);
+  await sales.reload();
+  const afterDiscount = await stat(sales, 'Сума з ПДВ');
+  check(
+    'знижка 10% перерахувала суму',
+    near(afterDiscount, 5 * 29.75 * 0.9 * 1.2, 0.05),
+    `${beforeDiscount} → ${afterDiscount}`,
+  );
+  check(
+    'у рядку видно прайс поруч зі знижковою ціною',
+    (await sales.locator('.line-through').count()) > 0,
+  );
+
+  await sales.goto(`${discountOrderUrl}/invoice`);
+  // Заголовки в друкованих формах CSS-ом переводяться у ВЕЛИКІ, тож
+  // порівнюємо без урахування регістру.
+  const invoiceText = (await sales.locator('body').innerText()).replace(/[\s ]+/g, ' ').toLowerCase();
+  check('рахунок на оплату відкривається', invoiceText.includes('рахунок на оплату №'));
+  check('у рахунку видно знижку', invoiceText.includes('знижки 10%'));
+  check('і призначення платежу', invoiceText.includes('призначення платежу'));
+
+  // Відвантажуємо, щоб перевірити кнопку ТТН Нової Пошти (без ключа — відмова).
+  await sales.goto(discountOrderUrl);
+  await sales.click('button:has-text("Підтвердити")');
+  await sales.waitForTimeout(700);
+  await sales.reload();
+  await sales.click('button:has-text("Провести відвантаження")');
+  await sales.waitForTimeout(2000);
+  await sales.reload();
+  await sales.click('button:has-text("ТТН у Новій Пошті")');
+  await sales.waitForTimeout(1500);
+  check(
+    'без ключа НП чесно відмовляє',
+    (await sales.locator('text=Ключ API Нової Пошти не налаштовано').count()) > 0,
+  );
+
+  console.log('\nКаса');
+  await warehouse.goto(`${BASE}/cash`);
+  const cashBefore = await stat(warehouse, 'Залишок у касі');
+  await selectByText(warehouse, 'select[name="kind"]', 'Оплата від покупця');
+  await selectByText(warehouse, 'form:has(select[name="kind"]) select[name="customer_id"]', 'АТБ');
+  await warehouse.fill('input[name="amount"]', '100');
+  await warehouse.fill('input[name="person"]', 'Кур’єр АТБ');
+  await warehouse.click('button:has-text("Виписати ордер")');
+  await warehouse.waitForTimeout(1500);
+  await warehouse.reload();
+  check('ПКО виписано', (await warehouse.locator('text=ПКО-').count()) > 0);
+
+  await selectByText(warehouse, 'select[name="direction"]', 'ВКО');
+  await selectByText(warehouse, 'select[name="kind"]', 'Господарська витрата');
+  await warehouse.fill('input[name="amount"]', '40');
+  await warehouse.fill('input[name="purpose"]', 'Канцтовари для цеху');
+  await warehouse.click('button:has-text("Виписати ордер")');
+  await warehouse.waitForTimeout(1500);
+  await warehouse.reload();
+  const cashAfter = await stat(warehouse, 'Залишок у касі');
+  check(
+    'залишок каси: +100 (ПКО) − 40 (ВКО)',
+    near(cashAfter, cashBefore + 60, 0.02),
+    `${cashBefore} → ${cashAfter}`,
+  );
+
+  console.log('\nАкт звірки і потреби в закупівлі');
+  await sales.goto(`${BASE}/sales/customers`);
+  await sales.click('a:has-text("АТБ-Маркет")');
+  await sales.waitForURL(/\/sales\/customers\/[0-9a-f-]{36}/);
+  const atbDebt = await stat(sales, 'Борг');
+  await sales.click('a:has-text("Акт звірки")');
+  await sales.waitForURL(/reconciliation/);
+  const reconText = (await sales.locator('body').innerText()).replace(/[\s ]+/g, ' ');
+  check(
+    'акт звірки відкривається',
+    reconText.toLowerCase().includes('акт звірки взаєморозрахунків'),
+  );
+  // Після «Станом на» стоїть дата, тож суму беремо після двокрапки.
+  const reconSaldo = money((reconText.split('Станом на')[1] ?? '').split(':')[1] ?? '');
+  check(
+    'сальдо акта збігається з боргом картки',
+    near(Math.abs(reconSaldo), Math.abs(atbDebt), 0.05) ||
+      (Math.abs(atbDebt) < 0.005 && reconText.includes('розрахунки закриті')),
+    `акт ${reconSaldo} проти картки ${atbDebt}`,
+  );
+
+  await warehouse.goto(`${BASE}/purchasing/needs`);
+  check(
+    'сторінка потреб рахує дефіцити',
+    (await warehouse.locator('[data-stat="Позицій у дефіциті"]').count()) > 0,
+  );
+
+  console.log('\nЄдиний податок і замовлення з сайту');
+  await owner.goto(`${BASE}/single-tax`);
+  const epText = (await owner.locator('body').innerText()).replace(/[\s ]+/g, ' ');
+  check('сторінка ЄП показує єдинника', epText.includes('Верде Роздріб'));
+  check('і квартальну таблицю', epText.includes('квартал'));
+
+  // Магазин: токен у налаштуваннях, потім POST як від сайту.
+  await owner.goto(`${BASE}/integrations`);
+  await owner.fill('input[name="shop_api_token"]', 'e2e-shop-token');
+  await owner.click('form:has(input[name="shop_api_token"]) button[type="submit"]');
+  await owner.waitForTimeout(1200);
+
+  const shopResp = await fetch(`${BASE}/api/shop-orders`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer e2e-shop-token' },
+    body: JSON.stringify({
+      external_id: 'web-1001',
+      // Телефон навмисно унікальний: збіг із довідником прив'язав би
+      // замовлення до наявного клієнта — це окрема, теж правильна, гілка.
+      customer: { name: 'Ірина Симоненко', phone: '+380930001122', np_city: 'Львів', np_branch: '3' },
+      items: [{ sku: 'VRD-Z-PIST', qty: 3 }],
+    }),
+  });
+  const shopBody = await shopResp.json();
+  check('сайт створив чернетку замовлення', shopResp.status === 201, JSON.stringify(shopBody));
+  const shopRepeat = await fetch(`${BASE}/api/shop-orders`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer e2e-shop-token' },
+    body: JSON.stringify({
+      external_id: 'web-1001',
+      customer: { name: 'Ірина Симоненко' },
+      items: [{ sku: 'VRD-Z-PIST', qty: 3 }],
+    }),
+  });
+  const repeatBody = await shopRepeat.json();
+  check('повторний POST не створює дубля', repeatBody.duplicate === true, JSON.stringify(repeatBody));
+  const shopDenied = await fetch(`${BASE}/api/shop-orders`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer wrong' },
+    body: JSON.stringify({ external_id: 'web-1002', customer: { name: 'X' }, items: [{ sku: 'VRD-Z-PIST', qty: 1 }] }),
+  });
+  check('чужий токен відхиляється', shopDenied.status === 401);
+
+  await sales.goto(`${BASE}/sales`);
+  check(
+    'замовлення з сайту видно в журналі',
+    (await sales.locator('tr', { hasText: 'Ірина Симоненко' }).count()) > 0,
+  );
+
   // ─── 14. Права доступу ─────────────────────────────────────────────────────
   console.log('\nПрава доступу');
   const denied = await warehouse.goto(`${BASE}/reports`);

@@ -69,7 +69,12 @@ export default async function SupplierEditPage({
       <PageHeader
         title={supplier.name}
         subtitle={supplier.is_vat_payer ? 'Платник ПДВ' : 'Не платник ПДВ'}
-        action={<LinkButton href="/purchasing/suppliers">← До постачальників</LinkButton>}
+        action={
+          <div className="flex flex-wrap items-center gap-2">
+            <LinkButton href={`/purchasing/suppliers/${supplierId}/reconciliation`}>Акт звірки</LinkButton>
+            <LinkButton href="/purchasing/suppliers">← До постачальників</LinkButton>
+          </div>
+        }
       />
 
       {!supplier.is_active && (

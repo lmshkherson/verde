@@ -30,6 +30,8 @@ export default async function CustomerEditPage({
     credit_limit: number;
     address: string | null;
     delivery_address: string | null;
+    np_city: string | null;
+    np_branch: string | null;
     iban: string | null;
     bank_name: string | null;
     note: string | null;
@@ -73,7 +75,12 @@ export default async function CustomerEditPage({
       <PageHeader
         title={customer.name}
         subtitle={SALES_CHANNELS[customer.channel] ?? customer.channel}
-        action={<LinkButton href="/sales/customers">← До клієнтів</LinkButton>}
+        action={
+          <div className="flex flex-wrap items-center gap-2">
+            <LinkButton href={`/sales/customers/${customerId}/reconciliation`}>Акт звірки</LinkButton>
+            <LinkButton href="/sales/customers">← До клієнтів</LinkButton>
+          </div>
+        }
       />
 
       {!customer.is_active && (
@@ -200,6 +207,25 @@ export default async function CustomerEditPage({
                   className={inputClass}
                 />
               </Field>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Field label="Місто (Нова Пошта)" hint="для автоматичного створення ТТН">
+                  <input
+                    name="np_city"
+                    defaultValue={customer.np_city ?? ''}
+                    className={inputClass}
+                    placeholder="Київ"
+                  />
+                </Field>
+                <Field label="Відділення НП, №">
+                  <input
+                    name="np_branch"
+                    defaultValue={customer.np_branch ?? ''}
+                    className={inputClass}
+                    placeholder="5"
+                  />
+                </Field>
+              </div>
 
               <div className="grid gap-3 sm:grid-cols-2">
                 <Field label="IBAN">

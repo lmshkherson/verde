@@ -406,28 +406,54 @@ export async function regeneratePostings(
     amount_net: number;
     cost_behavior: string;
     description: string | null;
+    cash_order_id: string | null;
   }>(
-    `select id, spent_on, category, amount_net, cost_behavior, description from expenses
+    `select id, spent_on, category, amount_net, cost_behavior, description, cash_order_id from expenses
       where legal_entity_id = $1
         and write_off_id is null
         and spent_on >= $2::date and spent_on < ($2::date + interval '1 month')`,
     range,
   );
   for (const e of expenses) {
+    // Витрата з касового ордера оплачена готівкою одразу — кредиторки немає.
+    const credit = e.cash_order_id ? '301' : '631';
     if (PRODUCTION_CATEGORIES.includes(e.category)) {
       if (e.cost_behavior === 'fixed') shopFixed += Number(e.amount_net);
       else shopVariable += Number(e.amount_net);
       // Бухгалтерія відносить цех на виробництво, управлінський облік — одразу
       // у витрати періоду. Це і є та сама подія з різними проводками.
       count += await addBatch(client, entityId, 'expense', e.id, e.spent_on, e.description ?? 'Витрати цеху', [
-        { debit: '23', credit: '631', amount: e.amount_net, book: 'accounting', note: 'Цех у виробничу собівартість' },
-        { debit: '91', credit: '631', amount: e.amount_net, book: 'management', note: 'Цех у витрати періоду' },
+        { debit: '23', credit, amount: e.amount_net, book: 'accounting', note: 'Цех у виробничу собівартість' },
+        { debit: '91', credit, amount: e.amount_net, book: 'management', note: 'Цех у витрати періоду' },
       ]);
     } else {
       count += await addBatch(client, entityId, 'expense', e.id, e.spent_on, e.description ?? 'Операційні витрати', [
-        { debit: expenseAccount(e.category), credit: '631', amount: e.amount_net },
+        { debit: expenseAccount(e.category), credit, amount: e.amount_net },
       ]);
     }
+  }
+
+  // ─── Каса: «інші» ордери без контрагента ─────────────────────────────────
+  // Оплати покупців/постачальникам готівкою вже запостились через payments і
+  // supplier_payments; тут лише внесення й видачі без документа-пари.
+  const { rows: cashOther } = await client.query<{
+    id: string;
+    number: string;
+    direction: string;
+    occurred_on: string;
+    amount: number;
+  }>(
+    `select id, number, direction, occurred_on, amount from cash_orders
+      where legal_entity_id = $1 and kind = 'other'
+        and occurred_on >= $2::date and occurred_on < ($2::date + interval '1 month')`,
+    range,
+  );
+  for (const o of cashOther) {
+    count += await addBatch(client, entityId, 'cash_order', o.id, o.occurred_on, `Касовий ордер ${o.number}`, [
+      o.direction === 'in'
+        ? { debit: '301', credit: '685', amount: o.amount }
+        : { debit: '685', credit: '301', amount: o.amount },
+    ]);
   }
 
   // ─── Втрати від псування (разові операції без акта) ──────────────────────

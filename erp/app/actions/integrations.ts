@@ -254,3 +254,20 @@ export async function requeueOutbox(formData: FormData) {
   );
   revalidatePath('/integrations');
 }
+
+/** Токен приймання замовлень із сайту і юрособа, на яку вони створюються. */
+export async function saveShopSettings(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  await requireRole();
+  try {
+    await transaction((c) =>
+      c.query('update settings set shop_api_token = $1, shop_entity_id = $2 where id = 1', [
+        strOrNull(formData, 'shop_api_token'),
+        strOrNull(formData, 'shop_entity_id'),
+      ]),
+    );
+  } catch (err) {
+    return { error: toMessage(err) };
+  }
+  revalidatePath('/integrations');
+  return { ok: 'Налаштування магазину збережено' };
+}

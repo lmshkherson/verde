@@ -2,9 +2,11 @@ import {
   enqueueTaxInvoices,
   requeueOutbox,
   saveIntegrationSettings,
+  saveShopSettings,
   sendOutbox,
   setOutboxStatus,
 } from '@/app/actions/integrations';
+import { saveNpSettings } from '@/app/actions/novaposhta';
 import { ActionForm } from '@/components/action-form';
 import {
   Alert,
@@ -45,6 +47,23 @@ export default async function IntegrationsPage({
   const period =
     (await searchParams).period ??
     `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
+  const np = await queryOne<{
+    np_api_key: string | null;
+    np_sender_city: string | null;
+    np_sender_branch: string | null;
+    np_sender_phone: string | null;
+    np_sender_contact: string | null;
+  }>(
+    `select np_api_key, np_sender_city, np_sender_branch, np_sender_phone, np_sender_contact
+       from settings where id = 1`,
+  );
+  const np2 = await queryOne<{ shop_api_token: string | null; shop_entity_id: string | null }>(
+    'select shop_api_token, shop_entity_id from settings where id = 1',
+  );
+  const shopEntities = await query<{ id: string; short_name: string }>(
+    'select id, short_name from legal_entities where is_active order by short_name',
+  );
 
   const [settings, summary, outbox] = await Promise.all([
     queryOne<{
@@ -253,6 +272,71 @@ export default async function IntegrationsPage({
                   Ставити нові документи в чергу
                 </span>
               </label>
+            </ActionForm>
+          </Card>
+
+          <Card title="Нова Пошта">
+            <p className="mb-3 text-sm text-emerald-800/70">
+              З ключем API кнопка «ТТН у Новій Пошті» на відвантаженні створює накладну сама:
+              одержувач — з картки клієнта (місто й відділення НП), вага — з карток товару,
+              оголошена вартість — сума відвантаження. Без ключа номер ТТН вводиться руками,
+              як і раніше.
+            </p>
+            <ActionForm action={saveNpSettings} submitLabel="Зберегти" variant="ghost">
+              <Field label="Ключ API" hint="кабінет НП → Налаштування → Безпека → створити ключ">
+                <input
+                  name="np_api_key"
+                  defaultValue={np?.np_api_key ?? ''}
+                  className={inputClass}
+                  autoComplete="off"
+                />
+              </Field>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Field label="Місто відправника">
+                  <input name="np_sender_city" defaultValue={np?.np_sender_city ?? ''} className={inputClass} placeholder="Київ" />
+                </Field>
+                <Field label="Відділення відправника, №">
+                  <input name="np_sender_branch" defaultValue={np?.np_sender_branch ?? ''} className={inputClass} placeholder="12" />
+                </Field>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Field label="Телефон відправника">
+                  <input name="np_sender_phone" defaultValue={np?.np_sender_phone ?? ''} className={inputClass} placeholder="+380671112233" />
+                </Field>
+                <Field label="Контактна особа">
+                  <input name="np_sender_contact" defaultValue={np?.np_sender_contact ?? ''} className={inputClass} />
+                </Field>
+              </div>
+            </ActionForm>
+          </Card>
+
+          <Card title="Інтернет-магазин">
+            <p className="mb-3 text-sm text-emerald-800/70">
+              Сайт шле замовлення на <code className="rounded bg-emerald-900/5 px-1">/api/shop-orders</code> із
+              токеном у заголовку Authorization — тут створюється чернетка замовлення каналу
+              «Сайт», яку менеджер перевіряє і підтверджує. Повторна відправка того самого
+              замовлення дубля не створює.
+            </p>
+            <ActionForm action={saveShopSettings} submitLabel="Зберегти" variant="ghost">
+              <Field label="Токен API" hint="цей самий токен вкажіть у налаштуваннях сайту">
+                <input
+                  name="shop_api_token"
+                  defaultValue={np2?.shop_api_token ?? ''}
+                  className={inputClass}
+                  autoComplete="off"
+                  placeholder="довільний секретний рядок, що довший — то краще"
+                />
+              </Field>
+              <Field label="Юрособа замовлень із сайту">
+                <select name="shop_entity_id" className={inputClass} defaultValue={np2?.shop_entity_id ?? ''}>
+                  <option value="">типова юрособа</option>
+                  {shopEntities.map((e) => (
+                    <option key={e.id} value={e.id}>
+                      {e.short_name}
+                    </option>
+                  ))}
+                </select>
+              </Field>
             </ActionForm>
           </Card>
 

@@ -57,7 +57,12 @@ export default async function PurchasingPage() {
       <PageHeader
         title="Закупівлі"
         subtitle="Заявки постачальникам і оприбуткування сировини"
-        action={<LinkButton href="/purchasing/suppliers">Постачальники</LinkButton>}
+        action={
+          <div className="flex flex-wrap items-center gap-2">
+            <LinkButton href="/purchasing/needs">Потреби в закупівлі</LinkButton>
+            <LinkButton href="/purchasing/suppliers">Постачальники</LinkButton>
+          </div>
+        }
       />
 
       <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-3">
