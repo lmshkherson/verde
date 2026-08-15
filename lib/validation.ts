@@ -73,7 +73,9 @@ export const reviewSchema = z.object({
   text: z.string().min(20, "Розкажіть трохи детальніше — від 20 символів"),
 });
 
+// На вході не перевіряємо довжину пароля: користувач має бачити «невірний
+// email або пароль», а не підказку про формат.
 export const loginSchema = z.object({
   email: z.string().email("Перевірте адресу пошти"),
-  password: z.string().min(6, "Пароль від 6 символів"),
+  password: z.string().min(1, "Введіть пароль"),
 });

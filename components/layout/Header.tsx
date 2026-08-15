@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useCart } from "@/components/cart/CartProvider";
 import { Container } from "@/components/ui";
 import { site } from "@/lib/site";
@@ -20,10 +20,6 @@ export function Header() {
   const pathname = usePathname();
   const { count, ready } = useCart();
   const [open, setOpen] = useState(false);
-
-  // Меню має закриватись саме по зміні маршруту, інакше після переходу
-  // воно лишається розгорнутим поверх нової сторінки.
-  useEffect(() => setOpen(false), [pathname]);
 
   return (
     <header className="sticky top-0 z-50 border-b border-line bg-paper/95 backdrop-blur">
@@ -126,6 +122,9 @@ export function Header() {
               <Link
                 key={item.href}
                 href={item.href}
+                // Меню закриваємо тут, а не ефектом на зміну маршруту:
+                // інакше воно лишається розгорнутим поверх нової сторінки.
+                onClick={() => setOpen(false)}
                 className="border-b border-line-soft py-3 text-[0.95rem] font-medium last:border-0"
               >
                 {item.label}

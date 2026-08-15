@@ -1,36 +1,109 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Інтернет-магазин авточохлів
 
-## Getting Started
+Повноцінний ecommerce для виробника авточохлів: каталог із підбором за авто,
+конфігуратор комплекту, кошик, оформлення замовлення й адмінка.
 
-First, run the development server:
+Побудований на основі аналізу конкурентів українського ринку — структура каталогу,
+сценарій підбору та набір сторінок повторюють те, що працює в лідерів
+(EMC-Elegant, Avtomania, AvtoChohol), і додають те, чого в них немає:
+візуалізацію кольору, облік комплектації та конкретну дату відправлення.
+
+## Стек
+
+- **Next.js 16** (App Router, Turbopack) + TypeScript
+- **Tailwind CSS 4**
+- **Prisma 7** + SQLite через driver adapter (схема сумісна з Postgres)
+- Серверні дії замість API-роутів, валідація через **zod**
+- Авторизація адмінки — власна, на підписаних JWT-cookie (`jose` + `bcryptjs`)
+
+## Запуск
 
 ```bash
+npm install
+cp .env.example .env      # і заповніть змінні
+npx prisma migrate dev    # створить базу і застосує міграції
+npm run db:seed           # заповнить каталог демо-даними
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Магазин — http://localhost:3000, адмінка — http://localhost:3000/admin
+(логін і пароль беруться з `ADMIN_EMAIL` та `ADMIN_PASSWORD` у `.env`).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### Команди
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+| Команда | Що робить |
+|---|---|
+| `npm run dev` | Режим розробки |
+| `npm run build` / `npm start` | Продакшен-збірка й запуск |
+| `npm run db:migrate` | Створити й застосувати міграцію |
+| `npm run db:seed` | Перезаповнити базу демо-даними |
+| `npm run db:studio` | Візуальний редактор бази |
 
-## Learn More
+## Структура
 
-To learn more about Next.js, take a look at the following resources:
+```
+app/
+  (shop)/            вітрина: спільний макет із шапкою, підвалом і кошиком
+    page.tsx         головна з підбором авто
+    catalog/         каталог із фасетними фільтрами
+    chohly/          SEO-ядро: /chohly/{марка}/{модель}
+    product/[slug]/  картка товару з конфігуратором
+    cart, checkout/  кошик і оформлення в один крок
+    individual/      індивідуальне пошиття (форма заявки)
+    about, delivery, warranty, reviews, blog, contacts/
+  admin/
+    login/           вхід
+    (panel)/         панель: огляд, замовлення, заявки, відгуки,
+                     лінійки, база авто, блог
+  actions/           серверні дії (замовлення, заявки, адмінка)
+components/          UI, підбір авто, конфігуратор, форми, мікророзмітка
+lib/                 site.ts (бренд), pricing.ts, queries.ts, auth.ts…
+prisma/
+  schema.prisma      модель даних
+  data/              довідник авто й каталог для сіду
+  seed.ts
+legacy/              старий лендінг VERDE, до цього проєкту не належить
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Ключові рішення
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+**Ціноутворення — в одному місці.** `lib/pricing.ts` рахує ціну як
+`базова ціна серії × коефіцієнт кузова + доплата за колір`. Коефіцієнти лежать
+у таблиці `BodyFactor` і редагуються без деплою. Для окремих пар «серія + модель
+авто» ціну можна перевизначити вручну через `ModelPrice`.
 
-## Deploy on Vercel
+**Ціни перевіряються на сервері.** Серверна дія `createOrder` перераховує вартість
+опцій за прайсом з бази й перевіряє, що базова ціна вкладається в можливий для
+лінійки діапазон. Підмінити суму з консолі браузера не вийде.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+**Підбір авто працює без запитів до сервера.** Дерево «марка → модель» віддається
+цілком (десятки кілобайт) — підбір це головний елемент сторінки, він не має
+чекати мережу.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+**Візуалізація замість стокових фото.** `components/product/SeatPreview.tsx` малює
+сидіння в SVG і перефарбовує його в обраний колір, вставки й нитку. Коли зʼявиться
+власна фотозйомка серій, компонент лишиться запасним варіантом для комбінацій,
+які не встигли відзняти.
+
+**Сторінки моделей генеруються з даних.** 40 марок × 247 моделей = 287 посадкових
+сторінок під запити «авточохли на {марка} {модель}». Усі потрапляють у
+`sitemap.xml` автоматично.
+
+## Перехід на Postgres
+
+1. У `prisma/schema.prisma` замінити `provider = "sqlite"` на `"postgresql"`.
+2. Встановити адаптер: `npm i @prisma/adapter-pg pg` і замінити його в `lib/prisma.ts`.
+3. Прописати `DATABASE_URL` і виконати `npx prisma migrate dev`.
+
+Схема свідомо написана без enum-ів і скалярних списків, тому переїзд не потребує
+змін у моделях.
+
+## Що варто зробити далі
+
+- Інтеграція з API Нової Пошти: підвантаження міст і відділень у чекауті
+  (зараз це текстові поля).
+- Платіжний шлюз (LiqPay / WayForPay / Plata by Mono) і покупка частинами.
+- Реальна фотозйомка серій і завантаження фото через адмінку — модель
+  `SeriesImage` для цього вже є.
+- Сповіщення менеджера про нове замовлення (Telegram-бот або email).
+- GA4 і Meta Pixel, події `add_to_cart` та `purchase`.

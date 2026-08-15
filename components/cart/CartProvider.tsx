@@ -4,9 +4,8 @@ import {
   createContext,
   useCallback,
   useContext,
-  useEffect,
   useMemo,
-  useState,
+  useSyncExternalStore,
   type ReactNode,
 } from "react";
 
@@ -29,8 +28,60 @@ export type CartItem = {
   productionDays: number;
 };
 
+const STORAGE_KEY = "cart:v1";
+const EMPTY: CartItem[] = [];
+
+// Кошик живе в localStorage, тобто це зовнішнє сховище щодо React.
+// useSyncExternalStore — штатний спосіб з ним працювати: він коректно
+// поводиться при гідратації й сам синхронізує кошик між вкладками.
+let snapshot: CartItem[] | null = null;
+const listeners = new Set<() => void>();
+
+function readCart(): CartItem[] {
+  if (snapshot) return snapshot;
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    snapshot = raw ? (JSON.parse(raw) as CartItem[]) : EMPTY;
+  } catch {
+    // Пошкоджений або недоступний storage не має ламати сторінку.
+    snapshot = EMPTY;
+  }
+  return snapshot;
+}
+
+function writeCart(items: CartItem[]) {
+  snapshot = items;
+  try {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+  } catch {
+    // Приватний режим — просто працюємо без збереження.
+  }
+  for (const listener of listeners) listener();
+}
+
+function subscribe(listener: () => void) {
+  listeners.add(listener);
+
+  const onStorage = (event: StorageEvent) => {
+    if (event.key !== STORAGE_KEY) return;
+    snapshot = null;
+    for (const item of listeners) item();
+  };
+  window.addEventListener("storage", onStorage);
+
+  return () => {
+    listeners.delete(listener);
+    window.removeEventListener("storage", onStorage);
+  };
+}
+
+const serverSnapshot = () => EMPTY;
+const clientReady = () => true;
+const serverReady = () => false;
+
 type CartState = {
   items: CartItem[];
+  /** false, поки кошик не піднявся зі сховища — щоб лічильник не блимав нулем */
   ready: boolean;
   add: (item: Omit<CartItem, "key">) => void;
   remove: (key: string) => void;
@@ -41,7 +92,6 @@ type CartState = {
 };
 
 const CartContext = createContext<CartState | null>(null);
-const STORAGE_KEY = "cart:v1";
 
 function itemKey(item: Omit<CartItem, "key">) {
   const options = item.options
@@ -52,52 +102,32 @@ function itemKey(item: Omit<CartItem, "key">) {
 }
 
 export function CartProvider({ children }: { children: ReactNode }) {
-  const [items, setItems] = useState<CartItem[]>([]);
-  // Поки кошик не піднявся з localStorage, лічильник не показуємо —
-  // інакше на першому кадрі блимає нуль.
-  const [ready, setReady] = useState(false);
-
-  useEffect(() => {
-    try {
-      const raw = window.localStorage.getItem(STORAGE_KEY);
-      if (raw) setItems(JSON.parse(raw) as CartItem[]);
-    } catch {
-      // Пошкоджений або недоступний storage не має ламати сторінку.
-    }
-    setReady(true);
-  }, []);
-
-  useEffect(() => {
-    if (!ready) return;
-    try {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
-    } catch {
-      // Приватний режим — просто працюємо без збереження.
-    }
-  }, [items, ready]);
+  const items = useSyncExternalStore(subscribe, readCart, serverSnapshot);
+  const ready = useSyncExternalStore(subscribe, clientReady, serverReady);
 
   const add = useCallback((item: Omit<CartItem, "key">) => {
     const key = itemKey(item);
-    setItems((current) => {
-      const existing = current.find((entry) => entry.key === key);
-      if (existing) {
-        return current.map((entry) =>
-          entry.key === key
-            ? { ...entry, quantity: entry.quantity + item.quantity }
-            : entry,
-        );
-      }
-      return [...current, { ...item, key }];
-    });
+    const current = readCart();
+    const existing = current.find((entry) => entry.key === key);
+
+    writeCart(
+      existing
+        ? current.map((entry) =>
+            entry.key === key
+              ? { ...entry, quantity: entry.quantity + item.quantity }
+              : entry,
+          )
+        : [...current, { ...item, key }],
+    );
   }, []);
 
   const remove = useCallback((key: string) => {
-    setItems((current) => current.filter((entry) => entry.key !== key));
+    writeCart(readCart().filter((entry) => entry.key !== key));
   }, []);
 
   const setQuantity = useCallback((key: string, quantity: number) => {
-    setItems((current) =>
-      current.map((entry) =>
+    writeCart(
+      readCart().map((entry) =>
         entry.key === key
           ? { ...entry, quantity: Math.max(1, Math.min(20, quantity)) }
           : entry,
@@ -105,7 +135,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
     );
   }, []);
 
-  const clear = useCallback(() => setItems([]), []);
+  const clear = useCallback(() => writeCart(EMPTY), []);
 
   const value = useMemo<CartState>(() => {
     const count = items.reduce((sum, item) => sum + item.quantity, 0);

@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { ButtonLink, Breadcrumbs, Container, SectionHeading } from "@/components/ui";
-import { pluralize } from "@/lib/format";
 import { getBrands, getCarTree } from "@/lib/queries";
 import { site } from "@/lib/site";
 

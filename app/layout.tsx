@@ -1,9 +1,5 @@
 import type { Metadata } from "next";
 import { Onest, Unbounded } from "next/font/google";
-import { CartProvider } from "@/components/cart/CartProvider";
-import { Footer } from "@/components/layout/Footer";
-import { Header } from "@/components/layout/Header";
-import { OrganizationJsonLd } from "@/components/seo/JsonLd";
 import { site } from "@/lib/site";
 import "./globals.css";
 
@@ -44,14 +40,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       lang="uk"
       className={`${display.variable} ${sans.variable} h-full antialiased`}
     >
-      <body className="flex min-h-full flex-col">
-        <CartProvider>
-          <Header />
-          <main className="flex-1">{children}</main>
-          <Footer />
-          <OrganizationJsonLd />
-        </CartProvider>
-      </body>
+      <body className="flex min-h-full flex-col">{children}</body>
     </html>
   );
 }
