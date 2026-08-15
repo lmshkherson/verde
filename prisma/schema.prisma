@@ -1,0 +1,312 @@
+// Схема даних інтернет-магазину авточохлів.
+// SQLite для розробки. Enum'и та скалярні списки не використовуються навмисно —
+// це тримає схему сумісною з Postgres: для продакшену достатньо змінити provider.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+// ─────────────────────────────────────────────────────────
+// Автомобілі: марка → модель → покоління
+// ─────────────────────────────────────────────────────────
+
+model Brand {
+  id        Int     @id @default(autoincrement())
+  slug      String  @unique
+  name      String
+  country   String?
+  popular   Boolean @default(false)
+  sortOrder Int     @default(100)
+
+  seoTitle       String?
+  seoDescription String?
+  intro          String?
+
+  models    CarModel[]
+  createdAt DateTime   @default(now())
+}
+
+model CarModel {
+  id      Int    @id @default(autoincrement())
+  brandId Int
+  brand   Brand  @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  slug    String
+  name    String
+
+  /// sedan | hatchback | universal | suv | crossover | minivan | pickup | van
+  bodyType String
+  yearFrom Int
+  yearTo   Int?
+  /// Кількість місць у базовій комплектації
+  seats    Int     @default(5)
+  popular  Boolean @default(false)
+
+  /// Комплектації, що впливають на лекала
+  splitRearSeat    Boolean @default(true)
+  rearArmrest      Boolean @default(false)
+  airbagInBackrest Boolean @default(false)
+
+  seoTitle       String?
+  seoDescription String?
+  intro          String?
+
+  modelPrices ModelPrice[]
+
+  @@unique([brandId, slug])
+  @@index([bodyType])
+}
+
+// ─────────────────────────────────────────────────────────
+// Товар: серія чохлів × матеріал × колір
+// ─────────────────────────────────────────────────────────
+
+model Material {
+  id          Int     @id @default(autoincrement())
+  slug        String  @unique
+  name        String
+  shortName   String
+  description String
+  /// Заявлений ресурс зносостійкості, років
+  wearYears   Int     @default(5)
+  careNotes   String?
+  sortOrder   Int     @default(100)
+
+  series Series[]
+}
+
+model Series {
+  id       Int    @id @default(autoincrement())
+  slug     String @unique
+  name     String
+  tagline  String
+
+  /// universal | basic | eco | premium | individual
+  tier       String
+  materialId Int
+  material   Material @relation(fields: [materialId], references: [id])
+
+  shortDescription String
+  description      String
+  /// JSON-масив рядків з перевагами серії
+  featuresJson     String @default("[]")
+  /// JSON-масив рядків: що входить у комплект
+  includesJson     String @default("[]")
+
+  /// Базова ціна за комплект у гривнях (для кузова sedan)
+  basePrice      Int
+  /// Стара ціна для показу економії, 0 = не показувати
+  oldPrice       Int     @default(0)
+  warrantyMonths Int     @default(18)
+  /// Робочих днів на пошиття
+  productionDays Int     @default(5)
+
+  popular   Boolean @default(false)
+  active    Boolean @default(true)
+  sortOrder Int     @default(100)
+
+  seoTitle       String?
+  seoDescription String?
+
+  images      SeriesImage[]
+  colors      SeriesColor[]
+  modelPrices ModelPrice[]
+  reviews     Review[]
+  orderItems  OrderItem[]
+
+  createdAt DateTime @default(now())
+}
+
+model SeriesImage {
+  id        Int    @id @default(autoincrement())
+  seriesId  Int
+  series    Series @relation(fields: [seriesId], references: [id], onDelete: Cascade)
+  url       String
+  alt       String
+  sortOrder Int    @default(100)
+}
+
+model SeriesColor {
+  id       Int    @id @default(autoincrement())
+  seriesId Int
+  series   Series @relation(fields: [seriesId], references: [id], onDelete: Cascade)
+  slug     String
+  name     String
+  /// Основний колір
+  hex      String
+  /// Колір вставок; порожній рядок — однотонний
+  insertHex String @default("")
+  /// Колір нитки прострочки
+  threadHex String @default("#FFFFFF")
+  image     String?
+  surcharge Int     @default(0)
+  sortOrder Int     @default(100)
+
+  @@unique([seriesId, slug])
+}
+
+/// Коефіцієнт ціни за типом кузова: більше сидінь і складніші лекала — дорожче
+model BodyFactor {
+  id        Int    @id @default(autoincrement())
+  bodyType  String @unique
+  label     String
+  factor    Float  @default(1.0)
+  sortOrder Int    @default(100)
+}
+
+/// Точкове перевизначення ціни для конкретної пари серія + модель авто
+model ModelPrice {
+  id         Int      @id @default(autoincrement())
+  seriesId   Int
+  series     Series   @relation(fields: [seriesId], references: [id], onDelete: Cascade)
+  carModelId Int
+  carModel   CarModel @relation(fields: [carModelId], references: [id], onDelete: Cascade)
+  price      Int
+
+  @@unique([seriesId, carModelId])
+}
+
+/// Платні опції до комплекту: вишивка логотипа, підголівники тощо
+model AddOn {
+  id          Int     @id @default(autoincrement())
+  slug        String  @unique
+  name        String
+  description String
+  price       Int
+  active      Boolean @default(true)
+  sortOrder   Int     @default(100)
+}
+
+// ─────────────────────────────────────────────────────────
+// Замовлення
+// ─────────────────────────────────────────────────────────
+
+model Order {
+  id     Int    @id @default(autoincrement())
+  number String @unique
+
+  /// new | confirmed | production | shipped | done | canceled
+  status String @default("new")
+
+  customerName String
+  phone        String
+  email        String?
+
+  /// nova_poshta_branch | nova_poshta_locker | courier | pickup | ukrposhta
+  deliveryMethod String
+  city           String
+  warehouse      String?
+  address        String?
+
+  /// cod | card_online | installments | invoice
+  paymentMethod String
+
+  comment String?
+  /// Внутрішня нотатка менеджера, клієнту не показується
+  adminNote String?
+
+  itemsTotal   Int
+  deliveryCost Int @default(0)
+  total        Int
+
+  items OrderItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([createdAt])
+}
+
+model OrderItem {
+  id      Int    @id @default(autoincrement())
+  orderId Int
+  order   Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  seriesId Int?
+  series   Series? @relation(fields: [seriesId], references: [id])
+
+  /// Знімок даних на момент замовлення — щоб історія не «попливла» після зміни цін
+  seriesName String
+  carLabel   String
+  colorName  String
+  /// JSON-масив обраних опцій та комплектації
+  optionsJson String @default("[]")
+
+  unitPrice Int
+  quantity  Int @default(1)
+  total     Int
+}
+
+// ─────────────────────────────────────────────────────────
+// Контент і заявки
+// ─────────────────────────────────────────────────────────
+
+model Review {
+  id       Int     @id @default(autoincrement())
+  author   String
+  city     String?
+  carLabel String
+  seriesId Int?
+  series   Series? @relation(fields: [seriesId], references: [id])
+
+  rating    Int     @default(5)
+  text      String
+  photo     String?
+  published Boolean @default(false)
+
+  createdAt DateTime @default(now())
+
+  @@index([published])
+}
+
+/// Заявка на індивідуальне пошиття або зворотний дзвінок
+model Lead {
+  id   Int    @id @default(autoincrement())
+  /// individual | callback | question
+  type String @default("individual")
+
+  name     String
+  phone    String
+  carLabel String?
+  message  String?
+  /// JSON-масив URL фото салону
+  photosJson String @default("[]")
+
+  /// new | in_progress | done | spam
+  status    String   @default("new")
+  adminNote String?
+  createdAt DateTime @default(now())
+
+  @@index([status])
+}
+
+model Post {
+  id      Int    @id @default(autoincrement())
+  slug    String @unique
+  title   String
+  excerpt String
+  body    String
+  cover   String?
+
+  seoTitle       String?
+  seoDescription String?
+
+  published   Boolean   @default(false)
+  publishedAt DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([published])
+}
+
+model AdminUser {
+  id           Int      @id @default(autoincrement())
+  email        String   @unique
+  passwordHash String
+  name         String
+  createdAt    DateTime @default(now())
+}
