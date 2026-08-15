@@ -1,5 +1,14 @@
 /** Матеріали, лінійки чохлів, кольори, опції та стартовий контент. */
 
+type ColorSeed = {
+  slug: string;
+  name: string;
+  hex: string;
+  insertHex?: string;
+  threadHex: string;
+  surcharge?: number;
+};
+
 export const materials = [
   {
     slug: "avtotkanina",
@@ -53,7 +62,24 @@ export const materials = [
   },
 ];
 
-export const series = [
+export const series: {
+  slug: string;
+  name: string;
+  tagline: string;
+  tier: string;
+  material: string;
+  shortDescription: string;
+  description: string;
+  features: string[];
+  includes: string[];
+  basePrice: number;
+  oldPrice: number;
+  warrantyMonths: number;
+  productionDays: number;
+  popular: boolean;
+  sortOrder: number;
+  colors: ColorSeed[];
+}[] = [
   {
     slug: "standart",
     name: "Стандарт",
