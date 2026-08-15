@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ProductConfigurator } from "@/components/product/ProductConfigurator";
+import { BreadcrumbJsonLd, ProductJsonLd } from "@/components/seo/JsonLd";
 import { Badge, Breadcrumbs, Container, SectionHeading } from "@/components/ui";
 import { formatDate, pluralize } from "@/lib/format";
 import { prisma } from "@/lib/prisma";
@@ -96,8 +97,30 @@ export default async function ProductPage(props: PageProps<"/product/[slug]">) {
     { label: "Виробництво", value: `Україна, ${site.showroom.city}` },
   ];
 
+  const price = Math.round((series.basePrice * bodyFactor) / 10) * 10;
+  const ratingSum = series.reviews.reduce((sum, review) => sum + review.rating, 0);
+
   return (
     <Container className="pb-16">
+      <ProductJsonLd
+        name={`Авточохли ${series.name}${car ? ` на ${car.label}` : ""}`}
+        description={series.shortDescription}
+        price={price}
+        brandName={site.name}
+        ratingValue={
+          series.reviews.length
+            ? Number((ratingSum / series.reviews.length).toFixed(1))
+            : undefined
+        }
+        reviewCount={series.reviews.length || undefined}
+      />
+      <BreadcrumbJsonLd
+        items={[
+          { name: "Головна", url: "/" },
+          { name: "Каталог", url: "/catalog" },
+          { name: series.name, url: `/product/${series.slug}` },
+        ]}
+      />
       <Breadcrumbs
         items={[
           { href: "/", label: "Головна" },
