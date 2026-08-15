@@ -36,15 +36,12 @@ export default async function AboutPage() {
   const modelCount = tree.reduce((sum, brand) => sum + brand.models.length, 0);
 
   const facts = [
+    { value: `${site.yearsOnMarket}+ років`, label: "на ринку України" },
     { value: String(brands.length), label: "марок авто в базі лекал" },
     { value: String(modelCount), label: "моделей з готовими лекалами" },
     {
       value: `${site.promises.warrantyMonths} міс`,
       label: "гарантія на пошиття та шви",
-    },
-    {
-      value: `${site.promises.productionDays} днів`,
-      label: "середній строк пошиття комплекту",
     },
   ];
 
@@ -59,10 +56,11 @@ export default async function AboutPage() {
           Ми шиємо чохли самі — і тому відповідаємо за них
         </h1>
         <p className="mt-4 text-lg text-ink-muted">
-          {site.name} — це власний цех у місті {site.showroom.city}, а не
-          посередник між вами та складом. Ми контролюємо весь ланцюг: від вибору
-          матеріалу до останнього шва. Саме тому можемо дати гарантію{" "}
-          {site.promises.warrantyMonths} місяців і назвати точну дату відправлення.
+          {site.name} — це власне виробництво, а не посередник між вами та
+          складом. Понад {site.yearsOnMarket} років шиємо авточохли на ринку
+          України й контролюємо весь ланцюг: від вибору матеріалу до останнього
+          шва. Саме тому можемо дати гарантію {site.promises.warrantyMonths}{" "}
+          місяців і назвати точну дату відправлення.
         </p>
       </header>
 
