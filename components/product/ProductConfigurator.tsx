@@ -127,7 +127,9 @@ export function ProductConfigurator({
   return (
     <div className="grid gap-8 lg:grid-cols-[1fr_420px]">
       {/* ── Візуалізація ── */}
-      <div className="flex flex-col gap-4">
+      {/* Липка колонка: конфігуратор справа вищий, і без цього під
+          зображенням лишалась порожнеча на пів екрана. */}
+      <div className="flex flex-col gap-4 lg:sticky lg:top-28 lg:self-start">
         <div className="flex items-center justify-center rounded-[4px] border border-line bg-paper-warm p-8">
           {color ? (
             <SeatPreview

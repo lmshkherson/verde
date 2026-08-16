@@ -68,11 +68,20 @@ export function Header() {
           </nav>
 
           <div className="flex items-center gap-2">
+            {/* Середній чек тут — кілька тисяч гривень, тому дзвонять часто.
+                На мобільному номер має бути в один тап, а не в меню. */}
             <a
               href={site.phones[0].href}
-              className="hidden text-sm font-semibold sm:block lg:hidden"
+              aria-label={`Зателефонувати ${site.phones[0].label}`}
+              className="flex h-11 items-center gap-2 rounded-[4px] border border-line px-3 text-sm font-semibold hover:border-ink lg:hidden"
             >
-              {site.phones[0].label}
+              <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+                <path
+                  d="M3.2 1.5h2.1l1.1 2.7-1.4 1a8.6 8.6 0 0 0 3.8 3.8l1-1.4 2.7 1.1v2.1c0 .8-.7 1.4-1.5 1.3A11.3 11.3 0 0 1 1.9 3C1.8 2.2 2.4 1.5 3.2 1.5Z"
+                  fill="currentColor"
+                />
+              </svg>
+              <span className="hidden sm:inline">{site.phones[0].label}</span>
             </a>
 
             <Link
