@@ -3,6 +3,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { SeriesCard } from "@/components/catalog/SeriesCard";
 import { ShowcaseCard } from "@/components/catalog/ShowcaseCard";
+import { ModelFaq } from "@/components/seo/ModelFaq";
+import { BreadcrumbJsonLd, ProductRangeJsonLd } from "@/components/seo/JsonLd";
 import { Badge, Breadcrumbs, ButtonLink, Container, SectionHeading } from "@/components/ui";
 import { formatPriceWithCurrency, formatYears, pluralize } from "@/lib/format";
 import { prisma } from "@/lib/prisma";
@@ -98,8 +100,35 @@ export default async function ModelPage(
     ...(year ? { year } : {}),
   }).toString();
 
+  // Діапазон цін для розмітки: усі доступні варіанти всіх лінійок
+  const allPrices = seriesList
+    .flatMap((series) =>
+      series.seatPrices
+        .filter((price) => sets.some((set) => set.id === price.seatSetId))
+        .map((price) => price.price),
+    )
+    .filter((price) => price > 0);
+
   return (
     <Container className="pb-16">
+      {allPrices.length > 0 ? (
+        <ProductRangeJsonLd
+          name={`Авточохли на ${brand.name} ${model.name}`}
+          description={`Модельні авточохли на ${brand.name} ${model.name} за лекалами виробника. Гарантія ${site.promises.warrantyMonths} місяців, доставка по Україні.`}
+          url={`/chohly/${brand.slug}/${model.slug}`}
+          lowPrice={Math.min(...allPrices)}
+          highPrice={Math.max(...allPrices)}
+          offerCount={allPrices.length}
+        />
+      ) : null}
+      <BreadcrumbJsonLd
+        items={[
+          { name: "Головна", url: "/" },
+          { name: "Марки авто", url: "/chohly" },
+          { name: brand.name, url: `/chohly/${brand.slug}` },
+          { name: model.name, url: `/chohly/${brand.slug}/${model.slug}` },
+        ]}
+      />
       <Breadcrumbs
         items={[
           { href: "/", label: "Головна" },
@@ -259,6 +288,13 @@ export default async function ModelPage(
           </Link>
         </div>
       </section>
+
+      <ModelFaq
+        brandName={brand.name}
+        model={model}
+        seriesList={seriesList}
+        sets={sets}
+      />
     </Container>
   );
 }

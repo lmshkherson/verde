@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { ArticleJsonLd } from "@/components/seo/JsonLd";
 import { Breadcrumbs, ButtonLink, Container } from "@/components/ui";
 import { formatDate } from "@/lib/format";
 import { renderMarkdown } from "@/lib/markdown";
@@ -41,6 +42,12 @@ export default async function PostPage(props: PageProps<"/blog/[slug]">) {
 
   return (
     <Container className="pb-16">
+      <ArticleJsonLd
+        title={post.title}
+        description={post.excerpt}
+        url={`/blog/${post.slug}`}
+        datePublished={post.publishedAt?.toISOString()}
+      />
       <Breadcrumbs
         items={[
           { href: "/", label: "Головна" },

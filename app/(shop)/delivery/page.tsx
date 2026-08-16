@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { FaqJsonLd } from "@/components/seo/JsonLd";
 import { Breadcrumbs, Container, SectionHeading } from "@/components/ui";
 import { formatPriceWithCurrency } from "@/lib/format";
 import { deliveryMethods, paymentMethods } from "@/lib/pricing";
@@ -34,8 +35,28 @@ const paymentDetails: Record<string, string> = {
 };
 
 export default function DeliveryPage() {
+  const faq = [
+    {
+      q: "Чому потрібна передоплата при накладеному платежі?",
+      a: "Модельні чохли шиються під конкретне авто — продати їх іншому покупцю неможливо. Передоплата 500 ₴ підтверджує серйозність замовлення й запускає розкрій. Вона зараховується в суму замовлення.",
+    },
+    {
+      q: "Коли саме відправите замовлення?",
+      a: `Дата вказана в картці товару й дублюється в підтвердженні замовлення. Універсальні комплекти йдуть наступного дня, модельні — через ${site.promises.productionDays} робочих днів після підтвердження комплектації.`,
+    },
+    {
+      q: "Чи можна оплатити частинами?",
+      a: "Так, від 1 000 ₴ доступна покупка частинами від Монобанку та ПриватБанку — до 4 платежів без переплати й без комісії для вас.",
+    },
+    {
+      q: "Скільки коштує доставка?",
+      a: `Від ${formatPriceWithCurrency(site.promises.freeShippingFrom)} — безкоштовно. Нижче цієї суми: пошта 90 ₴, курʼєр 150 ₴, самовивіз завжди безкоштовний.`,
+    },
+  ];
+
   return (
     <Container className="pb-16">
+      <FaqJsonLd items={faq} />
       <Breadcrumbs
         items={[{ href: "/", label: "Головна" }, { label: "Доставка й оплата" }]}
       />
@@ -87,24 +108,7 @@ export default function DeliveryPage() {
       <section>
         <SectionHeading title="Часті питання" />
         <div className="flex flex-col gap-px overflow-hidden rounded-[4px] border border-line bg-line">
-          {[
-            {
-              q: "Чому потрібна передоплата при накладеному платежі?",
-              a: "Модельні чохли шиються під конкретне авто — продати їх іншому покупцю неможливо. Передоплата 500 ₴ підтверджує серйозність замовлення й запускає розкрій. Вона зараховується в суму замовлення.",
-            },
-            {
-              q: "Коли саме відправите замовлення?",
-              a: `Дата вказана в картці товару й дублюється в підтвердженні замовлення. Універсальні комплекти йдуть наступного дня, модельні — через ${site.promises.productionDays} робочих днів після підтвердження комплектації.`,
-            },
-            {
-              q: "Чи можна оплатити частинами?",
-              a: "Так, від 1 000 ₴ доступна покупка частинами від Монобанку та ПриватБанку — до 4 платежів без переплати й без комісії для вас.",
-            },
-            {
-              q: "Скільки коштує доставка?",
-              a: `Від ${formatPriceWithCurrency(site.promises.freeShippingFrom)} — безкоштовно. Нижче цієї суми: пошта 90 ₴, курʼєр 150 ₴, самовивіз завжди безкоштовний.`,
-            },
-          ].map((item) => (
+          {faq.map((item) => (
             <details key={item.q} className="group bg-white p-5">
               <summary className="cursor-pointer list-none font-semibold">
                 <span className="flex items-start justify-between gap-4">
