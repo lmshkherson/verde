@@ -44,10 +44,15 @@ export default async function ProductPage(props: PageProps<"/product/[slug]">) {
   const modelSlug = typeof search.model === "string" ? search.model : undefined;
   const year = typeof search.year === "string" ? search.year : undefined;
 
-  const [series, addOns, factors] = await Promise.all([
+  const [series, addOns, factors, materials, paletteRows] = await Promise.all([
     getSeriesBySlug(slug),
     getAddOns(),
     getBodyFactors(),
+    prisma.material.findMany({ orderBy: { sortOrder: "asc" } }),
+    prisma.palette.findMany({
+      where: { active: true },
+      orderBy: { sortOrder: "asc" },
+    }),
   ]);
 
   if (!series) notFound();
@@ -160,7 +165,36 @@ export default async function ProductPage(props: PageProps<"/product/[slug]">) {
           oldPrice: series.oldPrice,
           productionDays: series.productionDays,
           warrantyMonths: series.warrantyMonths,
+          materialId: series.materialId,
+          allowCustomColors: series.allowCustomColors,
         }}
+        materials={materials.map((item) => ({
+          id: item.id,
+          slug: item.slug,
+          name: item.name,
+          shortName: item.shortName,
+          wearYears: item.wearYears,
+          surcharge: item.surcharge,
+        }))}
+        materialColors={paletteRows
+          .filter((item) => item.kind === "material")
+          .map((item) => ({
+            id: item.id,
+            slug: item.slug,
+            name: item.name,
+            hex: item.hex,
+            surcharge: item.surcharge,
+          }))}
+        threadColors={paletteRows
+          .filter((item) => item.kind === "thread")
+          .map((item) => ({
+            id: item.id,
+            slug: item.slug,
+            name: item.name,
+            hex: item.hex,
+            surcharge: item.surcharge,
+          }))}
+        logoAddOnSlug="vyshyvka-logo"
         colors={series.colors.map((color) => ({
           id: color.id,
           slug: color.slug,

@@ -6,6 +6,7 @@ const columns = [
   {
     title: "Каталог",
     links: [
+      { href: "/roboty", label: "Готові роботи з фото" },
       { href: "/catalog", label: "Усі лінійки" },
       { href: "/catalog?tier=eco", label: "Чохли з екошкіри" },
       { href: "/catalog?tier=premium", label: "Преміум з алькантарою" },

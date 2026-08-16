@@ -8,12 +8,12 @@ import { Container } from "@/components/ui";
 import { site } from "@/lib/site";
 
 const nav = [
-  { href: "/catalog", label: "Каталог" },
+  { href: "/catalog", label: "Дизайни" },
+  { href: "/roboty", label: "Готові роботи" },
   { href: "/chohly", label: "Марки авто" },
-  { href: "/individual", label: "Індивідуальне пошиття" },
+  { href: "/individual", label: "Індивідуальне" },
   { href: "/about", label: "Виробництво" },
-  { href: "/reviews", label: "Відгуки" },
-  { href: "/delivery", label: "Доставка й оплата" },
+  { href: "/delivery", label: "Доставка" },
 ];
 
 export function Header() {
@@ -41,23 +41,20 @@ export function Header() {
 
       <Container>
         <div className="flex h-16 items-center justify-between gap-4 lg:h-20">
-          <Link href="/" className="flex items-baseline gap-2">
-            <span className="font-display text-2xl font-extrabold tracking-tight">
+          <Link href="/" className="flex shrink-0 items-baseline gap-2">
+            <span className="whitespace-nowrap font-display text-2xl font-extrabold tracking-tight">
               {site.name}
-            </span>
-            <span className="hidden text-xs text-ink-muted sm:block">
-              {site.tagline}
             </span>
           </Link>
 
-          <nav className="hidden items-center gap-6 lg:flex">
+          <nav className="hidden items-center gap-5 lg:flex">
             {nav.map((item) => {
               const active = pathname.startsWith(item.href);
               return (
                 <Link
                   key={item.href}
                   href={item.href}
-                  className={`text-sm font-medium transition-colors ${
+                  className={`whitespace-nowrap text-sm font-medium transition-colors ${
                     active ? "text-ink" : "text-ink-muted hover:text-ink"
                   }`}
                 >

@@ -16,6 +16,7 @@ const nav = [
   { href: "/admin/orders", label: "Замовлення", badge: "orders" },
   { href: "/admin/leads", label: "Заявки", badge: "leads" },
   { href: "/admin/reviews", label: "Відгуки", badge: "reviews" },
+  { href: "/admin/works", label: "Готові роботи" },
   { href: "/admin/series", label: "Лінійки" },
   { href: "/admin/cars", label: "Авто" },
   { href: "/admin/posts", label: "Блог" },

@@ -13,6 +13,8 @@ type Props = {
   threadHex?: string;
   /** Стьобання показуємо тільки для преміальних лінійок */
   quilting?: "none" | "romb";
+  /** Колір нитки вишивки; порожньо — вишивки немає */
+  logoHex?: string;
   className?: string;
   title?: string;
 };
@@ -22,6 +24,7 @@ export function SeatPreview({
   insertHex,
   threadHex = "#ffffff",
   quilting = "none",
+  logoHex,
   className,
   title,
 }: Props) {
@@ -72,13 +75,21 @@ export function SeatPreview({
         rx="12"
         fill={`url(#shade-${uid})`}
       />
-      <path
-        d="M78 27 H122"
-        stroke={threadHex}
-        strokeWidth="1"
-        strokeOpacity="0.45"
-        strokeDasharray="3 3"
-      />
+      {logoHex ? (
+        // Вишивка логотипа йде на підголівнику — саме там її й роблять
+        <g stroke={logoHex} strokeWidth="1.6" fill="none" strokeLinecap="round">
+          <path d="M90 30 L96 20 L102 30" />
+          <path d="M104 20 L104 30 M104 20 L110 20 M104 25 L109 25" />
+        </g>
+      ) : (
+        <path
+          d="M78 27 H122"
+          stroke={threadHex}
+          strokeWidth="1"
+          strokeOpacity="0.45"
+          strokeDasharray="3 3"
+        />
+      )}
 
       {/* Штирі підголівника */}
       <rect x="84" y="46" width="5" height="12" rx="2" fill={hex} opacity="0.8" />

@@ -1,9 +1,11 @@
 import Link from "next/link";
 import { CarPicker } from "@/components/car/CarPicker";
 import { SeriesCard } from "@/components/catalog/SeriesCard";
+import { ShowcaseCard } from "@/components/catalog/ShowcaseCard";
 import { SeatPreview } from "@/components/product/SeatPreview";
 import { Badge, ButtonLink, Container, SectionHeading } from "@/components/ui";
 import { formatDate, pluralize } from "@/lib/format";
+import { prisma } from "@/lib/prisma";
 import {
   getBodyFactors,
   getBrands,
@@ -54,14 +56,24 @@ const process = [
 ];
 
 export default async function HomePage() {
-  const [tree, seriesList, factors, brands, reviews, posts] = await Promise.all([
-    getCarTree(),
-    getSeriesList(),
-    getBodyFactors(),
-    getBrands(),
-    getPublishedReviews(3),
-    getPublishedPosts(3),
-  ]);
+  const [tree, seriesList, factors, brands, reviews, posts, works] =
+    await Promise.all([
+      getCarTree(),
+      getSeriesList(),
+      getBodyFactors(),
+      getBrands(),
+      getPublishedReviews(3),
+      getPublishedPosts(3),
+      prisma.showcase.findMany({
+        where: { published: true },
+        orderBy: [{ featured: "desc" }, { createdAt: "desc" }],
+        take: 3,
+        include: {
+          photos: { orderBy: { sortOrder: "asc" } },
+          series: { select: { name: true } },
+        },
+      }),
+    ]);
 
   const modelCount = tree.reduce((sum, brand) => sum + brand.models.length, 0);
   const popularBrands = brands.filter((brand) => brand.popular);
@@ -116,6 +128,62 @@ export default async function HomePage() {
         </Container>
       </section>
 
+      {/* ── Два шляхи до покупки ── */}
+      <section className="border-b border-line bg-white">
+        <Container className="py-12">
+          <SectionHeading
+            eyebrow="Два способи обрати"
+            title="Зібрати свій дизайн або взяти готове рішення"
+            description="Обидва варіанти — той самий цех і та сама гарантія. Різниця лише в тому, що ви бачите перед замовленням."
+          />
+          <div className="grid gap-5 lg:grid-cols-2">
+            <div className="flex flex-col gap-4 rounded-[4px] border border-line bg-paper p-6 lg:p-8">
+              <span className="self-start">
+                <Badge>Варіант 1</Badge>
+              </span>
+              <h3 className="text-xl font-bold">Обрати дизайн і зібрати свій</h3>
+              <p className="text-ink-muted">
+                Ви обираєте крій, матеріал, основний колір, колір вставок, колір
+                строчки й вишивку. Схема одразу показує, як виглядатиме поєднання,
+                а ціна перераховується під ваше авто. Шиємо під вашу модель.
+              </p>
+              <ul className="flex flex-col gap-1.5 text-sm text-ink-muted">
+                <li>· Будь-яке поєднання кольорів і ниток</li>
+                <li>· Видно ціну ще до замовлення</li>
+                <li>· Підходить, якщо хочете щось своє</li>
+              </ul>
+              <ButtonLink href="/catalog" className="mt-auto self-start">
+                Обрати дизайн
+              </ButtonLink>
+            </div>
+
+            <div className="flex flex-col gap-4 rounded-[4px] border border-line bg-paper p-6 lg:p-8">
+              <span className="self-start">
+                <Badge tone="accent">Варіант 2</Badge>
+              </span>
+              <h3 className="text-xl font-bold">Взяти готову роботу з фото</h3>
+              <p className="text-ink-muted">
+                Конкретний автомобіль, реальні фото салону після встановлення й
+                фіксована ціна. Нічого налаштовувати не треба: бачите результат —
+                замовляєте такий самий.
+              </p>
+              <ul className="flex flex-col gap-1.5 text-sm text-ink-muted">
+                <li>· Фото цього самого авто, не рендери</li>
+                <li>· Ціна вже порахована під модель</li>
+                <li>· Підходить, якщо не хочете вибирати</li>
+              </ul>
+              <ButtonLink
+                href="/roboty"
+                variant="outline"
+                className="mt-auto self-start"
+              >
+                Дивитись роботи
+              </ButtonLink>
+            </div>
+          </div>
+        </Container>
+      </section>
+
       {/* ── Обіцянки ── */}
       <section className="border-b border-line bg-paper-warm">
         <Container className="grid gap-6 py-10 sm:grid-cols-2 lg:grid-cols-4">
@@ -156,6 +224,29 @@ export default async function HomePage() {
           </div>
         </Container>
       </section>
+
+      {/* ── Готові роботи ── */}
+      {works.length > 0 ? (
+        <section className="border-t border-line bg-white py-14">
+          <Container>
+            <SectionHeading
+              eyebrow="Готові роботи"
+              title="Фото з реальних салонів"
+              description="Кожен знімок — комплект, який ми пошили й встановили. Знайдіть своє авто."
+              action={
+                <ButtonLink href="/roboty" variant="ghost" size="sm">
+                  Усі роботи
+                </ButtonLink>
+              }
+            />
+            <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+              {works.map((work) => (
+                <ShowcaseCard key={work.id} work={work} />
+              ))}
+            </div>
+          </Container>
+        </section>
+      ) : null}
 
       {/* ── Марки авто ── */}
       <section className="border-y border-line bg-white py-14">

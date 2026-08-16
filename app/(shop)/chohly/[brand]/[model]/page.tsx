@@ -2,7 +2,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { SeriesCard } from "@/components/catalog/SeriesCard";
-import { Badge, Breadcrumbs, Container, SectionHeading } from "@/components/ui";
+import { ShowcaseCard } from "@/components/catalog/ShowcaseCard";
+import { Badge, Breadcrumbs, ButtonLink, Container, SectionHeading } from "@/components/ui";
 import { formatYears, pluralize } from "@/lib/format";
 import { prisma } from "@/lib/prisma";
 import {
@@ -50,10 +51,19 @@ export default async function ModelPage(
   if (!found) notFound();
 
   const { brand, model } = found;
-  const [seriesList, factors, overrides] = await Promise.all([
+  const [seriesList, factors, overrides, works] = await Promise.all([
     getSeriesList(),
     getBodyFactors(),
     getModelPrices(model.id),
+    prisma.showcase.findMany({
+      where: { published: true, carModelId: model.id },
+      orderBy: [{ featured: "desc" }, { createdAt: "desc" }],
+      take: 6,
+      include: {
+        photos: { orderBy: { sortOrder: "asc" } },
+        series: { select: { name: true } },
+      },
+    }),
   ]);
 
   const bodyLabel = factors.byType.get(model.bodyType)?.label ?? model.bodyType;
@@ -111,6 +121,27 @@ export default async function ModelPage(
           ваше авто.
         </p>
       </header>
+
+      {/* Готові роботи саме на це авто — найсильніший доказ перед вибором дизайну */}
+      {works.length > 0 ? (
+        <section className="pb-12">
+          <SectionHeading
+            eyebrow="Наші роботи на це авто"
+            title={`Фото комплектів на ${brand.name} ${model.name}`}
+            description="Реальні знімки після встановлення. Можна замовити такий самий комплект — ціна вже порахована."
+            action={
+              <ButtonLink href="/roboty" variant="ghost" size="sm">
+                Усі роботи
+              </ButtonLink>
+            }
+          />
+          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+            {works.map((work) => (
+              <ShowcaseCard key={work.id} work={work} />
+            ))}
+          </div>
+        </section>
+      ) : null}
 
       {/* Комплектація — те, на чому конкуренти найчастіше помиляються */}
       <section className="pb-10">

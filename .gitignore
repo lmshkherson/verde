@@ -40,6 +40,10 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
+# завантажені фото товарів — зберігаються на диску сервера, не в git
+/public/uploads/*
+!/public/uploads/.gitkeep
+
 # prisma: згенерований клієнт і локальна база
 /generated
 *.db

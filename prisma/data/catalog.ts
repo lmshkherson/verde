@@ -12,6 +12,7 @@ type ColorSeed = {
 export const materials = [
   {
     slug: "avtotkanina",
+    surcharge: 0,
     name: "Автотканина",
     shortName: "Тканина",
     description:
@@ -22,6 +23,7 @@ export const materials = [
   },
   {
     slug: "zhakard",
+    surcharge: 200,
     name: "Жакард",
     shortName: "Жакард",
     description:
@@ -32,6 +34,7 @@ export const materials = [
   },
   {
     slug: "ekoshkira-lite",
+    surcharge: 500,
     name: "Екошкіра лайт",
     shortName: "Екошкіра лайт",
     description:
@@ -42,6 +45,7 @@ export const materials = [
   },
   {
     slug: "ekoshkira-premium",
+    surcharge: 1200,
     name: "Екошкіра преміум",
     shortName: "Екошкіра преміум",
     description:
@@ -52,6 +56,7 @@ export const materials = [
   },
   {
     slug: "alkantara",
+    surcharge: 1600,
     name: "Алькантара",
     shortName: "Алькантара",
     description:
@@ -323,6 +328,51 @@ export const series: {
       { slug: "za-zrazkom", name: "За зразком клієнта", hex: "#2A2E33", threadHex: "#8B929B" },
     ],
   },
+];
+
+/**
+ * Палітра для власного поєднання. Кольори матеріалу й ниток лежать разом,
+ * бо на складі це один набір — розрізняє їх поле kind.
+ */
+export const palette: {
+  slug: string;
+  name: string;
+  hex: string;
+  kind: "material" | "thread";
+  surcharge?: number;
+}[] = [
+  { slug: "m-chornyi", name: "Чорний", hex: "#17191C", kind: "material" },
+  { slug: "m-grafit", name: "Графіт", hex: "#2E3237", kind: "material" },
+  { slug: "m-temno-siryi", name: "Темно-сірий", hex: "#4A4F55", kind: "material" },
+  { slug: "m-svitlo-siryi", name: "Світло-сірий", hex: "#8A9098", kind: "material" },
+  { slug: "m-bezh", name: "Беж", hex: "#C4B39A", kind: "material" },
+  {
+    slug: "m-slonova-kistka",
+    name: "Слонова кістка",
+    hex: "#D8CDBA",
+    kind: "material",
+    surcharge: 300,
+  },
+  { slug: "m-korychnevyi", name: "Коричневий", hex: "#4A3428", kind: "material" },
+  {
+    slug: "m-konyak",
+    name: "Коньяк",
+    hex: "#6B3F22",
+    kind: "material",
+    surcharge: 300,
+  },
+  { slug: "m-temno-synii", name: "Темно-синій", hex: "#22303F", kind: "material" },
+  { slug: "m-bordo", name: "Бордо", hex: "#5E2029", kind: "material" },
+  { slug: "m-chervonyi", name: "Червоний", hex: "#8E2C3A", kind: "material" },
+
+  { slug: "t-chorna", name: "Чорна", hex: "#2A2D31", kind: "thread" },
+  { slug: "t-bila", name: "Біла", hex: "#EFEBE3", kind: "thread" },
+  { slug: "t-sira", name: "Сіра", hex: "#8B929B", kind: "thread" },
+  { slug: "t-chervona", name: "Червона", hex: "#B1414F", kind: "thread" },
+  { slug: "t-bezheva", name: "Бежева", hex: "#C9B79A", kind: "thread" },
+  { slug: "t-korychneva", name: "Коричнева", hex: "#8A6A50", kind: "thread" },
+  { slug: "t-synya", name: "Синя", hex: "#3C5A78", kind: "thread" },
+  { slug: "t-zolota", name: "Золота", hex: "#C9A227", kind: "thread" },
 ];
 
 export const addOns = [

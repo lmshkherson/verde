@@ -56,6 +56,7 @@ model CarModel {
   intro          String?
 
   modelPrices ModelPrice[]
+  showcases   Showcase[]
 
   @@unique([brandId, slug])
   @@index([bodyType])
@@ -73,6 +74,9 @@ model Material {
   description String
   /// Заявлений ресурс зносостійкості, років
   wearYears   Int     @default(5)
+  /// Вартість матеріалу відносно найдешевшого. Різниця між обраним
+  /// і базовим матеріалом лінійки додається до ціни комплекту.
+  surcharge   Int     @default(0)
   careNotes   String?
   sortOrder   Int     @default(100)
 
@@ -112,11 +116,15 @@ model Series {
   seoTitle       String?
   seoDescription String?
 
+  /// Чи можна збирати власне поєднання кольорів, а не лише готові
+  allowCustomColors Boolean @default(true)
+
   images      SeriesImage[]
   colors      SeriesColor[]
   modelPrices ModelPrice[]
   reviews     Review[]
   orderItems  OrderItem[]
+  showcases   Showcase[]
 
   createdAt DateTime @default(now())
 }
@@ -149,6 +157,23 @@ model SeriesColor {
   @@unique([seriesId, slug])
 }
 
+/// Палітра для власного поєднання: кольори матеріалу, ниток і вишивки.
+/// Спільна для всіх лінійок — на складі один набір матеріалів і ниток.
+model Palette {
+  id   Int    @id @default(autoincrement())
+  slug String @unique
+  name String
+  hex  String
+
+  /// material — колір матеріалу, thread — колір нитки та вишивки
+  kind      String
+  surcharge Int     @default(0)
+  active    Boolean @default(true)
+  sortOrder Int     @default(100)
+
+  @@index([kind])
+}
+
 /// Коефіцієнт ціни за типом кузова: більше сидінь і складніші лекала — дорожче
 model BodyFactor {
   id        Int    @id @default(autoincrement())
@@ -179,6 +204,68 @@ model AddOn {
   price       Int
   active      Boolean @default(true)
   sortOrder   Int     @default(100)
+}
+
+// ─────────────────────────────────────────────────────────
+// Готові роботи: конкретне авто з реальними фото
+// ─────────────────────────────────────────────────────────
+
+/// Другий тип товару. На відміну від лінійки, це вже пошитий комплект
+/// на конкретному автомобілі, знятий у реальному салоні, з фіксованою ціною.
+model Showcase {
+  id   Int    @id @default(autoincrement())
+  slug String @unique
+
+  /// Звʼязок із базою авто — щоб робота зʼявилась на сторінці цієї моделі
+  carModelId Int?
+  carModel   CarModel? @relation(fields: [carModelId], references: [id])
+  /// Як підписуємо авто в заголовку, напр. «Škoda Octavia A7, 2018»
+  carLabel   String
+  year       Int?
+
+  /// З якої лінійки шили, якщо застосовно
+  seriesId Int?
+  series   Series? @relation(fields: [seriesId], references: [id])
+
+  title       String
+  description String  @default("")
+  /// Що використали: матеріал, кольори, строчка, вишивка
+  materialNote String @default("")
+  colorNote    String @default("")
+
+  price    Int
+  oldPrice Int @default(0)
+
+  published Boolean @default(false)
+  featured  Boolean @default(false)
+  sortOrder Int     @default(100)
+
+  seoTitle       String?
+  seoDescription String?
+
+  photos ShowcasePhoto[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([published])
+  @@index([carModelId])
+}
+
+model ShowcasePhoto {
+  id         Int      @id @default(autoincrement())
+  showcaseId Int
+  showcase   Showcase @relation(fields: [showcaseId], references: [id], onDelete: Cascade)
+
+  url String
+  alt String @default("")
+  /// car — фото автомобіля, covers — фото чохлів у салоні
+  kind      String @default("covers")
+  width     Int    @default(0)
+  height    Int    @default(0)
+  sortOrder Int    @default(100)
+
+  @@index([showcaseId])
 }
 
 // ─────────────────────────────────────────────────────────
@@ -229,6 +316,9 @@ model OrderItem {
 
   seriesId Int?
   series   Series? @relation(fields: [seriesId], references: [id])
+
+  /// Позиція могла прийти з готової роботи, а не з конфігуратора
+  showcaseSlug String?
 
   /// Знімок даних на момент замовлення — щоб історія не «попливла» після зміни цін
   seriesName String

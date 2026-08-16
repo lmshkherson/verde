@@ -3,7 +3,7 @@ import bcrypt from "bcryptjs";
 import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
 import { PrismaClient } from "../generated/prisma/client";
 import { brands, bodyTypes } from "./data/cars";
-import { addOns, materials, posts, reviews, series } from "./data/catalog";
+import { addOns, materials, palette, posts, reviews, series } from "./data/catalog";
 
 const adapter = new PrismaBetterSqlite3({
   url: process.env.DATABASE_URL ?? "file:./dev.db",
@@ -19,6 +19,9 @@ async function main() {
   // Порядок важливий: спершу залежні записи, потім батьківські.
   await prisma.orderItem.deleteMany();
   await prisma.order.deleteMany();
+  await prisma.showcasePhoto.deleteMany();
+  await prisma.showcase.deleteMany();
+  await prisma.palette.deleteMany();
   await prisma.review.deleteMany();
   await prisma.modelPrice.deleteMany();
   await prisma.seriesColor.deleteMany();
@@ -137,6 +140,20 @@ async function main() {
             sortOrder: (i + 1) * 10,
           })),
         },
+      },
+    });
+  }
+
+  console.log("Палітра кольорів і ниток…");
+  for (const [index, color] of palette.entries()) {
+    await prisma.palette.create({
+      data: {
+        slug: color.slug,
+        name: color.name,
+        hex: color.hex,
+        kind: color.kind,
+        surcharge: color.surcharge ?? 0,
+        sortOrder: (index + 1) * 10,
       },
     });
   }
