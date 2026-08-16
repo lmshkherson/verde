@@ -38,6 +38,8 @@ export function ShowcaseBuy({ work, productionDays, warrantyMonths }: Props) {
       seriesName: work.seriesName ?? "Готова робота",
       carLabel: work.carLabel,
       carModelId: work.carModelId,
+      seatSetSlug: "showcase",
+      seatSetName: "Готова робота",
       colorName: work.colorNote || "Як на фото",
       colorHex: "#2A2E33",
       colorInsertHex: "#4E545C",

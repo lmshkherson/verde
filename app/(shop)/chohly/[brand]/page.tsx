@@ -6,11 +6,12 @@ import { Breadcrumbs, Container, SectionHeading } from "@/components/ui";
 import { formatPriceWithCurrency, formatYearsShort, pluralize } from "@/lib/format";
 import { prisma } from "@/lib/prisma";
 import {
+  cheapestOf,
   getBodyFactors,
   getBrandBySlug,
   getCarTree,
+  getSeatSets,
   getSeriesList,
-  priceFrom,
 } from "@/lib/queries";
 
 export const revalidate = 300;
@@ -35,11 +36,12 @@ export async function generateMetadata(
 
 export default async function BrandPage(props: PageProps<"/chohly/[brand]">) {
   const { brand: slug } = await props.params;
-  const [brand, seriesList, factors, tree] = await Promise.all([
+  const [brand, seriesList, factors, tree, seatSets] = await Promise.all([
     getBrandBySlug(slug),
     getSeriesList(),
     getBodyFactors(),
     getCarTree(),
+    getSeatSets(),
   ]);
 
   if (!brand) notFound();
@@ -49,7 +51,10 @@ export default async function BrandPage(props: PageProps<"/chohly/[brand]">) {
   const rest = models.filter((model) => !model.popular);
 
   function renderModel(model: (typeof models)[number]) {
-    const from = priceFrom(seriesList, model.bodyType, factors.byType);
+    const from = cheapestOf(seriesList, seatSets, {
+      seats: model.seats,
+      bodyType: model.bodyType,
+    });
     return (
       <Link
         key={model.id}

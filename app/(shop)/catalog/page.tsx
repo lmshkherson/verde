@@ -6,7 +6,13 @@ import { Breadcrumbs, Container, EmptyState } from "@/components/ui";
 import { pluralize } from "@/lib/format";
 import { prisma } from "@/lib/prisma";
 import { tierLabels } from "@/lib/pricing";
-import { getBodyFactors, getCarTree, getSeriesList, priceFor } from "@/lib/queries";
+import {
+  getSeatSets,
+  getCarTree,
+  getSeriesList,
+  priceForSeatSet,
+  priceFrom,
+} from "@/lib/queries";
 
 export const revalidate = 300;
 
@@ -92,17 +98,18 @@ export default async function CatalogPage(props: PageProps<"/catalog">) {
   const search = await props.searchParams;
   const tier = typeof search.tier === "string" ? search.tier : undefined;
   const material = typeof search.material === "string" ? search.material : undefined;
-  const body = typeof search.body === "string" ? search.body : undefined;
+  const seatSet = typeof search.set === "string" ? search.set : undefined;
   const sort = typeof search.sort === "string" ? search.sort : undefined;
 
-  const [seriesList, factors, tree, materials] = await Promise.all([
+  const [seriesList, seatSets, tree, materials] = await Promise.all([
     getSeriesList(),
-    getBodyFactors(),
+    getSeatSets(),
     getCarTree(),
     prisma.material.findMany({ orderBy: { sortOrder: "asc" } }),
   ]);
 
-  const current = { tier, material, body, sort };
+  const current = { tier, material, set: seatSet, sort };
+  const activeSet = seatSets.find((item) => item.slug === seatSet);
 
   const tierOptions: FilterLink[] = Object.entries(tierLabels)
     .map(([value, label]) => ({
@@ -120,9 +127,9 @@ export default async function CatalogPage(props: PageProps<"/catalog">) {
     }))
     .filter((option) => option.count > 0);
 
-  const bodyOptions: FilterLink[] = factors.rows.map((row) => ({
-    value: row.bodyType,
-    label: row.label,
+  const seatSetOptions: FilterLink[] = seatSets.map((row) => ({
+    value: row.slug,
+    label: row.name,
     count: seriesList.length,
   }));
 
@@ -133,14 +140,17 @@ export default async function CatalogPage(props: PageProps<"/catalog">) {
   }
 
   const priced = filtered.map((item) => {
-    const { price, oldPrice } = priceFor(item, body ?? null, factors.byType);
+    // Обраний варіант комплекту — точна ціна; без нього показуємо «від»
+    const { price, oldPrice } = activeSet
+      ? priceForSeatSet(item, activeSet.id)
+      : priceFrom(item, seatSets, null);
     return { item, price, oldPrice };
   });
 
   if (sort === "price-asc") priced.sort((a, b) => a.price - b.price);
   if (sort === "price-desc") priced.sort((a, b) => b.price - a.price);
 
-  const bodyLabel = body ? factors.byType.get(body)?.label : undefined;
+
 
   return (
     <Container className="pb-16">
@@ -149,8 +159,8 @@ export default async function CatalogPage(props: PageProps<"/catalog">) {
       <header className="max-w-3xl pb-8">
         <h1 className="text-3xl font-extrabold sm:text-4xl">Каталог авточохлів</h1>
         <p className="mt-3 text-lg text-ink-muted">
-          Усі лінійки власного виробництва. Щоб побачити точну ціну для вашого авто,
-          скористайтесь підбором — вартість залежить від типу кузова.
+          Усі лінійки власного виробництва. Ціна фіксована й залежить лише від
+          того, скільки крісел закриваємо — марка авто на неї не впливає.
         </p>
       </header>
 
@@ -176,10 +186,10 @@ export default async function CatalogPage(props: PageProps<"/catalog">) {
               current={current}
             />
             <FilterGroup
-              title="Тип кузова"
-              options={bodyOptions}
-              active={body}
-              paramKey="body"
+              title="Варіант комплекту"
+              options={seatSetOptions}
+              active={seatSet}
+              paramKey="set"
               current={current}
             />
           </div>
@@ -189,7 +199,7 @@ export default async function CatalogPage(props: PageProps<"/catalog">) {
           <div className="flex flex-wrap items-center justify-between gap-3 pb-5">
             <p className="text-sm text-ink-muted">
               {pluralize(priced.length, "лінійка", "лінійки", "лінійок")}
-              {bodyLabel ? ` · ціни для кузова «${bodyLabel.toLowerCase()}»` : ""}
+              {activeSet ? ` · ціни за варіантом «${activeSet.name.toLowerCase()}»` : ""}
             </p>
             <div className="flex items-center gap-3 text-sm">
               <span className="text-ink-muted">Сортувати:</span>
@@ -241,7 +251,7 @@ export default async function CatalogPage(props: PageProps<"/catalog">) {
                   series={item}
                   price={price}
                   oldPrice={oldPrice}
-                  exact={Boolean(body)}
+                  exact={Boolean(activeSet)}
                 />
               ))}
             </div>

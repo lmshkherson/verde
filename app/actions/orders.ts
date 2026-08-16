@@ -50,20 +50,58 @@ export async function createOrder(input: unknown): Promise<ActionResult> {
   const seriesIds = [...new Set(data.items.map((item) => item.seriesId))];
   const seriesRows = await prisma.series.findMany({
     where: { id: { in: seriesIds } },
+    include: { seatPrices: { include: { seatSet: true } }, material: true },
   });
   const seriesById = new Map(seriesRows.map((row) => [row.id, row]));
 
   const addOnRows = await prisma.addOn.findMany({ where: { active: true } });
   const addOnBySlug = new Map(addOnRows.map((row) => [row.slug, row]));
 
-  const bodyFactors = await prisma.bodyFactor.findMany();
-  const maxFactor = Math.max(...bodyFactors.map((row) => row.factor), 1);
+  const materials = await prisma.material.findMany();
+  const maxMaterialDelta = Math.max(...materials.map((row) => row.surcharge), 0);
 
   const items = [];
   for (const item of data.items) {
+    // Готова робота: ціна береться з її картки, а не з прайсу лінійки.
+    if (item.seatSetSlug === "showcase") {
+      const work = await prisma.showcase.findUnique({
+        where: { slug: item.seriesSlug },
+      });
+      if (!work || !work.published) {
+        return {
+          ok: false,
+          error: "Ця робота більше недоступна. Оновіть сторінку.",
+        };
+      }
+      items.push({
+        seriesId: work.seriesId,
+        showcaseSlug: work.slug,
+        seriesName: item.seriesName,
+        carLabel: item.carLabel,
+        colorName: item.colorName,
+        seatSetSlug: item.seatSetSlug,
+        seatSetName: item.seatSetName,
+        optionsJson: "[]",
+        unitPrice: work.price,
+        quantity: item.quantity,
+        total: work.price * item.quantity,
+      });
+      continue;
+    }
+
     const series = seriesById.get(item.seriesId);
     if (!series) {
       return { ok: false, error: "Один із товарів більше недоступний" };
+    }
+
+    const priceRow = series.seatPrices.find(
+      (row) => row.seatSet.slug === item.seatSetSlug,
+    );
+    if (!priceRow) {
+      return {
+        ok: false,
+        error: "Варіант комплекту більше недоступний. Оновіть сторінку.",
+      };
     }
 
     // Опції рахуємо строго за прайсом з бази.
@@ -75,25 +113,29 @@ export async function createOrder(input: unknown): Promise<ActionResult> {
       0,
     );
 
-    // Базова ціна залежить від кузова обраного авто, тому точне значення
-    // приходить з клієнта. Але воно має вкладатись у діапазон, який взагалі
-    // можливий для цієї лінійки — інакше суму можна підмінити з консолі.
-    const claimedBase = item.unitPrice - optionsTotal;
-    const minBase = series.basePrice;
-    const maxBase = Math.round(series.basePrice * maxFactor) + 2000;
-    if (claimedBase < minBase || claimedBase > maxBase) {
+    // Ціна = фіксована ціна варіанта + доплати за матеріал і кольори.
+    // Перевіряємо, що клієнт не вийшов за межу можливих доплат.
+    const baseMaterial = materials.find((row) => row.id === series.materialId);
+    const maxExtra =
+      maxMaterialDelta - (baseMaterial?.surcharge ?? 0) + 600; // 600 — стеля доплат за рідкісні кольори
+    const claimedExtra = item.unitPrice - optionsTotal - priceRow.price;
+
+    if (claimedExtra < -(baseMaterial?.surcharge ?? 0) || claimedExtra > maxExtra) {
       return {
         ok: false,
         error: "Ціна товару змінилась. Оновіть сторінку й повторіть замовлення.",
       };
     }
 
-    const unitPrice = claimedBase + optionsTotal;
+    const unitPrice = priceRow.price + claimedExtra + optionsTotal;
     items.push({
       seriesId: series.id,
-      seriesName: series.name,
+      showcaseSlug: null,
+      seriesName: item.seriesName,
       carLabel: item.carLabel,
       colorName: item.colorName,
+      seatSetSlug: item.seatSetSlug,
+      seatSetName: item.seatSetName,
       optionsJson: JSON.stringify(validOptions),
       unitPrice,
       quantity: item.quantity,

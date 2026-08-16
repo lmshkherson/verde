@@ -1,44 +1,50 @@
 /**
- * Ціноутворення. Одне джерело правди для каталогу, картки товару, кошика й адмінки —
- * інакше ціна в кошику рано чи пізно розійдеться з ціною на сторінці.
+ * Ціноутворення конфігуратора. Одне джерело правди для каталогу, картки товару,
+ * кошика й адмінки — інакше ціна в кошику рано чи пізно розійдеться з ціною
+ * на сторінці.
  *
- * Ціна = базова ціна серії × коефіцієнт кузова + доплата за колір,
- * округлена до 10 грн. Точкове перевизначення в ModelPrice має пріоритет над формулою.
+ * Ціна фіксована за варіантом комплекту (передні 1+1, 1+2, повний на 5 або 7
+ * місць) і не залежить від марки авто: марка визначає лише лекала. Зверху
+ * додаються доплата за матеріал, за рідкісні кольори й обрані опції.
+ *
+ * Готові роботи (Showcase) сюди не входять — у них своя ціна на кожну картку.
  */
 
 export type PricingInput = {
-  basePrice: number;
-  bodyFactor?: number;
+  /** Ціна лінійки за обраним варіантом комплекту */
+  seatSetPrice: number;
+  /** Різниця з базовим матеріалом лінійки; може бути відʼємною */
+  materialDelta?: number;
   colorSurcharge?: number;
-  /** Ціна з ModelPrice, якщо для цієї пари серія + модель авто задано вручну */
-  overridePrice?: number | null;
 };
 
 export function calcPrice({
-  basePrice,
-  bodyFactor = 1,
+  seatSetPrice,
+  materialDelta = 0,
   colorSurcharge = 0,
-  overridePrice = null,
 }: PricingInput): number {
-  const base = overridePrice ?? basePrice * bodyFactor;
-  return Math.round((base + colorSurcharge) / 10) * 10;
-}
-
-/** Стара ціна масштабується тим самим коефіцієнтом, щоб економія лишалась чесною. */
-export function calcOldPrice({
-  oldPrice,
-  bodyFactor = 1,
-}: {
-  oldPrice: number;
-  bodyFactor?: number;
-}): number {
-  if (!oldPrice) return 0;
-  return Math.round((oldPrice * bodyFactor) / 10) * 10;
+  const total = seatSetPrice + materialDelta + colorSurcharge;
+  return Math.max(0, Math.round(total / 10) * 10);
 }
 
 export function discountPercent(price: number, oldPrice: number): number {
   if (!oldPrice || oldPrice <= price) return 0;
   return Math.round(((oldPrice - price) / oldPrice) * 100);
+}
+
+/**
+ * Які варіанти комплекту доступні для конкретного авто.
+ * Мікроавтобусний «1+2» не пропонуємо легковикам, а «7 місць» — пʼятимісним.
+ */
+export function availableSeatSets<
+  T extends { minSeats: number; vanOnly: boolean; slug: string },
+>(sets: T[], car: { seats: number; bodyType: string } | null): T[] {
+  if (!car) return sets;
+  const isVan = car.bodyType === "van" || car.bodyType === "minivan";
+  return sets.filter((set) => {
+    if (set.vanOnly && !isVan) return false;
+    return car.seats >= set.minSeats;
+  });
 }
 
 /** Вартість доставки. Від певної суми беремо на себе. */
@@ -82,7 +88,7 @@ export const deliveryMethods = [
   },
   {
     slug: "courier",
-    label: "Кур'єр за адресою",
+    label: "Курʼєр за адресою",
     hint: "По місту, у зручний час",
     needsWarehouse: false,
   },

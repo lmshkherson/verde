@@ -1,8 +1,8 @@
 import { cache } from "react";
 import { prisma } from "@/lib/prisma";
-import { calcOldPrice, calcPrice } from "@/lib/pricing";
+import { availableSeatSets } from "@/lib/pricing";
 
-/** Коефіцієнти кузова тягнемо один раз на рендер — вони потрібні майже всюди. */
+/** Підписи типів кузова для каталогу. На ціну кузов не впливає. */
 export const getBodyFactors = cache(async () => {
   const rows = await prisma.bodyFactor.findMany({ orderBy: { sortOrder: "asc" } });
   const byType = new Map(rows.map((row) => [row.bodyType, row]));
@@ -71,6 +71,7 @@ export const getSeriesList = cache(async () => {
     include: {
       material: true,
       colors: { orderBy: { sortOrder: "asc" } },
+      seatPrices: true,
       _count: { select: { reviews: { where: { published: true } } } },
     },
   });
@@ -82,6 +83,7 @@ export const getSeriesBySlug = cache(async (slug: string) => {
     include: {
       material: true,
       colors: { orderBy: { sortOrder: "asc" } },
+      seatPrices: true,
       images: { orderBy: { sortOrder: "asc" } },
       reviews: {
         where: { published: true },
@@ -126,36 +128,49 @@ export const getModelPrices = cache(async (carModelId: number) => {
   return new Map(rows.map((row) => [row.seriesId, row.price]));
 });
 
-type SeriesLike = {
+export const getSeatSets = cache(async () => {
+  return prisma.seatSet.findMany({ orderBy: { sortOrder: "asc" } });
+});
+
+export type SeatSetRow = Awaited<ReturnType<typeof getSeatSets>>[number];
+
+type PricedSeries = {
   id: number;
-  basePrice: number;
-  oldPrice: number;
+  seatPrices: { seatSetId: number; price: number; oldPrice: number }[];
 };
 
-/** Ціна лінійки під конкретний кузов — з урахуванням ручних перевизначень. */
-export function priceFor(
-  series: SeriesLike,
-  bodyType: string | null,
-  factors: Awaited<ReturnType<typeof getBodyFactors>>["byType"],
-  overrides?: Map<number, number>,
-) {
-  const factor = bodyType ? (factors.get(bodyType)?.factor ?? 1) : 1;
-  const price = calcPrice({
-    basePrice: series.basePrice,
-    bodyFactor: factor,
-    overridePrice: overrides?.get(series.id) ?? null,
-  });
-  const oldPrice = calcOldPrice({ oldPrice: series.oldPrice, bodyFactor: factor });
-  return { price, oldPrice: oldPrice > price ? oldPrice : 0, factor };
+/** Ціна лінійки за конкретним варіантом комплекту. */
+export function priceForSeatSet(series: PricedSeries, seatSetId: number) {
+  const row = series.seatPrices.find((item) => item.seatSetId === seatSetId);
+  return { price: row?.price ?? 0, oldPrice: row?.oldPrice ?? 0 };
 }
 
-/** Найдешевша лінійка — для блоків «від N ₴». */
+/**
+ * Найдешевший варіант серед доступних для авто — саме він показується
+ * у каталозі як «від N ₴».
+ */
 export function priceFrom(
-  list: SeriesLike[],
-  bodyType: string | null,
-  factors: Awaited<ReturnType<typeof getBodyFactors>>["byType"],
-  overrides?: Map<number, number>,
+  series: PricedSeries,
+  sets: SeatSetRow[],
+  car: { seats: number; bodyType: string } | null,
 ) {
-  const prices = list.map((item) => priceFor(item, bodyType, factors, overrides).price);
+  const allowed = availableSeatSets(sets, car);
+  const allowedIds = new Set(allowed.map((item) => item.id));
+  const rows = series.seatPrices.filter((item) => allowedIds.has(item.seatSetId));
+  if (rows.length === 0) return { price: 0, oldPrice: 0 };
+
+  const cheapest = rows.reduce((min, item) => (item.price < min.price ? item : min));
+  return { price: cheapest.price, oldPrice: cheapest.oldPrice };
+}
+
+/** Найдешевша ціна серед кількох лінійок — для сторінки марки. */
+export function cheapestOf(
+  list: PricedSeries[],
+  sets: SeatSetRow[],
+  car: { seats: number; bodyType: string } | null,
+) {
+  const prices = list
+    .map((item) => priceFrom(item, sets, car).price)
+    .filter((price) => price > 0);
   return prices.length ? Math.min(...prices) : 0;
 }

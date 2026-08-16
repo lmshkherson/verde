@@ -101,7 +101,8 @@ model Series {
   /// JSON-масив рядків: що входить у комплект
   includesJson     String @default("[]")
 
-  /// Базова ціна за комплект у гривнях (для кузова sedan)
+  /// Ціна повного комплекту на 5 місць. Реальні ціни лежать у SeriesPrice,
+  /// це значення лишається орієнтиром для сіду й для лінійок без варіантів.
   basePrice      Int
   /// Стара ціна для показу економії, 0 = не показувати
   oldPrice       Int     @default(0)
@@ -121,6 +122,7 @@ model Series {
 
   images      SeriesImage[]
   colors      SeriesColor[]
+  seatPrices  SeriesPrice[]
   modelPrices ModelPrice[]
   reviews     Review[]
   orderItems  OrderItem[]
@@ -174,7 +176,41 @@ model Palette {
   @@index([kind])
 }
 
-/// Коефіцієнт ціни за типом кузова: більше сидінь і складніші лекала — дорожче
+/// Варіант комплекту: скільки саме крісел закриваємо.
+/// Ціна лінійки фіксована для кожного варіанта й не залежить від марки авто.
+model SeatSet {
+  id   Int    @id @default(autoincrement())
+  slug String @unique
+  name String
+  hint String @default("")
+
+  /// Скільки місць має бути в салоні, щоб варіант був доступний
+  minSeats Int @default(5)
+  /// true — лише для мікроавтобусів із двомісним пасажирським диваном спереду
+  vanOnly  Boolean @default(false)
+  /// true — комплект лише на передній ряд
+  frontOnly Boolean @default(false)
+
+  sortOrder Int @default(100)
+
+  prices SeriesPrice[]
+}
+
+/// Фіксована ціна: лінійка × варіант комплекту
+model SeriesPrice {
+  id        Int     @id @default(autoincrement())
+  seriesId  Int
+  series    Series  @relation(fields: [seriesId], references: [id], onDelete: Cascade)
+  seatSetId Int
+  seatSet   SeatSet @relation(fields: [seatSetId], references: [id], onDelete: Cascade)
+
+  price    Int
+  oldPrice Int @default(0)
+
+  @@unique([seriesId, seatSetId])
+}
+
+/// Тип кузова лишається лише як підпис у каталозі — на ціну він не впливає
 model BodyFactor {
   id        Int    @id @default(autoincrement())
   bodyType  String @unique
@@ -321,9 +357,12 @@ model OrderItem {
   showcaseSlug String?
 
   /// Знімок даних на момент замовлення — щоб історія не «попливла» після зміни цін
-  seriesName String
-  carLabel   String
-  colorName  String
+  seriesName  String
+  carLabel    String
+  colorName   String
+  /// Варіант комплекту: передні 1+1, 1+2, повний на 5 або 7 місць
+  seatSetSlug String @default("")
+  seatSetName String @default("")
   /// JSON-масив обраних опцій та комплектації
   optionsJson String @default("[]")
 

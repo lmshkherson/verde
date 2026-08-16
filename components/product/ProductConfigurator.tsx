@@ -11,7 +11,7 @@ import {
   installment,
   pluralize,
 } from "@/lib/format";
-import { calcOldPrice, calcPrice } from "@/lib/pricing";
+import { calcPrice } from "@/lib/pricing";
 
 export type ConfiguratorColor = {
   id: number;
@@ -39,6 +39,15 @@ export type PaletteColor = {
   surcharge: number;
 };
 
+export type SeatSetOption = {
+  id: number;
+  slug: string;
+  name: string;
+  hint: string;
+  price: number;
+  oldPrice: number;
+};
+
 export type MaterialOption = {
   id: number;
   slug: string;
@@ -54,8 +63,6 @@ type Props = {
     slug: string;
     name: string;
     tier: string;
-    basePrice: number;
-    oldPrice: number;
     productionDays: number;
     warrantyMonths: number;
     materialId: number;
@@ -63,13 +70,13 @@ type Props = {
   };
   colors: ConfiguratorColor[];
   addOns: ConfiguratorAddOn[];
+  /** Варіанти комплекту, уже відфільтровані під обране авто */
+  seatSets: SeatSetOption[];
   materials: MaterialOption[];
   materialColors: PaletteColor[];
   threadColors: PaletteColor[];
   /** Ціна вишивки логотипа береться з опцій, щоб не задвоювати прайс */
   logoAddOnSlug: string;
-  bodyFactor: number;
-  overridePrice: number | null;
   car: {
     label: string;
     carModelId: number;
@@ -84,16 +91,19 @@ export function ProductConfigurator({
   series,
   colors,
   addOns,
+  seatSets,
   materials,
   materialColors,
   threadColors,
   logoAddOnSlug,
-  bodyFactor,
-  overridePrice,
   car,
 }: Props) {
   const { add } = useCart();
 
+  // Повний комплект — те, що беруть найчастіше, тому він і за замовчуванням.
+  const defaultSet =
+    seatSets.find((item) => item.slug === "full-5") ?? seatSets[0];
+  const [seatSetId, setSeatSetId] = useState(defaultSet?.id ?? 0);
   const [mode, setMode] = useState<Mode>("preset");
   const [presetId, setPresetId] = useState(colors[0]?.id ?? 0);
   const [materialId, setMaterialId] = useState(series.materialId);
@@ -106,6 +116,7 @@ export function ProductConfigurator({
   const [selectedAddOns, setSelectedAddOns] = useState<number[]>([]);
   const [added, setAdded] = useState(false);
 
+  const seatSet = seatSets.find((item) => item.id === seatSetId) ?? defaultSet;
   const preset = colors.find((item) => item.id === presetId) ?? colors[0];
   const material = materials.find((item) => item.id === materialId);
   const baseMaterial = materials.find((item) => item.id === series.materialId);
@@ -130,18 +141,14 @@ export function ProductConfigurator({
   const basePrice = useMemo(
     () =>
       calcPrice({
-        basePrice: series.basePrice + materialDelta,
-        bodyFactor,
+        seatSetPrice: seatSet?.price ?? 0,
+        materialDelta,
         colorSurcharge,
-        overridePrice,
       }),
-    [series.basePrice, materialDelta, bodyFactor, colorSurcharge, overridePrice],
+    [seatSet?.price, materialDelta, colorSurcharge],
   );
 
-  const oldPrice = useMemo(
-    () => calcOldPrice({ oldPrice: series.oldPrice, bodyFactor }),
-    [series.oldPrice, bodyFactor],
-  );
+  const oldPrice = seatSet?.oldPrice ?? 0;
 
   // Вишивка — це та сама опція з прайсу, просто вибирається кольором нитки.
   const effectiveAddOns = useMemo(() => {
@@ -189,6 +196,8 @@ export function ProductConfigurator({
       seriesName: custom
         ? `${series.name}, ${material?.shortName ?? ""}`.trim()
         : series.name,
+      seatSetSlug: seatSet?.slug ?? "",
+      seatSetName: seatSet?.name ?? "",
       carLabel: car?.label ?? "Універсальний комплект",
       carModelId: car?.carModelId ?? null,
       colorName: view.name,
@@ -225,7 +234,10 @@ export function ProductConfigurator({
         </div>
 
         <div className="rounded-[4px] border border-line bg-white p-4">
-          <p className="text-sm font-semibold">{view.name}</p>
+          <p className="text-sm font-semibold">
+            {seatSet ? `${seatSet.name} · ` : ""}
+            {view.name}
+          </p>
           <p className="mt-1 text-sm text-ink-muted">
             Так виглядає обране поєднання. Схема показує реальні кольори
             матеріалів зі складу — фотозйомку конкретно вашої моделі надішлемо в
@@ -272,6 +284,46 @@ export function ProductConfigurator({
               або {formatPriceWithCurrency(installment(total))} × 4 платежі без
               переплати
             </p>
+          </div>
+        </div>
+
+        {/* Варіант комплекту — перше й головне рішення, від нього ціна */}
+        <div className="rounded-[4px] border border-line bg-white p-5">
+          <h2 className="pb-1 text-sm font-bold">Що закриваємо</h2>
+          <p className="pb-3 text-xs text-ink-muted">
+            Ціна фіксована за варіантом і однакова для всіх марок авто.
+          </p>
+          <div className="flex flex-col gap-2">
+            {seatSets.map((item) => (
+              <label
+                key={item.id}
+                className={`flex cursor-pointer items-start gap-3 rounded-[3px] border px-3 py-2.5 transition-colors ${
+                  item.id === seatSetId
+                    ? "border-ink bg-paper"
+                    : "border-line-soft hover:border-line"
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="seatSet"
+                  checked={item.id === seatSetId}
+                  onChange={() => {
+                    setSeatSetId(item.id);
+                    setAdded(false);
+                  }}
+                  className="mt-1 h-4 w-4 accent-[#14161a]"
+                />
+                <span className="flex-1">
+                  <span className="flex justify-between gap-3">
+                    <span className="text-sm font-semibold">{item.name}</span>
+                    <span className="tabular text-sm font-semibold">
+                      {formatPriceWithCurrency(item.price)}
+                    </span>
+                  </span>
+                  <span className="block text-xs text-ink-muted">{item.hint}</span>
+                </span>
+              </label>
+            ))}
           </div>
         </div>
 

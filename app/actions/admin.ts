@@ -112,18 +112,12 @@ export async function updateSeries(formData: FormData) {
   const id = Number(formData.get("id"));
   if (!id) return;
 
-  const basePrice = Number(formData.get("basePrice"));
-  const oldPrice = Number(formData.get("oldPrice"));
   const productionDays = Number(formData.get("productionDays"));
   const warrantyMonths = Number(formData.get("warrantyMonths"));
-
-  if (!Number.isFinite(basePrice) || basePrice <= 0) return;
 
   await prisma.series.update({
     where: { id },
     data: {
-      basePrice: Math.round(basePrice),
-      oldPrice: Number.isFinite(oldPrice) ? Math.max(0, Math.round(oldPrice)) : 0,
       productionDays: Math.max(1, Math.round(productionDays || 1)),
       warrantyMonths: Math.max(1, Math.round(warrantyMonths || 12)),
       active: formData.get("active") === "on",
@@ -132,6 +126,38 @@ export async function updateSeries(formData: FormData) {
       tagline: String(formData.get("tagline") ?? ""),
     },
   });
+
+  // Фіксовані ціни за варіантами комплекту приходять полями price-{seatSetId}
+  const seatSets = await prisma.seatSet.findMany();
+  for (const seatSet of seatSets) {
+    const raw = formData.get(`price-${seatSet.id}`);
+    if (raw === null) continue;
+
+    const price = Number(raw);
+    const oldPrice = Number(formData.get(`old-${seatSet.id}`)) || 0;
+
+    // Порожнє поле означає «варіант не продаємо» — прибираємо ціну зовсім.
+    if (!Number.isFinite(price) || price <= 0) {
+      await prisma.seriesPrice.deleteMany({
+        where: { seriesId: id, seatSetId: seatSet.id },
+      });
+      continue;
+    }
+
+    await prisma.seriesPrice.upsert({
+      where: { seriesId_seatSetId: { seriesId: id, seatSetId: seatSet.id } },
+      create: {
+        seriesId: id,
+        seatSetId: seatSet.id,
+        price: Math.round(price),
+        oldPrice: Math.max(0, Math.round(oldPrice)),
+      },
+      update: {
+        price: Math.round(price),
+        oldPrice: Math.max(0, Math.round(oldPrice)),
+      },
+    });
+  }
 
   // Ціни й тексти лінійки видно майже на кожній сторінці вітрини.
   revalidatePath("/", "layout");

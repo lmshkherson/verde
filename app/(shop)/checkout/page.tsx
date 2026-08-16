@@ -68,9 +68,12 @@ export default function CheckoutPage() {
         paymentMethod,
         items: items.map((item) => ({
           seriesId: item.seriesId,
+          seriesSlug: item.seriesSlug,
           seriesName: item.seriesName,
           carLabel: item.carLabel,
           colorName: item.colorName,
+          seatSetSlug: item.seatSetSlug,
+          seatSetName: item.seatSetName,
           options: item.options,
           unitPrice: item.unitPrice,
           quantity: item.quantity,
@@ -302,6 +305,11 @@ export default function CheckoutPage() {
                     <span className="block truncate text-xs text-ink-muted">
                       {item.carLabel} · {item.colorName}
                     </span>
+                    {item.seatSetName ? (
+                      <span className="block truncate text-xs text-ink-muted">
+                        {item.seatSetName}
+                      </span>
+                    ) : null}
                   </span>
                   <span className="tabular shrink-0 font-semibold">
                     {formatPriceWithCurrency(item.unitPrice * item.quantity)}

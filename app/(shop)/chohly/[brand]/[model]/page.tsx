@@ -4,15 +4,16 @@ import { notFound } from "next/navigation";
 import { SeriesCard } from "@/components/catalog/SeriesCard";
 import { ShowcaseCard } from "@/components/catalog/ShowcaseCard";
 import { Badge, Breadcrumbs, ButtonLink, Container, SectionHeading } from "@/components/ui";
-import { formatYears, pluralize } from "@/lib/format";
+import { formatPriceWithCurrency, formatYears, pluralize } from "@/lib/format";
 import { prisma } from "@/lib/prisma";
 import {
   getBodyFactors,
   getCarModel,
-  getModelPrices,
+  getSeatSets,
   getSeriesList,
-  priceFor,
+  priceFrom,
 } from "@/lib/queries";
+import { availableSeatSets } from "@/lib/pricing";
 import { site } from "@/lib/site";
 
 export const revalidate = 300;
@@ -51,10 +52,10 @@ export default async function ModelPage(
   if (!found) notFound();
 
   const { brand, model } = found;
-  const [seriesList, factors, overrides, works] = await Promise.all([
+  const [seriesList, factors, seatSets, works] = await Promise.all([
     getSeriesList(),
     getBodyFactors(),
-    getModelPrices(model.id),
+    getSeatSets(),
     prisma.showcase.findMany({
       where: { published: true, carModelId: model.id },
       orderBy: [{ featured: "desc" }, { createdAt: "desc" }],
@@ -67,6 +68,8 @@ export default async function ModelPage(
   ]);
 
   const bodyLabel = factors.byType.get(model.bodyType)?.label ?? model.bodyType;
+  const car = { seats: model.seats, bodyType: model.bodyType };
+  const sets = availableSeatSets(seatSets, car);
   const carLabel = `${brand.name} ${model.name}${year ? `, ${year}` : ""}`;
 
   const fitment = [
@@ -116,9 +119,9 @@ export default async function ModelPage(
           {year ? ` · обраний рік: ${year}` : ""}
         </p>
         <p className="mt-4 text-lg text-ink-muted">
-          Лекала під цю модель уже в базі цеху. Ціни нижче розраховані саме для
-          кузова «{bodyLabel.toLowerCase()}» — це не «від», а вартість комплекту на
-          ваше авто.
+          Лекала під цю модель уже в базі цеху. Ціна залежить від того, скільки
+          крісел закриваємо: тільки передні чи весь салон. Марка на вартість не
+          впливає.
         </p>
       </header>
 
@@ -160,27 +163,66 @@ export default async function ModelPage(
         </dl>
       </section>
 
-      <section>
+      {/* Прайс за варіантами комплекту — головна відповідь на «скільки коштує» */}
+      <section className="pb-12">
         <SectionHeading
           eyebrow={`Ціни на ${carLabel}`}
+          title="Скільки коштує за варіантом комплекту"
+          description="Ціни фіксовані. Обираєте, що саме закриваємо — і бачите суму."
+        />
+        <div className="overflow-x-auto rounded-[4px] border border-line bg-white">
+          <table className="w-full min-w-[560px] text-sm">
+            <thead>
+              <tr className="border-b border-line bg-paper-warm text-left">
+                <th className="px-4 py-3 font-semibold">Варіант комплекту</th>
+                {seriesList.map((item) => (
+                  <th key={item.id} className="px-4 py-3 font-semibold">
+                    {item.name}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {sets.map((set) => (
+                <tr key={set.id} className="border-b border-line-soft last:border-0">
+                  <td className="px-4 py-3">
+                    <span className="block font-medium">{set.name}</span>
+                    <span className="block text-xs text-ink-muted">{set.hint}</span>
+                  </td>
+                  {seriesList.map((item) => {
+                    const row = item.seatPrices.find(
+                      (price) => price.seatSetId === set.id,
+                    );
+                    return (
+                      <td key={item.id} className="tabular px-4 py-3 font-semibold">
+                        {row
+                          ? formatPriceWithCurrency(row.price)
+                          : <span className="text-ink-faint">—</span>}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section>
+        <SectionHeading
+          eyebrow="Лінійки"
           title="Комплекти для цього авто"
           description={`Гарантія ${site.promises.warrantyMonths} місяців на кожну лінійку. Дату відправлення показуємо в картці комплекту.`}
         />
         <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
           {seriesList.map((item) => {
-            const { price, oldPrice } = priceFor(
-              item,
-              model.bodyType,
-              factors.byType,
-              overrides,
-            );
+            const { price, oldPrice } = priceFrom(item, seatSets, car);
             return (
               <SeriesCard
                 key={item.id}
                 series={item}
                 price={price}
                 oldPrice={oldPrice}
-                exact
                 href={`/product/${item.slug}?${carQuery}`}
               />
             );

@@ -7,13 +7,13 @@ import { Badge, ButtonLink, Container, SectionHeading } from "@/components/ui";
 import { formatDate, pluralize } from "@/lib/format";
 import { prisma } from "@/lib/prisma";
 import {
-  getBodyFactors,
   getBrands,
   getCarTree,
   getPublishedPosts,
   getPublishedReviews,
+  getSeatSets,
   getSeriesList,
-  priceFor,
+  priceFrom,
 } from "@/lib/queries";
 import { site } from "@/lib/site";
 
@@ -56,11 +56,11 @@ const process = [
 ];
 
 export default async function HomePage() {
-  const [tree, seriesList, factors, brands, reviews, posts, works] =
+  const [tree, seriesList, seatSets, brands, reviews, posts, works] =
     await Promise.all([
       getCarTree(),
       getSeriesList(),
-      getBodyFactors(),
+      getSeatSets(),
       getBrands(),
       getPublishedReviews(3),
       getPublishedPosts(3),
@@ -211,7 +211,7 @@ export default async function HomePage() {
           />
           <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
             {seriesList.map((item) => {
-              const { price, oldPrice } = priceFor(item, null, factors.byType);
+              const { price, oldPrice } = priceFrom(item, seatSets, null);
               return (
                 <SeriesCard
                   key={item.id}

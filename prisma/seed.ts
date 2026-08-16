@@ -3,7 +3,16 @@ import bcrypt from "bcryptjs";
 import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
 import { PrismaClient } from "../generated/prisma/client";
 import { brands, bodyTypes } from "./data/cars";
-import { addOns, materials, palette, posts, reviews, series } from "./data/catalog";
+import {
+  addOns,
+  materials,
+  palette,
+  posts,
+  reviews,
+  seatPrices,
+  seatSets,
+  series,
+} from "./data/catalog";
 
 const adapter = new PrismaBetterSqlite3({
   url: process.env.DATABASE_URL ?? "file:./dev.db",
@@ -24,6 +33,8 @@ async function main() {
   await prisma.palette.deleteMany();
   await prisma.review.deleteMany();
   await prisma.modelPrice.deleteMany();
+  await prisma.seriesPrice.deleteMany();
+  await prisma.seatSet.deleteMany();
   await prisma.seriesColor.deleteMany();
   await prisma.seriesImage.deleteMany();
   await prisma.series.deleteMany();
@@ -105,12 +116,19 @@ async function main() {
     materialIds.set(material.slug, created.id);
   }
 
+  console.log("Варіанти комплектів…");
+  const seatSetIds = new Map<string, number>();
+  for (const set of seatSets) {
+    const created = await prisma.seatSet.create({ data: set });
+    seatSetIds.set(set.slug, created.id);
+  }
+
   console.log("Лінійки чохлів…");
   for (const item of series) {
     const materialId = materialIds.get(item.material);
     if (!materialId) throw new Error(`Немає матеріалу ${item.material}`);
 
-    await prisma.series.create({
+    const createdSeries = await prisma.series.create({
       data: {
         slug: item.slug,
         name: item.name,
@@ -142,6 +160,16 @@ async function main() {
         },
       },
     });
+
+    // Фіксовані ціни за варіантами комплекту
+    const prices = seatPrices[item.slug] ?? {};
+    for (const [setSlug, [price, oldPrice]] of Object.entries(prices)) {
+      const seatSetId = seatSetIds.get(setSlug);
+      if (!seatSetId) continue;
+      await prisma.seriesPrice.create({
+        data: { seriesId: createdSeries.id, seatSetId, price, oldPrice },
+      });
+    }
   }
 
   console.log("Палітра кольорів і ниток…");

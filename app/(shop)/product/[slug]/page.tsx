@@ -9,11 +9,11 @@ import { prisma } from "@/lib/prisma";
 import { tierLabels } from "@/lib/pricing";
 import {
   getAddOns,
-  getBodyFactors,
   getCarModel,
-  getModelPrices,
+  getSeatSets,
   getSeriesBySlug,
 } from "@/lib/queries";
+import { availableSeatSets } from "@/lib/pricing";
 import { site } from "@/lib/site";
 
 export const revalidate = 300;
@@ -44,10 +44,10 @@ export default async function ProductPage(props: PageProps<"/product/[slug]">) {
   const modelSlug = typeof search.model === "string" ? search.model : undefined;
   const year = typeof search.year === "string" ? search.year : undefined;
 
-  const [series, addOns, factors, materials, paletteRows] = await Promise.all([
+  const [series, addOns, seatSets, materials, paletteRows] = await Promise.all([
     getSeriesBySlug(slug),
     getAddOns(),
-    getBodyFactors(),
+    getSeatSets(),
     prisma.material.findMany({ orderBy: { sortOrder: "asc" } }),
     prisma.palette.findMany({
       where: { active: true },
@@ -60,10 +60,22 @@ export default async function ProductPage(props: PageProps<"/product/[slug]">) {
   const found =
     brandSlug && modelSlug ? await getCarModel(brandSlug, modelSlug) : null;
 
-  const overrides = found ? await getModelPrices(found.model.id) : undefined;
-  const bodyFactor = found
-    ? (factors.byType.get(found.model.bodyType)?.factor ?? 1)
-    : 1;
+  // Варіанти комплекту фільтруємо під обране авто: «1+2» лише для мікроавтобусів,
+  // «7 місць» — лише якщо в салоні стільки крісел.
+  const carForSets = found
+    ? { seats: found.model.seats, bodyType: found.model.bodyType }
+    : null;
+  const sets = availableSeatSets(seatSets, carForSets).map((set) => {
+    const row = series?.seatPrices.find((item) => item.seatSetId === set.id);
+    return {
+      id: set.id,
+      slug: set.slug,
+      name: set.name,
+      hint: set.hint,
+      price: row?.price ?? 0,
+      oldPrice: row?.oldPrice ?? 0,
+    };
+  }).filter((set) => set.price > 0);
 
   const car = found
     ? {
@@ -102,7 +114,7 @@ export default async function ProductPage(props: PageProps<"/product/[slug]">) {
     { label: "Виробництво", value: `Україна, ${site.showroom.city}` },
   ];
 
-  const price = Math.round((series.basePrice * bodyFactor) / 10) * 10;
+  const price = sets.length ? Math.min(...sets.map((set) => set.price)) : 0;
   const ratingSum = series.reviews.reduce((sum, review) => sum + review.rating, 0);
 
   return (
@@ -161,13 +173,12 @@ export default async function ProductPage(props: PageProps<"/product/[slug]">) {
           slug: series.slug,
           name: series.name,
           tier: series.tier,
-          basePrice: series.basePrice,
-          oldPrice: series.oldPrice,
           productionDays: series.productionDays,
           warrantyMonths: series.warrantyMonths,
           materialId: series.materialId,
           allowCustomColors: series.allowCustomColors,
         }}
+        seatSets={sets}
         materials={materials.map((item) => ({
           id: item.id,
           slug: item.slug,
@@ -211,8 +222,6 @@ export default async function ProductPage(props: PageProps<"/product/[slug]">) {
           description: item.description,
           price: item.price,
         }))}
-        bodyFactor={bodyFactor}
-        overridePrice={overrides?.get(series.id) ?? null}
         car={car}
       />
 

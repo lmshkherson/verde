@@ -10,28 +10,26 @@ const inputClass =
   "h-10 w-full rounded-[4px] border border-line px-3 text-sm outline-none focus:border-ink";
 
 export default async function AdminSeriesPage() {
-  const [series, factors] = await Promise.all([
+  const [series, seatSets] = await Promise.all([
     prisma.series.findMany({
       orderBy: { sortOrder: "asc" },
       include: {
         material: true,
+        seatPrices: true,
         _count: { select: { colors: true, orderItems: true } },
       },
     }),
-    prisma.bodyFactor.findMany({ orderBy: { sortOrder: "asc" } }),
+    prisma.seatSet.findMany({ orderBy: { sortOrder: "asc" } }),
   ]);
 
   return (
     <div className="flex flex-col gap-6">
       <div>
         <h1 className="text-2xl font-bold">Лінійки чохлів</h1>
-        <p className="mt-1 text-sm text-ink-muted">
-          Базова ціна вказана для кузова «седан». Для інших кузовів вона множиться
-          на коефіцієнт:{" "}
-          {factors
-            .map((factor) => `${factor.label.toLowerCase()} ×${factor.factor}`)
-            .join(", ")}
-          .
+        <p className="mt-1 max-w-2xl text-sm text-ink-muted">
+          Ціни фіксовані за варіантом комплекту й однакові для всіх марок авто.
+          Порожнє поле означає, що варіант не продається — він зникне з
+          конфігуратора.
         </p>
       </div>
 
@@ -54,38 +52,67 @@ export default async function AdminSeriesPage() {
                 </p>
               </div>
               <p className="tabular text-sm text-ink-muted">
-                зараз: {formatPriceWithCurrency(item.basePrice)}
+                повний на 5 місць:{" "}
+                {formatPriceWithCurrency(
+                  item.seatPrices.find(
+                    (row) =>
+                      row.seatSetId ===
+                      seatSets.find((set) => set.slug === "full-5")?.id,
+                  )?.price ?? 0,
+                )}
               </p>
             </div>
 
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              <label className="flex flex-col gap-1.5">
-                <span className="text-xs font-medium text-ink-muted">
-                  Базова ціна, ₴
-                </span>
-                <input
-                  className={inputClass}
-                  name="basePrice"
-                  type="number"
-                  min={1}
-                  defaultValue={item.basePrice}
-                  required
-                />
-              </label>
+            <div className="overflow-x-auto rounded-[4px] border border-line-soft">
+              <table className="w-full min-w-[480px] text-sm">
+                <thead>
+                  <tr className="border-b border-line-soft bg-paper text-left">
+                    <th className="px-3 py-2 font-semibold">Варіант комплекту</th>
+                    <th className="w-32 px-3 py-2 font-semibold">Ціна, ₴</th>
+                    <th className="w-32 px-3 py-2 font-semibold">Стара ціна, ₴</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {seatSets.map((set) => {
+                    const row = item.seatPrices.find(
+                      (price) => price.seatSetId === set.id,
+                    );
+                    return (
+                      <tr key={set.id} className="border-b border-line-soft last:border-0">
+                        <td className="px-3 py-2">
+                          <span className="block font-medium">{set.name}</span>
+                          <span className="block text-xs text-ink-muted">
+                            {set.hint}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2">
+                          <input
+                            className="h-9 w-full rounded-[4px] border border-line px-2 text-sm outline-none focus:border-ink"
+                            name={`price-${set.id}`}
+                            type="number"
+                            min={0}
+                            defaultValue={row?.price ?? ""}
+                            placeholder="—"
+                          />
+                        </td>
+                        <td className="px-3 py-2">
+                          <input
+                            className="h-9 w-full rounded-[4px] border border-line px-2 text-sm outline-none focus:border-ink"
+                            name={`old-${set.id}`}
+                            type="number"
+                            min={0}
+                            defaultValue={row?.oldPrice || ""}
+                            placeholder="—"
+                          />
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
 
-              <label className="flex flex-col gap-1.5">
-                <span className="text-xs font-medium text-ink-muted">
-                  Стара ціна, ₴ (0 — не показувати)
-                </span>
-                <input
-                  className={inputClass}
-                  name="oldPrice"
-                  type="number"
-                  min={0}
-                  defaultValue={item.oldPrice}
-                />
-              </label>
-
+            <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <label className="flex flex-col gap-1.5">
                 <span className="text-xs font-medium text-ink-muted">
                   Пошиття, робочих днів

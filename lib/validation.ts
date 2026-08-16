@@ -25,10 +25,14 @@ const phoneSchema = z
   });
 
 export const orderItemSchema = z.object({
-  seriesId: z.number().int().positive(),
+  // 0 — позиція з готової роботи, у якої може не бути привʼязаної лінійки
+  seriesId: z.number().int().nonnegative(),
+  seriesSlug: z.string().min(1),
   seriesName: z.string().min(1),
   carLabel: z.string().min(1),
   colorName: z.string().min(1),
+  seatSetSlug: z.string().max(50).default(""),
+  seatSetName: z.string().max(100).default(""),
   options: z.array(
     z.object({
       slug: z.string(),

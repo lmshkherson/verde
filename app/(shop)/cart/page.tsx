@@ -76,6 +76,11 @@ export default function CartPage() {
                         </Link>
                       </h2>
                       <p className="text-sm text-ink-muted">{item.carLabel}</p>
+                      {item.seatSetName ? (
+                        <p className="text-sm text-ink-muted">
+                          {item.seatSetName}
+                        </p>
+                      ) : null}
                       <p className="text-sm text-ink-muted">
                         Колір: {item.colorName}
                       </p>

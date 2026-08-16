@@ -17,6 +17,9 @@ export type CartItem = {
   seriesName: string;
   carLabel: string;
   carModelId: number | null;
+  /// Варіант комплекту: передні 1+1, 1+2, повний на 5 або 7 місць
+  seatSetSlug: string;
+  seatSetName: string;
   colorName: string;
   colorHex: string;
   colorInsertHex: string;
@@ -98,7 +101,7 @@ function itemKey(item: Omit<CartItem, "key">) {
     .map((option) => option.slug)
     .sort()
     .join(",");
-  return `${item.seriesId}|${item.carLabel}|${item.colorName}|${options}`;
+  return `${item.seriesId}|${item.seatSetSlug}|${item.carLabel}|${item.colorName}|${options}`;
 }
 
 export function CartProvider({ children }: { children: ReactNode }) {
