@@ -1,0 +1,58 @@
+@import "tailwindcss";
+
+/* Кольори взяті з фірмового стилю VERDE: зелений і жовтий з лендінгу. */
+:root {
+  --background: #f6f8f4;
+  --foreground: #0b1f12;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  -webkit-text-size-adjust: 100%;
+}
+
+/* У цеху й на складі працюють у рукавичках і поспіхом: цілі для дотику
+   не менші за 44px, поля вводу від 16px, щоб iOS не зумив сторінку. */
+input,
+select,
+textarea {
+  font-size: 16px;
+}
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
+
+  /* Бланк друкується на білому й на весь аркуш: фон інтерфейсу й відступи
+     головного контейнера на папері лише з'їдають поле. */
+  @page {
+    size: A4;
+    margin: 12mm;
+  }
+
+  /* ТТН не влазить у книжкову орієнтацію: у ній вісім колонок вантажу. */
+  @page ttn {
+    size: A4 landscape;
+    margin: 8mm;
+  }
+
+  .print-landscape {
+    page: ttn;
+  }
+
+  body {
+    background: #fff;
+  }
+
+  main {
+    max-width: none !important;
+    padding: 0 !important;
+  }
+}
